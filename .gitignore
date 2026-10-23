@@ -1,0 +1,7 @@
+node_modules/
+vendor/
+var/
+.env.local
+.env.*.local
+/backend/config/jwt/*.pem
+.DS_Store
