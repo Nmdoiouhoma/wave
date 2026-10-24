@@ -1,0 +1,114 @@
+# Wave — dev additions, merged automatically by `docker compose`.
+# Code is bind-mounted, Vite runs behind nginx (HMR over the same origin),
+# Mailpit catches every email. Host ports: nginx ${WAVE_HTTP_PORT:-8090},
+# Mailpit UI ${MAILPIT_UI_PORT:-8027}; postgres ${POSTGRES_TOOLS_PORT:-5436}
+# only with `--profile tools` (db-tunnel).
+
+services:
+  php:
+    environment:
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+    volumes:
+      - ./backend:/app
+
+  worker:
+    environment:
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+    volumes:
+      - ./backend:/app
+
+  worker-async:
+    environment:
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+    volumes:
+      - ./backend:/app
+
+  nginx:
+    volumes:
+      - ./infra/nginx/snippets/front-dev.conf:/etc/nginx/wave/front.conf:ro
+
+  front:
+    image: node:24.22.0-alpine3.24
+    # Root without capabilities: the node_modules named volume is root-owned
+    # and must not be shared with the host (Linux-native esbuild/rollup).
+    working_dir: /app
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:?}
+      # Browser reaches Vite through nginx: HMR client must use nginx's port.
+      VITE_HMR_CLIENT_PORT: ${WAVE_HTTP_PORT:-8090}
+      NPM_CONFIG_UPDATE_NOTIFIER: "false"
+    command:
+      - sh
+      - -c
+      - |
+        while [ ! -f package.json ]; do echo "front: waiting for frontend/package.json"; sleep 15; done
+        if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+        exec npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
+    volumes:
+      - ./frontend:/app
+      - ./docs:/docs:ro
+      - front_node_modules:/app/node_modules
+    networks: [edge]
+    deploy:
+      resources:
+        limits: { memory: 256M }
+
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "${MAILPIT_UI_PORT:-8027}:8025"
+    # SMTP 1025 stays internal (worker → mailpit:1025).
+    networks: [internal, edge]
+    deploy:
+      resources:
+        limits: { memory: 128M }
+
+  # Dev tools only: `docker compose --profile tools up -d db-tunnel` exposes
+  # postgres on 127.0.0.1:${POSTGRES_TOOLS_PORT:-5436} for a SQL client.
+  db-tunnel:
+    profiles: [tools]
+    image: alpine/socat:1.8.0.3
+    command: ["TCP-LISTEN:5432,fork,reuseaddr", "TCP:postgres:5432"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    ports:
+      - "127.0.0.1:${POSTGRES_TOOLS_PORT:-5436}:5432"
+    networks: [internal, edge]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # Dev tools only: composer with registry access (php itself has no egress).
+  # Used by `make composer c="..."`.
+  composer:
+    profiles: [tools]
+    image: wave/php:local
+    entrypoint: ["composer"]
+    user: www-data
+    working_dir: /app
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      COMPOSER_HOME: /tmp/composer
+      COMPOSER_CACHE_DIR: /tmp/composer-cache
+    volumes:
+      - ./backend:/app
+      - composer_cache:/tmp/composer-cache
+    networks: [edge]
+
+volumes:
+  front_node_modules:
+  composer_cache:
