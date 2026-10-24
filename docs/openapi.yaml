@@ -1,0 +1,2147 @@
+openapi: 3.1.0
+info:
+  title: Wave API
+  version: 1.0.0
+  summary: Social music API (library, player, vertical feed).
+  description: |
+    Contract v1. Owned by architect; any change goes through architect (BRIEF).
+
+    Global rules (details in docs/CONVENTIONS.md):
+    - Base path `/api/v1`. JSON only (`application/json`), camelCase, no Hydra/JSON-LD.
+    - Ids are UUID v7 strings, except genres (slug), users in paths (username), artists in paths (slug), hashtags (name).
+    - Dates are ISO 8601 UTC with `Z` (`2026-10-24T08:15:30Z`).
+    - Errors are RFC 7807 `application/problem+json` with a stable `code` (see `ProblemCode`); `type` = `urn:wave:problem:{code}`.
+    - Lists use cursor pagination: `?cursor=&limit=` (limit default 20, max 50 unless stated); response `{items, nextCursor}`; `nextCursor: null` = last page. Cursors are opaque; a tampered cursor → 400 `invalid_cursor`.
+    - Every endpoint requires `Authorization: Bearer <access JWT>` unless it declares `security: []`. Access JWT TTL 15 min.
+    - Visibility: a resource the caller may not see (private track/playlist of someone else, hidden by moderation, not ready and not owned, non-playable post) answers **404 `not_found`**, never 403. 403 is only for resources the caller can see but may not mutate.
+    - Rate-limited routes declare `x-rate-limit` and may answer 429 with `Retry-After` (seconds).
+    - PATCH bodies are partial JSON (merge-patch semantics); `application/json` and `application/merge-patch+json` are both accepted.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+  - name: me
+  - name: users
+  - name: artists
+  - name: genres
+  - name: tracks
+  - name: stream
+  - name: playlists
+  - name: posts
+  - name: feed
+  - name: search
+  - name: reports
+  - name: admin
+
+paths:
+  # ───────────────────────────── auth ─────────────────────────────
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Create an account and open a session
+      security: []
+      x-rate-limit: 5 per hour per IP
+      parameters:
+        - $ref: '#/components/parameters/WaveClient'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          $ref: '#/components/responses/AuthSession'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Log in with email and password
+      description: Wrong email or password both answer 401 `invalid_credentials` (no user enumeration). Suspended account → 403 `account_suspended`.
+      security: []
+      x-rate-limit: 5 per minute per IP+email; 20 per 15 minutes per IP
+      parameters:
+        - $ref: '#/components/parameters/WaveClient'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthSession'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      summary: Rotate the refresh token and get a new access token
+      description: |
+        Web (no `X-Wave-Client: mobile`): refresh token read from the `wave_refresh` cookie, body ignored; new cookie set.
+        Mobile (`X-Wave-Client: mobile`): refresh token read from the body; new token returned in the body; no cookie.
+        Tokens are single-use (rotation). Invalid, expired or already used → 401 `refresh_token_invalid` (web: cookie cleared).
+      security: []
+      x-rate-limit: 30 per minute per IP
+      parameters:
+        - $ref: '#/components/parameters/WaveClient'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthSession'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the current refresh token
+      description: Idempotent. Reads the token like `/auth/refresh`; deletes it if found; web clears the cookie (`Max-Age=0`). Always 204.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/WaveClient'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '204':
+          description: Logged out.
+          headers:
+            Set-Cookie:
+              description: Web only, clears `wave_refresh`.
+              schema: { type: string }
+
+  # ───────────────────────────── me ─────────────────────────────
+  /me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: Get me
+      responses:
+        '200':
+          description: Current user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [me]
+      operationId: updateMe
+      summary: Update me
+      description: Username and email are immutable in v1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMeRequest' }
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /me/password:
+    post:
+      tags: [me]
+      operationId: changePassword
+      summary: Change password
+      description: Revokes every refresh token of the user (all devices logged out at next refresh). Wrong current password → 422 `validation_failed` on `currentPassword`.
+      x-rate-limit: 5 per 15 minutes per user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '204': { description: Password changed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /me/avatar:
+    post:
+      tags: [me]
+      operationId: uploadMyAvatar
+      summary: Upload my avatar
+      description: Async. Returns 202 with the user unchanged; `avatarUrl` switches when processing succeeds. Invalid image (detected by worker) is dropped silently and the previous avatar is kept.
+      x-rate-limit: 30 image uploads per hour per user (shared bucket `image_upload`)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/ImageUpload' }
+            encoding:
+              file: { contentType: 'image/jpeg, image/png, image/webp' }
+      responses:
+        '202':
+          description: Accepted for processing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [me]
+      operationId: deleteMyAvatar
+      summary: Delete my avatar
+      responses:
+        '204': { description: Avatar removed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me/likes/tracks:
+    get:
+      tags: [me]
+      operationId: listMyLikedTracks
+      summary: List my liked tracks
+      description: Ordered by like date desc. Tracks no longer visible to me are omitted.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of tracks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me/likes/playlists:
+    get:
+      tags: [me]
+      operationId: listMyLikedPlaylists
+      summary: List my liked playlists
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of playlists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaylistPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ───────────────────────────── users ─────────────────────────────
+  /users/{username}:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: getUserProfile
+      summary: Get user profile
+      responses:
+        '200':
+          description: Public profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/followers:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: listFollowers
+      summary: List followers
+      description: Ordered by follow date desc.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of users.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/following:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: listFollowing
+      summary: List following
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of users.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/follow:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    put:
+      tags: [users]
+      operationId: followUser
+      summary: Follow user
+      description: Idempotent. Following yourself → 422 `cannot_follow_self`.
+      x-rate-limit: 200 per hour per user (shared bucket `social_write`)
+      responses:
+        '200':
+          description: Follow state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FollowState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [users]
+      operationId: unfollowUser
+      summary: Unfollow user
+      description: Idempotent.
+      responses:
+        '200':
+          description: Follow state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FollowState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/tracks:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: listUserTracks
+      summary: List user tracks
+      description: All artists of the user, newest first. Others see public-visible tracks only; the owner sees every own track (any status/visibility/moderation).
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of tracks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/posts:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: listUserPosts
+      summary: List user posts
+      description: Newest first. Others see playable posts only; the author sees all own posts.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/playlists:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: listUserPlaylists
+      summary: List user playlists
+      description: Newest first. Others see public, visible playlists only; the owner sees all own playlists.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of playlists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaylistPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/artists:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: listUserArtists
+      summary: List user artists
+      description: Artists managed by the user (max 10, not paginated), oldest first. Hidden artists only for the owner.
+      responses:
+        '200':
+          description: Artists.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Artist' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── artists ─────────────────────────────
+  /artists:
+    post:
+      tags: [artists]
+      operationId: createArtist
+      summary: Create artist
+      description: Slug is generated from the name and is immutable. More than 10 artists → 409 `artist_limit_reached`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateArtistRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artist' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /artists/{slug}:
+    parameters:
+      - $ref: '#/components/parameters/ArtistSlug'
+    get:
+      tags: [artists]
+      operationId: getArtist
+      summary: Get artist
+      responses:
+        '200':
+          description: Artist page header.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artist' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [artists]
+      operationId: updateArtist
+      summary: Update artist
+      description: Owner only (403 `forbidden` otherwise). Renaming does not change the slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateArtistRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artist' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [artists]
+      operationId: deleteArtist
+      summary: Delete artist
+      description: Owner only. Artist with any track (any status) → 409 `artist_has_tracks`.
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /artists/{slug}/avatar:
+    parameters:
+      - $ref: '#/components/parameters/ArtistSlug'
+    post:
+      tags: [artists]
+      operationId: uploadArtistAvatar
+      summary: Upload artist avatar
+      description: Owner only. Async, same semantics as `POST /me/avatar`.
+      x-rate-limit: shared bucket `image_upload`
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/ImageUpload' }
+            encoding:
+              file: { contentType: 'image/jpeg, image/png, image/webp' }
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artist' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [artists]
+      operationId: deleteArtistAvatar
+      summary: Delete artist avatar
+      responses:
+        '204': { description: Removed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /artists/{slug}/tracks:
+    parameters:
+      - $ref: '#/components/parameters/ArtistSlug'
+    get:
+      tags: [artists]
+      operationId: listArtistTracks
+      summary: List artist tracks
+      description: Newest first. Same visibility rule as `/users/{username}/tracks`.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of tracks.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── genres ─────────────────────────────
+  /genres:
+    get:
+      tags: [genres]
+      operationId: listGenres
+      summary: List genres
+      description: 'Fixed list, ordered by `position`, not paginated. Cacheable (`Cache-Control: public, max-age=86400`).'
+      security: []
+      responses:
+        '200':
+          description: Genres.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Genre' }
+
+  # ───────────────────────────── tracks ─────────────────────────────
+  /tracks:
+    post:
+      tags: [tracks]
+      operationId: uploadTrack
+      summary: Upload track
+      description: |
+        Multipart upload of the audio file (MP3 or AAC/M4A, ≤ 30 MB). Returns 202 with `status: processing`.
+        The worker validates with ffprobe (duration ≤ 10 min, real audio codec) then sets `ready` or `failed` + `failureReason`; clients poll `GET /tracks/{id}` (every 3 s, stop after 2 min).
+        Artist resolution: `artistId` given → must be owned (else 404); omitted and user owns 0 artists → one is auto-created from `displayName`; omitted and exactly 1 → that one; omitted and several → 422 `artist_required`.
+        Size check is synchronous (413). Declared extension/MIME outside the allowed list → 415 (pre-filter only; the worker never trusts it).
+        Cover is uploaded separately (`POST /tracks/{id}/cover`) to stay under `post_max_size`.
+      x-rate-limit: 10 per hour and 30 per day per user (bucket `track_upload`)
+      x-body-limit: 32M (nginx)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/TrackUpload' }
+            encoding:
+              file: { contentType: 'audio/mpeg, audio/mp4, audio/aac, audio/x-m4a' }
+      responses:
+        '202':
+          description: Accepted, processing.
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /tracks/{trackId}:
+    parameters:
+      - $ref: '#/components/parameters/TrackId'
+    get:
+      tags: [tracks]
+      operationId: getTrack
+      summary: Get track
+      responses:
+        '200':
+          description: Track.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [tracks]
+      operationId: updateTrack
+      summary: Update track
+      description: Owner only. `artistId` must be another artist owned by the caller.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTrackRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [tracks]
+      operationId: deleteTrack
+      summary: Delete track
+      description: Owner only. Cascades to playlist items, likes, listens and every post using the track (including other users' posts); media purged asynchronously.
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tracks/{trackId}/cover:
+    parameters:
+      - $ref: '#/components/parameters/TrackId'
+    post:
+      tags: [tracks]
+      operationId: uploadTrackCover
+      summary: Upload track cover
+      description: Owner only. Async (202), same semantics as `POST /me/avatar`.
+      x-rate-limit: shared bucket `image_upload`
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/ImageUpload' }
+            encoding:
+              file: { contentType: 'image/jpeg, image/png, image/webp' }
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Track' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [tracks]
+      operationId: deleteTrackCover
+      summary: Delete track cover
+      responses:
+        '204': { description: Removed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tracks/{trackId}/stream-url:
+    parameters:
+      - $ref: '#/components/parameters/TrackId'
+    get:
+      tags: [tracks, stream]
+      operationId: getTrackStreamUrl
+      summary: Get track stream url
+      description: 'Access check (track visible to caller) then a signed URL valid 5 min (D2, ADR 001). Not ready → 409 `track_not_ready`. Response is `Cache-Control: no-store`.'
+      x-rate-limit: 120 per minute per user (bucket `stream_url`)
+      responses:
+        '200':
+          description: Signed URL.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StreamUrl' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /tracks/{trackId}/like:
+    parameters:
+      - $ref: '#/components/parameters/TrackId'
+    put:
+      tags: [tracks]
+      operationId: likeTrack
+      summary: Like track
+      description: Idempotent.
+      x-rate-limit: shared bucket `social_write`
+      responses:
+        '200':
+          description: Like state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [tracks]
+      operationId: unlikeTrack
+      summary: Unlike track
+      description: Idempotent.
+      responses:
+        '200':
+          description: Like state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /tracks/{trackId}/listens:
+    parameters:
+      - $ref: '#/components/parameters/TrackId'
+    post:
+      tags: [tracks]
+      operationId: reportListen
+      summary: Report listen
+      description: |
+        Sent once per play session (one session = one start of the track in the queue) when it ends: track end, skip, queue change, or page hide (`fetch(..., {keepalive: true})`; `sendBeacon` cannot carry the bearer header).
+        The server decides whether it counts (rules in DATA_MODEL §11) and answers 200 either way.
+      x-rate-limit: 120 per minute per user (bucket `listen`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListenRequest' }
+      responses:
+        '200':
+          description: Outcome.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListenResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ───────────────────────────── stream ─────────────────────────────
+  /stream/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        description: '`base64url(payload).base64url(hmacSha256(payload))`, see ADR 001.'
+        schema: { type: string, maxLength: 512 }
+    get:
+      tags: [stream]
+      operationId: streamAudio
+      summary: Serve audio through nginx X-Accel (no JWT)
+      description: |
+        PHP verifies signature and expiry, re-checks the media still exists and is ready, then answers with `X-Accel-Redirect: /_protected/private/{audioKey}` and `Content-Type: audio/mp4`;
+        nginx streams from MinIO with Range support and slice caching. The body/206 below is what the client receives from nginx.
+        On 403/410 the player fetches a new stream URL and resumes at the current position.
+      security: []
+      parameters:
+        - name: Range
+          in: header
+          required: false
+          schema: { type: string, example: 'bytes=0-' }
+      responses:
+        '200':
+          description: Full content.
+          headers:
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            Cache-Control: { schema: { type: string, example: 'private, max-age=300' } }
+          content:
+            audio/mp4:
+              schema: { type: string, contentMediaType: audio/mp4 }
+        '206':
+          description: Partial content.
+          headers:
+            Content-Range: { schema: { type: string } }
+          content:
+            audio/mp4:
+              schema: { type: string, contentMediaType: audio/mp4 }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
+        '416': { description: Range not satisfiable (nginx). }
+    head:
+      tags: [stream]
+      operationId: streamAudioHead
+      summary: Stream audio head
+      security: []
+      responses:
+        '200': { description: Headers only. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/Gone' }
+
+  # ───────────────────────────── playlists ─────────────────────────────
+  /playlists:
+    post:
+      tags: [playlists]
+      operationId: createPlaylist
+      summary: Create playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePlaylistRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Playlist' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /playlists/{playlistId}:
+    parameters:
+      - $ref: '#/components/parameters/PlaylistId'
+    get:
+      tags: [playlists]
+      operationId: getPlaylist
+      summary: Get playlist
+      responses:
+        '200':
+          description: Playlist header (items via `/items`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Playlist' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [playlists]
+      operationId: updatePlaylist
+      summary: Update playlist
+      description: Owner only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePlaylistRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Playlist' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [playlists]
+      operationId: deletePlaylist
+      summary: Delete playlist
+      description: Owner only.
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /playlists/{playlistId}/items:
+    parameters:
+      - $ref: '#/components/parameters/PlaylistId'
+    get:
+      tags: [playlists]
+      operationId: listPlaylistItems
+      summary: List playlist items
+      description: 'Ordered by `position` asc. `limit` max 100. Items whose track is not visible to the caller have `track: null`.'
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: Page of items.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaylistItemPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [playlists]
+      operationId: addPlaylistItem
+      summary: Add playlist item
+      description: Owner only. Appends. Track must be ready and visible to the caller (else 404 / 409 `track_not_ready`). Duplicate → 409 `track_already_in_playlist`. 500 items → 409 `playlist_full`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddPlaylistItemRequest' }
+      responses:
+        '201':
+          description: Added.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PlaylistItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /playlists/{playlistId}/items/{trackId}:
+    parameters:
+      - $ref: '#/components/parameters/PlaylistId'
+      - $ref: '#/components/parameters/TrackId'
+    delete:
+      tags: [playlists]
+      operationId: removePlaylistItem
+      summary: Remove playlist item
+      description: Owner only. Compacts positions. Track not in playlist → 404.
+      responses:
+        '204': { description: Removed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /playlists/{playlistId}/order:
+    parameters:
+      - $ref: '#/components/parameters/PlaylistId'
+    put:
+      tags: [playlists]
+      operationId: reorderPlaylist
+      summary: Reorder playlist
+      description: Owner only. Full ordered list of every trackId currently in the playlist (including unavailable ones). Set mismatch (missing, extra, duplicate) → 409 `playlist_order_mismatch`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReorderPlaylistRequest' }
+      responses:
+        '204': { description: Reordered. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /playlists/{playlistId}/like:
+    parameters:
+      - $ref: '#/components/parameters/PlaylistId'
+    put:
+      tags: [playlists]
+      operationId: likePlaylist
+      summary: Like playlist
+      x-rate-limit: shared bucket `social_write`
+      responses:
+        '200':
+          description: Like state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [playlists]
+      operationId: unlikePlaylist
+      summary: Unlike playlist
+      responses:
+        '200':
+          description: Like state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── posts ─────────────────────────────
+  /posts:
+    post:
+      tags: [posts]
+      operationId: createPost
+      summary: Create post
+      description: |
+        Multipart. Returns 202 `status: processing`; clip (and visual) produced by the worker; poll `GET /posts/{id}`.
+        Rules (D4, D5): track ready and visible, and (caller owns it, or track public with `allowClips`) else 422 `clips_not_allowed`;
+        `clipStartMs + clipDurationMs ≤ track.durationMs` else 422 `clip_out_of_range`.
+        Visual optional: image ≤ 5 MB (jpg/png/webp) or video MP4 ≤ 15 MB, ≤ 60 s (any audio stream is stripped). Oversize → 413, other type → 415.
+        Hashtags are extracted from the caption (max 10).
+      x-rate-limit: 30 per day per user (bucket `post_create`)
+      x-body-limit: 32M (nginx)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/PostUpload' }
+            encoding:
+              visual: { contentType: 'image/jpeg, image/png, image/webp, video/mp4' }
+      responses:
+        '202':
+          description: Accepted, processing.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /posts/{postId}:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    get:
+      tags: [posts]
+      operationId: getPost
+      summary: Get post
+      description: Non-playable posts → 404 except for the author and moderators.
+      responses:
+        '200':
+          description: Post.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Post' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [posts]
+      operationId: deletePost
+      summary: Delete post
+      description: Author or moderator.
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /posts/{postId}/stream-url:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    get:
+      tags: [posts, stream]
+      operationId: getPostStreamUrl
+      summary: Get post stream url
+      description: Fresh signed clip URL when the one embedded in `Post.clip` expired. Not ready → 409 `track_not_ready`.
+      x-rate-limit: shared bucket `stream_url`
+      responses:
+        '200':
+          description: Signed URL.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StreamUrl' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /posts/{postId}/like:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    put:
+      tags: [posts]
+      operationId: likePost
+      summary: Like post
+      x-rate-limit: shared bucket `social_write`
+      responses:
+        '200':
+          description: Like state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [posts]
+      operationId: unlikePost
+      summary: Unlike post
+      responses:
+        '200':
+          description: Like state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LikeState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /posts/{postId}/comments:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    get:
+      tags: [posts]
+      operationId: listComments
+      summary: List comments
+      description: Newest first. Hidden comments omitted (except for their author and moderators).
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of comments.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [posts]
+      operationId: createComment
+      summary: Create comment
+      x-rate-limit: 10 per minute and 200 per day per user (bucket `comment`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCommentRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /comments/{commentId}:
+    parameters:
+      - name: commentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [posts]
+      operationId: deleteComment
+      summary: Delete comment
+      description: Comment author, post author or moderator.
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /post-views:
+    post:
+      tags: [posts]
+      operationId: reportPostViews
+      summary: Report post views
+      description: Batched by the client (flush every 10 s, on feed exit and on page hide with `keepalive`). Unknown or invisible post ids are ignored silently. Upsert semantics (DATA_MODEL §11).
+      x-rate-limit: 60 per minute per user (bucket `post_view`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PostViewsRequest' }
+      responses:
+        '204': { description: Recorded. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ───────────────────────────── feed ─────────────────────────────
+  /feed/for-you:
+    get:
+      tags: [feed]
+      operationId: getForYouFeed
+      summary: Get for you feed
+      description: |
+        Ranked by `FeedRanker` (ADR 005). Excludes posts already viewed (PostView), own posts and non-playable posts; max 2 posts per author per page.
+        When unseen candidates run out, falls back to already-seen posts by trending score (never empty if any playable post exists).
+        Cursor is opaque and session-bound; duplicates across pages are possible after affinity recomputation, clients dedupe by id. `limit` default 10, max 20.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: Page of posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /feed/following:
+    get:
+      tags: [feed]
+      operationId: getFollowingFeed
+      summary: Get following feed
+      description: Playable posts by followed users, newest first (seen posts included). `limit` default 10, max 20.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        '200':
+          description: Page of posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ───────────────────────────── search ─────────────────────────────
+  /search:
+    get:
+      tags: [search]
+      operationId: search
+      summary: Search
+      description: |
+        `SearchProvider` v1 = PostgreSQL FTS (`simple` + unaccent, prefix match on every token) + pg_trgm similarity.
+        Without `type`: every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
+        With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable).
+        Only content visible to the caller is returned.
+      x-rate-limit: 60 per minute per user (bucket `search`)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 100 }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/SearchType' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Results.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResults' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /hashtags/{name}:
+    parameters:
+      - $ref: '#/components/parameters/HashtagName'
+    get:
+      tags: [search]
+      operationId: getHashtag
+      summary: Get hashtag
+      responses:
+        '200':
+          description: Hashtag.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Hashtag' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /hashtags/{name}/posts:
+    parameters:
+      - $ref: '#/components/parameters/HashtagName'
+    get:
+      tags: [search]
+      operationId: listHashtagPosts
+      summary: List hashtag posts
+      description: Playable posts with this hashtag, newest first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── reports ─────────────────────────────
+  /reports:
+    post:
+      tags: [reports]
+      operationId: createReport
+      summary: Create report
+      description: |
+        Target must be visible to the caller (else 404). Own content → 422 `cannot_report_own`. Same reporter + target twice → 409 `already_reported`.
+        5 distinct open reporters auto-hide the target (not for `user` targets). The response never reveals whether auto-hide happened.
+      x-rate-limit: 20 per hour per user (bucket `report`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateReportRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportReceipt' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ───────────────────────────── admin ─────────────────────────────
+  /admin/report-targets:
+    get:
+      tags: [admin]
+      operationId: listReportTargets
+      summary: List report targets
+      description: ROLE_MODERATOR. Moderation queue grouped by target, most reported first then oldest first. Non-moderator → 403 `forbidden`.
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ReportStatus' }
+          description: Filter on report status (default `open`).
+        - name: targetType
+          in: query
+          schema: { $ref: '#/components/schemas/ReportTargetType' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of targets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportTargetPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/report-targets/{targetType}/{targetId}/reports:
+    parameters:
+      - $ref: '#/components/parameters/ReportTargetTypePath'
+      - $ref: '#/components/parameters/ReportTargetIdPath'
+    get:
+      tags: [admin]
+      operationId: listReportsForTarget
+      summary: List reports for target
+      description: ROLE_MODERATOR. Individual reports for one target, newest first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of reports.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/report-targets/{targetType}/{targetId}/decision:
+    parameters:
+      - $ref: '#/components/parameters/ReportTargetTypePath'
+      - $ref: '#/components/parameters/ReportTargetIdPath'
+    post:
+      tags: [admin]
+      operationId: decideReportTarget
+      summary: Decide report target
+      description: |
+        ROLE_MODERATOR. Applies to every open report of the target (DATA_MODEL §13).
+        `hide` → target hidden, reports actioned. `dismiss` → target visible again, reports dismissed. `suspend` (user targets only, else 422) → account suspended, refresh tokens revoked, reports actioned.
+        A decision is also allowed with no open report (proactive moderation).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModerationDecisionRequest' }
+      responses:
+        '200':
+          description: Target after decision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportTarget' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: wave_refresh
+      description: 'Web only. `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=2592000`. Documented for reference; auth routes declare `security: []`.'
+
+  parameters:
+    WaveClient:
+      name: X-Wave-Client
+      in: header
+      required: false
+      description: '`mobile` → refresh token in JSON body, no cookie. Absent or `web` → refresh token only in the `wave_refresh` cookie (D3).'
+      schema: { type: string, enum: [web, mobile], default: web }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque value from a previous `nextCursor`.
+      schema: { type: string, maxLength: 512 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+    Username:
+      name: username
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9_.]{3,30}$' }
+    ArtistSlug:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 80 }
+    TrackId:
+      name: trackId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PlaylistId:
+      name: playlistId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PostId:
+      name: postId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    HashtagName:
+      name: name
+      in: path
+      required: true
+      description: Lowercase, without `#`.
+      schema: { type: string, maxLength: 50 }
+    ReportTargetTypePath:
+      name: targetType
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/ReportTargetType' }
+    ReportTargetIdPath:
+      name: targetId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    AuthSession:
+      description: 'Session opened. Web also receives `Set-Cookie: wave_refresh=…`.'
+      headers:
+        Set-Cookie:
+          description: Web only.
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AuthSession' }
+    BadRequest:
+      description: 'Malformed body/query (`malformed_request`) or bad cursor (`invalid_cursor`).'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: '`unauthenticated`, `token_expired`, `invalid_credentials`, `refresh_token_invalid`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: '`forbidden`, `account_suspended`, `stream_token_invalid`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: '`not_found` (also used for resources the caller may not see).'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: 'State conflict, see `code`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Gone:
+      description: '`stream_token_expired`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PayloadTooLarge:
+      description: '`payload_too_large` (PHP check; nginx may answer a bare 413 above 32 MB).'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnsupportedMediaType:
+      description: '`unsupported_media_type`.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unprocessable:
+      description: '`validation_failed` (with `violations`) or a business rule code.'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TooManyRequests:
+      description: '`rate_limited`.'
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    # ── errors ──
+    ProblemCode:
+      type: string
+      enum:
+        - malformed_request          # 400
+        - invalid_cursor             # 400
+        - unauthenticated            # 401
+        - token_expired              # 401
+        - invalid_credentials        # 401
+        - refresh_token_invalid      # 401
+        - forbidden                  # 403
+        - account_suspended          # 403
+        - stream_token_invalid       # 403
+        - not_found                  # 404
+        - email_taken                # 409
+        - username_taken             # 409
+        - artist_limit_reached       # 409
+        - artist_has_tracks          # 409
+        - track_not_ready            # 409
+        - track_already_in_playlist  # 409
+        - playlist_full              # 409
+        - playlist_order_mismatch    # 409
+        - already_reported           # 409
+        - stream_token_expired       # 410
+        - payload_too_large          # 413
+        - unsupported_media_type     # 415
+        - validation_failed          # 422
+        - artist_required            # 422
+        - clips_not_allowed          # 422
+        - clip_out_of_range          # 422
+        - cannot_follow_self         # 422
+        - cannot_report_own          # 422
+        - rate_limited               # 429
+        - internal_error             # 500
+    Problem:
+      type: object
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, description: '`urn:wave:problem:{code}`', example: 'urn:wave:problem:validation_failed' }
+        title: { type: string, description: 'Short English summary, stable per code.' }
+        status: { type: integer }
+        detail: { type: string, description: 'Human-readable, may vary. Never contains internals.' }
+        code: { $ref: '#/components/schemas/ProblemCode' }
+        violations:
+          type: array
+          description: Only for `validation_failed`.
+          items: { $ref: '#/components/schemas/Violation' }
+    Violation:
+      type: object
+      required: [propertyPath, message]
+      properties:
+        propertyPath: { type: string, example: username }
+        message: { type: string }
+        code: { type: [string, 'null'], description: Symfony constraint code (UUID) for client-side mapping. }
+
+    # ── shared ──
+    Id:
+      type: string
+      format: uuid
+      description: UUID v7.
+    DateTime:
+      type: string
+      format: date-time
+      example: '2026-10-24T08:15:30Z'
+    MediaUrl:
+      type: [string, 'null']
+      format: uri
+      description: Absolute URL under `MEDIA_PUBLIC_BASE_URL` (`…/media/{key}`), immutable content (long cache), or null.
+    MediaStatus:
+      type: string
+      enum: [processing, ready, failed]
+    FailureReason:
+      type: [string, 'null']
+      enum: [invalid_media, unsupported_codec, too_long, too_large, processing_error, null]
+    Visibility:
+      type: string
+      enum: [public, private]
+    Moderation:
+      type: string
+      enum: [visible, hidden]
+    LikeState:
+      type: object
+      required: [liked, likeCount]
+      properties:
+        liked: { type: boolean }
+        likeCount: { type: integer }
+    FollowState:
+      type: object
+      required: [following, followersCount]
+      properties:
+        following: { type: boolean }
+        followersCount: { type: integer, description: Followers of the target user. }
+    StreamUrl:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url: { type: string, format: uri, example: 'https://wave.local/api/v1/stream/eyJr...Q.mT3...x' }
+        expiresAt: { $ref: '#/components/schemas/DateTime' }
+
+    # ── auth ──
+    RegisterRequest:
+      type: object
+      required: [email, password, username, displayName]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 180 }
+        password: { type: string, minLength: 10, maxLength: 128 }
+        username: { type: string, pattern: '^[a-z0-9_.]{3,30}$' }
+        displayName: { type: string, minLength: 1, maxLength: 50 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string }
+        password: { type: string }
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        refreshToken: { type: string, description: Mobile only; ignored on web. }
+    AuthSession:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, const: 900 }
+        refreshToken: { type: string, description: 'Mobile only (`X-Wave-Client: mobile`). Absent on web.' }
+        refreshExpiresIn: { type: integer, description: 'Mobile only, seconds (2592000).' }
+        user: { $ref: '#/components/schemas/Me' }
+
+    # ── users ──
+    UserSummary:
+      type: object
+      required: [id, username, displayName, avatarUrl]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { $ref: '#/components/schemas/MediaUrl' }
+    UserProfile:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          required: [bio, followersCount, followingCount, createdAt, isMe, isFollowedByMe]
+          properties:
+            bio: { type: [string, 'null'] }
+            followersCount: { type: integer }
+            followingCount: { type: integer }
+            createdAt: { $ref: '#/components/schemas/DateTime' }
+            isMe: { type: boolean }
+            isFollowedByMe: { type: boolean }
+    Me:
+      allOf:
+        - $ref: '#/components/schemas/UserProfile'
+        - type: object
+          required: [email, roles]
+          properties:
+            email: { type: string, format: email }
+            roles:
+              type: array
+              items: { type: string, enum: [ROLE_USER, ROLE_MODERATOR, ROLE_ADMIN] }
+    UpdateMeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 50 }
+        bio: { type: [string, 'null'], maxLength: 300 }
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      additionalProperties: false
+      properties:
+        currentPassword: { type: string }
+        newPassword: { type: string, minLength: 10, maxLength: 128 }
+    ImageUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: JPEG, PNG or WebP, ≤ 5 MB (5242880 bytes).
+
+    # ── artists / genres ──
+    ArtistSummary:
+      type: object
+      required: [id, slug, name, avatarUrl]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        slug: { type: string }
+        name: { type: string }
+        avatarUrl: { $ref: '#/components/schemas/MediaUrl' }
+    Artist:
+      allOf:
+        - $ref: '#/components/schemas/ArtistSummary'
+        - type: object
+          required: [bio, trackCount, owner, moderation, isOwner, createdAt]
+          properties:
+            bio: { type: [string, 'null'] }
+            trackCount: { type: integer, description: 'Public, ready, visible tracks.' }
+            owner: { $ref: '#/components/schemas/UserSummary' }
+            moderation: { $ref: '#/components/schemas/Moderation' }
+            isOwner: { type: boolean }
+            createdAt: { $ref: '#/components/schemas/DateTime' }
+    CreateArtistRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        bio: { type: [string, 'null'], maxLength: 1000 }
+    UpdateArtistRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        bio: { type: [string, 'null'], maxLength: 1000 }
+    Genre:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, example: hip-hop }
+        name: { type: string, example: Hip-Hop }
+
+    # ── tracks ──
+    Track:
+      type: object
+      required: [id, title, artist, owner, genre, coverUrl, durationMs, status, failureReason, visibility, allowClips, moderation, playCount, likeCount, likedByMe, isOwner, canClip, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        title: { type: string }
+        artist: { $ref: '#/components/schemas/ArtistSummary' }
+        owner: { $ref: '#/components/schemas/UserSummary' }
+        genre: { $ref: '#/components/schemas/Genre' }
+        coverUrl: { $ref: '#/components/schemas/MediaUrl' }
+        durationMs: { type: [integer, 'null'], description: Null while processing. }
+        status: { $ref: '#/components/schemas/MediaStatus' }
+        failureReason: { $ref: '#/components/schemas/FailureReason' }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        allowClips: { type: boolean }
+        moderation: { $ref: '#/components/schemas/Moderation' }
+        playCount: { type: integer }
+        likeCount: { type: integer }
+        likedByMe: { type: boolean }
+        isOwner: { type: boolean }
+        canClip: { type: boolean, description: Caller may create a post from this track now (D5). }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+    TrackUpload:
+      type: object
+      required: [file, title, genreId]
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          description: MP3 or AAC/M4A, ≤ 30 MB (31457280 bytes), ≤ 10 min (checked by worker).
+        title: { type: string, minLength: 1, maxLength: 120 }
+        genreId: { type: string }
+        artistId: { type: string, format: uuid }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        allowClips: { type: boolean, default: true }
+    UpdateTrackRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        genreId: { type: string }
+        artistId: { type: string, format: uuid }
+        visibility: { $ref: '#/components/schemas/Visibility' }
+        allowClips: { type: boolean }
+    ListenRequest:
+      type: object
+      required: [listenedMs, source]
+      additionalProperties: false
+      properties:
+        listenedMs: { type: integer, minimum: 0, maximum: 3600000, description: 'Actual audio time played (not wall clock, seeks excluded).' }
+        source: { type: string, enum: [player, feed] }
+        postId: { type: string, format: uuid, description: Required when source=feed. }
+    ListenResult:
+      type: object
+      required: [counted, playCount]
+      properties:
+        counted: { type: boolean }
+        playCount: { type: integer }
+
+    # ── playlists ──
+    Playlist:
+      type: object
+      required: [id, name, description, isPublic, owner, coverUrl, itemCount, likeCount, likedByMe, moderation, isOwner, createdAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        isPublic: { type: boolean }
+        owner: { $ref: '#/components/schemas/UserSummary' }
+        coverUrl: { $ref: '#/components/schemas/MediaUrl' }
+        itemCount: { type: integer }
+        likeCount: { type: integer }
+        likedByMe: { type: boolean }
+        moderation: { $ref: '#/components/schemas/Moderation' }
+        isOwner: { type: boolean }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        updatedAt: { $ref: '#/components/schemas/DateTime' }
+    CreatePlaylistRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 300 }
+        isPublic: { type: boolean, default: true }
+    UpdatePlaylistRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 300 }
+        isPublic: { type: boolean }
+    PlaylistItem:
+      type: object
+      required: [trackId, position, addedAt, track]
+      properties:
+        trackId: { $ref: '#/components/schemas/Id' }
+        position: { type: integer, minimum: 0 }
+        addedAt: { $ref: '#/components/schemas/DateTime' }
+        track:
+          oneOf:
+            - $ref: '#/components/schemas/Track'
+            - type: 'null'
+          description: Null when the track is not visible to the caller.
+    AddPlaylistItemRequest:
+      type: object
+      required: [trackId]
+      additionalProperties: false
+      properties:
+        trackId: { type: string, format: uuid }
+    ReorderPlaylistRequest:
+      type: object
+      required: [trackIds]
+      additionalProperties: false
+      properties:
+        trackIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items: { type: string, format: uuid }
+
+    # ── posts ──
+    PostVisual:
+      type: object
+      required: [type, url, posterUrl]
+      properties:
+        type: { type: string, enum: [image, video] }
+        url: { type: string, format: uri }
+        posterUrl: { type: [string, 'null'], format: uri, description: Video only. }
+    Post:
+      type: object
+      required: [id, author, track, clipStartMs, clipDurationMs, clip, visual, caption, hashtags, status, failureReason, moderation, likeCount, commentCount, viewCount, likedByMe, isOwner, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        author: { $ref: '#/components/schemas/UserSummary' }
+        track: { $ref: '#/components/schemas/Track' }
+        clipStartMs: { type: integer, minimum: 0 }
+        clipDurationMs: { type: integer, minimum: 15000, maximum: 60000 }
+        clip:
+          oneOf:
+            - $ref: '#/components/schemas/StreamUrl'
+            - type: 'null'
+          description: Signed clip URL (TTL 5 min) embedded to avoid one call per post; null unless ready. Expired → `GET /posts/{id}/stream-url`.
+        visual:
+          oneOf:
+            - $ref: '#/components/schemas/PostVisual'
+            - type: 'null'
+          description: Null when no visual or not processed yet; client falls back to `track.coverUrl`.
+        caption: { type: [string, 'null'] }
+        hashtags:
+          type: array
+          items: { type: string }
+        status: { $ref: '#/components/schemas/MediaStatus' }
+        failureReason: { $ref: '#/components/schemas/FailureReason' }
+        moderation: { $ref: '#/components/schemas/Moderation' }
+        likeCount: { type: integer }
+        commentCount: { type: integer }
+        viewCount: { type: integer }
+        likedByMe: { type: boolean }
+        isOwner: { type: boolean }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+    PostUpload:
+      type: object
+      required: [trackId, clipStartMs, clipDurationMs]
+      properties:
+        trackId: { type: string, format: uuid }
+        clipStartMs: { type: integer, minimum: 0 }
+        clipDurationMs: { type: integer, minimum: 15000, maximum: 60000 }
+        caption: { type: string, maxLength: 300 }
+        visual:
+          type: string
+          contentMediaType: application/octet-stream
+          description: Optional. Image ≤ 5 MB (jpg/png/webp) or MP4 ≤ 15 MB (15728640 bytes), ≤ 60 s.
+    Comment:
+      type: object
+      required: [id, postId, author, body, moderation, createdAt, canDelete]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        postId: { $ref: '#/components/schemas/Id' }
+        author: { $ref: '#/components/schemas/UserSummary' }
+        body: { type: string }
+        moderation: { $ref: '#/components/schemas/Moderation' }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        canDelete: { type: boolean }
+    CreateCommentRequest:
+      type: object
+      required: [body]
+      additionalProperties: false
+      properties:
+        body: { type: string, minLength: 1, maxLength: 500 }
+    PostViewsRequest:
+      type: object
+      required: [views]
+      additionalProperties: false
+      properties:
+        views:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [postId, watchedMs]
+            additionalProperties: false
+            properties:
+              postId: { type: string, format: uuid }
+              watchedMs: { type: integer, minimum: 0, maximum: 600000 }
+
+    # ── search ──
+    SearchType:
+      type: string
+      enum: [tracks, artists, users, playlists, hashtags]
+    Hashtag:
+      type: object
+      required: [name, postCount]
+      properties:
+        name: { type: string, example: lofi }
+        postCount: { type: integer }
+    SearchResults:
+      type: object
+      description: Sections present according to `type` (see operation).
+      properties:
+        tracks: { $ref: '#/components/schemas/TrackPage' }
+        artists: { $ref: '#/components/schemas/ArtistPage' }
+        users: { $ref: '#/components/schemas/UserPage' }
+        playlists: { $ref: '#/components/schemas/PlaylistPage' }
+        hashtags: { $ref: '#/components/schemas/HashtagPage' }
+
+    # ── reports ──
+    ReportTargetType:
+      type: string
+      enum: [track, post, comment, playlist, artist, user]
+    ReportReason:
+      type: string
+      enum: [spam, harassment, hate, sexual, violence, copyright, impersonation, other]
+    ReportStatus:
+      type: string
+      enum: [open, actioned, dismissed]
+    CreateReportRequest:
+      type: object
+      required: [targetType, targetId, reason]
+      additionalProperties: false
+      properties:
+        targetType: { $ref: '#/components/schemas/ReportTargetType' }
+        targetId: { type: string, format: uuid }
+        reason: { $ref: '#/components/schemas/ReportReason' }
+        details: { type: [string, 'null'], maxLength: 1000 }
+    ReportReceipt:
+      type: object
+      required: [id, status, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        status: { $ref: '#/components/schemas/ReportStatus' }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+    Report:
+      type: object
+      required: [id, reporter, targetType, targetId, reason, details, status, handledBy, handledAt, decisionNote, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        reporter: { $ref: '#/components/schemas/UserSummary' }
+        targetType: { $ref: '#/components/schemas/ReportTargetType' }
+        targetId: { $ref: '#/components/schemas/Id' }
+        reason: { $ref: '#/components/schemas/ReportReason' }
+        details: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/ReportStatus' }
+        handledBy:
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        handledAt: { type: [string, 'null'], format: date-time }
+        decisionNote: { type: [string, 'null'] }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+    ReportTarget:
+      type: object
+      required: [targetType, targetId, preview, moderation, openReportCount, reasons, firstReportedAt, lastReportedAt]
+      properties:
+        targetType: { $ref: '#/components/schemas/ReportTargetType' }
+        targetId: { $ref: '#/components/schemas/Id' }
+        preview:
+          type: [object, 'null']
+          description: Null when the target was deleted.
+          required: [label]
+          properties:
+            label: { type: string, description: 'Track title, post caption, comment body (truncated 140), playlist/artist name, or username.' }
+            imageUrl: { $ref: '#/components/schemas/MediaUrl' }
+            owner: { $ref: '#/components/schemas/UserSummary' }
+        moderation:
+          type: [string, 'null']
+          enum: [visible, hidden, null]
+          description: Null for user targets.
+        suspended: { type: [boolean, 'null'], description: User targets only. }
+        openReportCount: { type: integer }
+        reasons:
+          type: object
+          description: Count of open reports per reason.
+          additionalProperties: { type: integer }
+        firstReportedAt: { $ref: '#/components/schemas/DateTime' }
+        lastReportedAt: { $ref: '#/components/schemas/DateTime' }
+    ModerationDecisionRequest:
+      type: object
+      required: [action]
+      additionalProperties: false
+      properties:
+        action: { type: string, enum: [hide, dismiss, suspend] }
+        note: { type: [string, 'null'], maxLength: 500 }
+
+    # ── pages ──
+    UserPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/UserSummary' } }
+        nextCursor: { type: [string, 'null'] }
+    ArtistPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Artist' } }
+        nextCursor: { type: [string, 'null'] }
+    TrackPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Track' } }
+        nextCursor: { type: [string, 'null'] }
+    PlaylistPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Playlist' } }
+        nextCursor: { type: [string, 'null'] }
+    PlaylistItemPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/PlaylistItem' } }
+        nextCursor: { type: [string, 'null'] }
+    PostPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Post' } }
+        nextCursor: { type: [string, 'null'] }
+    CommentPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Comment' } }
+        nextCursor: { type: [string, 'null'] }
+    HashtagPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Hashtag' } }
+        nextCursor: { type: [string, 'null'] }
+    ReportPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Report' } }
+        nextCursor: { type: [string, 'null'] }
+    ReportTargetPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ReportTarget' } }
+        nextCursor: { type: [string, 'null'] }
