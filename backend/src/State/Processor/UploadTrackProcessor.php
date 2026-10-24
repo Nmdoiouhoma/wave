@@ -13,8 +13,8 @@ use App\Entity\Artist;
 use App\Entity\Genre;
 use App\Entity\Track;
 use App\Entity\User;
-use App\Http\CacheControlListener;
 use App\Http\JsonInputDecoder;
+use App\Http\ResponseHeadersListener;
 use App\Mapper\TrackMapper;
 use App\Message\ProcessTrack;
 use App\Problem\ApiProblemException;
@@ -84,7 +84,7 @@ final readonly class UploadTrackProcessor implements ProcessorInterface
             return $track;
         });
 
-        $request->attributes->set(CacheControlListener::LOCATION_ATTRIBUTE, '/api/v1/tracks/'.$trackId->toRfc4122());
+        $request->attributes->set(ResponseHeadersListener::LOCATION_ATTRIBUTE, '/api/v1/tracks/'.$trackId->toRfc4122());
 
         return $this->mapper->toView($track, $user);
     }

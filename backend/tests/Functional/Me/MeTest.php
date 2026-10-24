@@ -67,23 +67,52 @@ final class MeTest extends WaveApiTestCase
         self::assertSame(['ROLE_USER'], $alice->getRoles());
     }
 
-    public function testChangePasswordRevokesRefreshTokens(): void
+    public function testChangePasswordKeepsOnlyTheCurrentSession(): void
     {
         $this->createUser('alice');
-        $login = $this->json($this->api('POST', '/api/v1/auth/login', null, ['headers' => ['X-Wave-Client' => 'mobile'], 'json' => ['email' => 'alice@example.test', 'password' => self::PASSWORD]]));
-        $bearer = ['Authorization' => 'Bearer '.$login['accessToken']];
+        $mobile = ['X-Wave-Client' => 'mobile'];
+        $login = fn (): array => $this->json($this->api('POST', '/api/v1/auth/login', null, ['headers' => $mobile, 'json' => ['email' => 'alice@example.test', 'password' => self::PASSWORD]]));
+        $current = $login();
+        $other = $login();
+        $bearer = ['Authorization' => 'Bearer '.$current['accessToken']];
 
         $wrong = $this->api('POST', '/api/v1/me/password', null, ['headers' => $bearer, 'json' => ['currentPassword' => 'nope', 'newPassword' => 'a brand new password']]);
         $this->assertProblem($wrong, 422, 'validation_failed');
         self::assertSame('currentPassword', $this->json($wrong)['violations'][0]['propertyPath']);
         $this->assertProblem($this->api('POST', '/api/v1/me/password', null, ['headers' => $bearer, 'json' => ['currentPassword' => self::PASSWORD, 'newPassword' => 'short']]), 422, 'validation_failed');
 
-        $ok = $this->api('POST', '/api/v1/me/password', null, ['headers' => $bearer, 'json' => ['currentPassword' => self::PASSWORD, 'newPassword' => 'a brand new password']]);
-        self::assertSame(204, $ok->getStatusCode(), $ok->getContent(false));
+        $ok = $this->api('POST', '/api/v1/me/password', null, ['headers' => $bearer + $mobile, 'json' => ['currentPassword' => self::PASSWORD, 'newPassword' => 'a brand new password']]);
+        self::assertSame(200, $ok->getStatusCode(), $ok->getContent(false));
+        $session = $this->json($ok);
+        self::assertSame(['accessToken', 'tokenType', 'expiresIn', 'refreshToken', 'refreshExpiresIn', 'user'], array_keys($session));
+        self::assertSame($this->sid($current['accessToken']), $this->sid($session['accessToken']), 'same session (family)');
 
-        $this->assertProblem($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => ['X-Wave-Client' => 'mobile'], 'json' => ['refreshToken' => $login['refreshToken']]]), 401, 'refresh_token_invalid');
+        // Other device: gone. Current device: continues with the new token.
+        $this->assertProblem($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => $mobile, 'json' => ['refreshToken' => $other['refreshToken']]]), 401, 'refresh_token_invalid');
+        self::assertSame(200, $this->api('POST', '/api/v1/auth/refresh', null, ['headers' => $mobile, 'json' => ['refreshToken' => $session['refreshToken']]])->getStatusCode());
+
         $this->assertProblem($this->api('POST', '/api/v1/auth/login', null, ['json' => ['email' => 'alice@example.test', 'password' => self::PASSWORD]]), 401, 'invalid_credentials');
         self::assertSame(200, $this->api('POST', '/api/v1/auth/login', null, ['json' => ['email' => 'alice@example.test', 'password' => 'a brand new password']])->getStatusCode());
+    }
+
+    public function testChangePasswordOnWebSetsTheRotatedCookie(): void
+    {
+        $alice = $this->createUser('alice');
+
+        $ok = $this->api('POST', '/api/v1/me/password', $alice, ['json' => ['currentPassword' => self::PASSWORD, 'newPassword' => 'a brand new password']]);
+
+        self::assertSame(200, $ok->getStatusCode(), $ok->getContent(false));
+        self::assertArrayNotHasKey('refreshToken', $this->json($ok));
+        $cookies = implode("\n", $ok->getHeaders()['set-cookie'] ?? []);
+        self::assertStringContainsString('wave_refresh=', $cookies);
+        self::assertStringContainsString('path=/api/v1/auth', $cookies);
+    }
+
+    private function sid(string $jwt): ?string
+    {
+        $payload = json_decode((string) base64_decode(strtr(explode('.', $jwt)[1], '-_', '+/')), true);
+
+        return \is_array($payload) && \is_string($payload['sid'] ?? null) ? $payload['sid'] : null;
     }
 
     public function testProfileByUsername(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Security;
 
+use App\Entity\RefreshToken;
 use App\Entity\User;
 use App\Http\ViewNormalizer;
 use App\Mapper\UserMapper;
@@ -19,13 +20,17 @@ use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Opens, rotates and revokes sessions (D3):
  * - web (no `X-Wave-Client: mobile`): refresh token only in the `wave_refresh` cookie
  *   (`HttpOnly; Secure`(prod)`; SameSite=Strict; Path=/api/v1/auth`), never in the body;
  * - mobile: refresh token in the JSON body, no cookie.
- * Refresh tokens are single use: a rotated or revoked token answers 401.
+ * Refresh tokens are single use. Replaying an already-rotated token is treated as theft:
+ * the whole family (every descendant) is revoked and 401 `token_reused` answered (ADR 008).
+ * The access JWT carries `sid` = family id, so endpoints outside the cookie path
+ * (`POST /me/password`) know the current session.
  */
 final readonly class SessionIssuer
 {
@@ -54,14 +59,20 @@ final readonly class SessionIssuer
         return 'mobile' === strtolower((string) $request->headers->get('X-Wave-Client', ''));
     }
 
-    public function open(User $user, Request $request, int $status = Response::HTTP_OK): JsonResponse
+    /** @param string|null $family session (family) to continue; null starts a new one */
+    public function open(User $user, Request $request, int $status = Response::HTTP_OK, ?string $family = null): JsonResponse
     {
+        $family ??= Uuid::v4()->toRfc4122();
         $refresh = $this->refreshGenerator->createForUserWithTtl($user, $this->refreshTtl);
+        if (!$refresh instanceof RefreshToken) {
+            throw new \LogicException('gesdinet refresh_token_class must be '.RefreshToken::class);
+        }
+        $refresh->setFamily($family);
         $this->refreshManager->save($refresh);
         $refreshToken = (string) $refresh->getRefreshToken();
 
         $body = [
-            'accessToken' => $this->jwt->create($user),
+            'accessToken' => $this->jwt->createFromPayload($user, ['sid' => $family]),
             'tokenType' => 'Bearer',
             'expiresIn' => $this->accessTtl,
         ];
@@ -82,17 +93,31 @@ final readonly class SessionIssuer
     }
 
     /**
-     * Rotation: the presented token is consumed atomically (DELETE … RETURNING), so two
-     * concurrent refreshes with the same token cannot both succeed.
+     * Rotation: the presented token is marked rotated atomically (UPDATE … WHERE rotated_at
+     * IS NULL RETURNING), so two concurrent refreshes with the same token cannot both succeed.
+     * A token that was already rotated is a replay: its family is revoked (F2).
      */
     public function rotate(Request $request): Response
     {
         $raw = $this->presentedToken($request);
-        $row = null === $raw ? false : $this->connection->fetchAssociative(
-            'DELETE FROM refresh_token WHERE refresh_token = :t RETURNING username, valid',
+        if (null === $raw) {
+            return $this->invalid($request);
+        }
+        $row = $this->connection->fetchAssociative(
+            'UPDATE refresh_token SET rotated_at = clock_timestamp() WHERE refresh_token = :t AND rotated_at IS NULL RETURNING username, valid, family_id',
             ['t' => $raw],
         );
-        if (false === $row || !\is_string($row['username'] ?? null) || !\is_string($row['valid'] ?? null)
+        if (false === $row) {
+            $family = $this->connection->fetchOne('SELECT family_id FROM refresh_token WHERE refresh_token = :t AND rotated_at IS NOT NULL', ['t' => $raw]);
+            if (\is_string($family)) {
+                $this->connection->executeStatement('DELETE FROM refresh_token WHERE family_id = :f', ['f' => $family]);
+
+                return $this->invalid($request, ProblemCode::TokenReused);
+            }
+
+            return $this->invalid($request);
+        }
+        if (!\is_string($row['username'] ?? null) || !\is_string($row['valid'] ?? null)
             || new \DateTimeImmutable($row['valid']) <= new \DateTimeImmutable()) {
             return $this->invalid($request);
         }
@@ -108,15 +133,62 @@ final readonly class SessionIssuer
             throw new ApiProblemException(ProblemCode::AccountSuspended);
         }
 
-        return $this->open($user, $request);
+        return $this->open($user, $request, Response::HTTP_OK, \is_string($row['family_id'] ?? null) ? $row['family_id'] : null);
+    }
+
+    /**
+     * `POST /me/password` (ADR 008): every other session of the user is revoked; the current
+     * one (`sid` of the access JWT) is rotated — its live tokens are marked rotated and a new
+     * one is issued in the same family. Without a usable `sid`, everything is revoked and a
+     * new session is opened.
+     */
+    public function keepOnlyCurrent(User $user, Request $request): JsonResponse
+    {
+        $sid = $this->currentSid($request);
+        if (null === $sid) {
+            $this->revokeAll($user);
+
+            return $this->open($user, $request);
+        }
+        $this->connection->executeStatement(
+            'DELETE FROM refresh_token WHERE username = :u AND family_id <> :f',
+            ['u' => $user->getUserIdentifier(), 'f' => $sid],
+        );
+        $alive = $this->connection->executeStatement(
+            'UPDATE refresh_token SET rotated_at = clock_timestamp() WHERE username = :u AND family_id = :f AND rotated_at IS NULL',
+            ['u' => $user->getUserIdentifier(), 'f' => $sid],
+        );
+
+        // A session already revoked (logged out) is not resurrected.
+        return $this->open($user, $request, Response::HTTP_OK, $alive > 0 ? $sid : null);
+    }
+
+    /** `sid` claim of the bearer of this request, if it is a valid uuid. */
+    private function currentSid(Request $request): ?string
+    {
+        $header = (string) $request->headers->get('Authorization', '');
+        if (!str_starts_with($header, 'Bearer ')) {
+            return null;
+        }
+        try {
+            $payload = $this->jwt->parse(substr($header, 7));
+        } catch (\Throwable) {
+            return null;
+        }
+        $sid = $payload['sid'] ?? null;
+
+        return \is_string($sid) && Uuid::isValid($sid) ? $sid : null;
     }
 
     public function close(Request $request): Response
     {
         $raw = $this->presentedToken($request);
-        $stored = null === $raw ? null : $this->refreshManager->get($raw);
-        if (null !== $stored) {
-            $this->refreshManager->delete($stored);
+        if (null !== $raw) {
+            // The whole session goes: the presented token and its family.
+            $this->connection->executeStatement(
+                'DELETE FROM refresh_token WHERE family_id = (SELECT family_id FROM refresh_token WHERE refresh_token = :t)',
+                ['t' => $raw],
+            );
         }
         $response = new Response(null, Response::HTTP_NO_CONTENT);
         if (!self::isMobile($request)) {
@@ -126,15 +198,15 @@ final readonly class SessionIssuer
         return $response;
     }
 
-    /** Password change/reset, suspension: every device is logged out at its next refresh. */
+    /** Password reset, suspension: every device is logged out at its next refresh. */
     public function revokeAll(User $user): void
     {
         $this->connection->executeStatement('DELETE FROM refresh_token WHERE username = :u', ['u' => $user->getUserIdentifier()]);
     }
 
-    private function invalid(Request $request): Response
+    private function invalid(Request $request, ProblemCode $code = ProblemCode::RefreshTokenInvalid): Response
     {
-        $response = $this->problems->create(ProblemCode::RefreshTokenInvalid);
+        $response = $this->problems->create($code);
         if (!self::isMobile($request)) {
             $response->headers->setCookie($this->cookie('', 0));
         }

@@ -39,6 +39,9 @@ final readonly class WaveSchedule implements ScheduleProviderInterface
                 RecurringMessage::cron('30 3 * * *', new RedispatchMessage(new CleanupQuarantine(), 'async'), new \DateTimeZone('UTC')),
                 // DATA_MODEL §3: expired refresh tokens purged daily.
                 RecurringMessage::cron('15 3 * * *', new RedispatchMessage(new RunCommandMessage('gesdinet:jwt:clear'), 'async'), new \DateTimeZone('UTC')),
+                // F3: expired rate-limiter rows (cache.rate_limiter on Doctrine DBAL) are never
+                // removed on read; prune every pruneable pool daily.
+                RecurringMessage::cron('45 3 * * *', new RedispatchMessage(new RunCommandMessage('cache:pool:prune'), 'async'), new \DateTimeZone('UTC')),
             );
     }
 }

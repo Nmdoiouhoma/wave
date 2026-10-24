@@ -17,6 +17,7 @@ enum ProblemCode: string
     case TokenExpired = 'token_expired';
     case InvalidCredentials = 'invalid_credentials';
     case RefreshTokenInvalid = 'refresh_token_invalid';
+    case TokenReused = 'token_reused';
     case Forbidden = 'forbidden';
     case AccountSuspended = 'account_suspended';
     case StreamTokenInvalid = 'stream_token_invalid';
@@ -48,7 +49,7 @@ enum ProblemCode: string
     {
         return match ($this) {
             self::MalformedRequest, self::InvalidCursor, self::AccountTokenInvalid => 400,
-            self::Unauthenticated, self::TokenExpired, self::InvalidCredentials, self::RefreshTokenInvalid => 401,
+            self::Unauthenticated, self::TokenExpired, self::InvalidCredentials, self::RefreshTokenInvalid, self::TokenReused => 401,
             self::Forbidden, self::AccountSuspended, self::StreamTokenInvalid, self::EmailNotVerified => 403,
             self::NotFound => 404,
             self::EmailTaken, self::UsernameTaken, self::ArtistLimitReached, self::ArtistHasTracks,
@@ -75,6 +76,7 @@ enum ProblemCode: string
             self::TokenExpired => 'Access token expired',
             self::InvalidCredentials => 'Invalid credentials',
             self::RefreshTokenInvalid => 'Invalid refresh token',
+            self::TokenReused => 'Refresh token reused',
             self::Forbidden => 'Forbidden',
             self::AccountSuspended => 'Account suspended',
             self::StreamTokenInvalid => 'Invalid stream token',

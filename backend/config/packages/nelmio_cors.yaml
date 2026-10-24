@@ -6,6 +6,9 @@ nelmio_cors:
         allow_headers: ['Content-Type', 'Authorization', 'X-Wave-Client']
         expose_headers: ['Location', 'Retry-After']
         max_age: 3600
+        # The SPA is served from the same origin behind nginx: still answer its preflights
+        # (otherwise they fall through to the router and 404).
+        skip_same_as_origin: false
     paths:
         '^/api/v1/auth/':
             allow_credentials: true

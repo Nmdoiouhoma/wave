@@ -156,7 +156,7 @@ final class SessionSecurityTest extends SecurityTestCase
 
         $replay = $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $first], ['HTTP_X_WAVE_CLIENT' => 'mobile']);
         self::assertSame(401, $replay->getStatusCode());
-        self::assertSame('refresh_token_invalid', self::problemCode($replay));
+        self::assertSame('token_reused', self::problemCode($replay));
     }
 
     /**

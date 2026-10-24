@@ -23,6 +23,24 @@ final class ConventionsTest extends WaveApiTestCase
         $this->assertProblem($this->api('GET', '/api/v1/me', null, ['headers' => ['Authorization' => 'Bearer nope']]), 401, 'unauthenticated');
     }
 
+    public function testSecurityHeadersAreLeftToNginx(): void
+    {
+        $headers = $this->api('GET', '/api/v1/genres')->getHeaders();
+
+        self::assertArrayNotHasKey('x-frame-options', $headers);
+        self::assertArrayNotHasKey('x-content-type-options', $headers);
+    }
+
+    public function testSameOriginPreflightIsAnswered(): void
+    {
+        $response = $this->client->request('OPTIONS', 'http://localhost/api/v1/me', ['headers' => [
+            'Origin' => 'http://localhost', 'Access-Control-Request-Method' => 'PATCH', 'Access-Control-Request-Headers' => 'content-type, authorization',
+        ]]);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('http://localhost', $response->getHeaders()['access-control-allow-origin'][0] ?? null);
+    }
+
     public function testGenresArePublicPlainJsonAndCacheable(): void
     {
         $response = $this->api('GET', '/api/v1/genres');
@@ -47,6 +65,10 @@ final class ConventionsTest extends WaveApiTestCase
 
     public function testApiDocsAreDisabledOutsideDev(): void
     {
-        self::assertSame(404, $this->api('GET', '/api/v1/docs')->getStatusCode());
+        foreach (['/api/v1/docs', '/api/v1/docs.json', '/api/v1/docs.jsonopenapi', '/api/v1/docs.html'] as $url) {
+            foreach (['application/json', 'text/html', 'application/vnd.openapi+json'] as $accept) {
+                self::assertSame(404, $this->api('GET', $url, null, ['headers' => ['Accept' => $accept]])->getStatusCode(), $url.' '.$accept);
+            }
+        }
     }
 }

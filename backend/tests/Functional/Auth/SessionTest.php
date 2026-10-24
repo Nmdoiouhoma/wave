@@ -129,8 +129,32 @@ final class SessionTest extends WaveApiTestCase
         self::assertNotSame($first, $second);
         self::assertSame('alice', $this->json($rotated)['user']['username']);
 
-        $this->assertProblem($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $first]]), 401, 'refresh_token_invalid');
-        self::assertSame(200, $this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $second]])->getStatusCode());
+        $this->assertProblem($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $first]]), 401, 'token_reused');
+        $this->assertProblem($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $second]]), 401, 'refresh_token_invalid');
+    }
+
+    public function testReplayOfARotatedTokenRevokesTheWholeFamily(): void
+    {
+        $this->createUser('alice');
+        $first = $this->json($this->login('alice@example.test', self::PASSWORD, self::MOBILE))['refreshToken'];
+        $otherSession = $this->json($this->login('alice@example.test', self::PASSWORD, self::MOBILE))['refreshToken'];
+        $second = $this->json($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $first]]))['refreshToken'];
+        $third = $this->json($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $second]]))['refreshToken'];
+
+        $this->assertProblem($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $first]]), 401, 'token_reused');
+        $this->assertProblem($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $third]]), 401, 'refresh_token_invalid');
+        self::assertSame(200, $this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $otherSession]])->getStatusCode(), 'other sessions survive');
+    }
+
+    public function testAccessTokenCarriesTheSessionId(): void
+    {
+        $this->createUser('alice');
+        $session = $this->json($this->login('alice@example.test', self::PASSWORD, self::MOBILE));
+        $rotated = $this->json($this->api('POST', '/api/v1/auth/refresh', null, ['headers' => self::MOBILE, 'json' => ['refreshToken' => $session['refreshToken']]]));
+
+        $sid = static fn (string $jwt): mixed => json_decode((string) base64_decode(strtr(explode('.', $jwt)[1], '-_', '+/')), true)['sid'] ?? null;
+        self::assertIsString($sid($session['accessToken']));
+        self::assertSame($sid($session['accessToken']), $sid($rotated['accessToken']));
     }
 
     public function testWebRefreshUsesTheCookieOnlyAndClearsItWhenInvalid(): void
@@ -151,7 +175,7 @@ final class SessionTest extends WaveApiTestCase
 
         $this->useRefreshCookie($cookie);
         $reused = $this->api('POST', '/api/v1/auth/refresh');
-        $this->assertProblem($reused, 401, 'refresh_token_invalid');
+        $this->assertProblem($reused, 401, 'token_reused');
         self::assertStringContainsString('wave_refresh=deleted', (string) $this->refreshCookieHeader($reused));
     }
 

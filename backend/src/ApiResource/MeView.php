@@ -35,7 +35,7 @@ use App\State\Provider\MeProvider;
             processor: MyAvatarProcessor::class,
         ),
         new Delete(uriTemplate: '/me/avatar', name: 'deleteMyAvatar', read: false, deserialize: false, output: false, processor: MyAvatarProcessor::class),
-        new Post(uriTemplate: '/me/password', name: 'changePassword', status: 204, read: false, deserialize: false, output: false, processor: ChangePasswordProcessor::class),
+        new Post(uriTemplate: '/me/password', name: 'changePassword', status: 200, read: false, deserialize: false, processor: ChangePasswordProcessor::class),
         new Post(uriTemplate: '/me/email-verification', name: 'resendEmailVerification', status: 202, read: false, deserialize: false, output: false, processor: ResendEmailVerificationProcessor::class),
     ],
 )]

@@ -107,6 +107,10 @@
             "@cs",
             "@phpstan",
             "@test"
+        ],
+        "jwt-keys": [
+            "@php bin/console lexik:jwt:generate-keypair --skip-if-exists",
+            "@php -r \"chmod('config/jwt/private.pem', 0600);\""
         ]
     },
     "conflict": {

@@ -20,6 +20,7 @@ if (!is_file($jwtDir.'/test_private.pem') || !is_file($jwtDir.'/test_public.pem'
     $details = openssl_pkey_get_details($key);
     file_put_contents($jwtDir.'/test_private.pem', $private);
     file_put_contents($jwtDir.'/test_public.pem', is_array($details) ? $details['key'] : '');
+    chmod($jwtDir.'/test_private.pem', 0o600);
 }
 
 // Fresh schema from the migrations (the source of truth), once per run.

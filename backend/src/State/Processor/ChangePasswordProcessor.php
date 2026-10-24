@@ -13,12 +13,14 @@ use App\Security\CurrentUser;
 use App\Security\SessionIssuer;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
- * `POST /me/password`: revokes every refresh token of the user.
+ * `POST /me/password` (ADR 008): revokes every other session and rotates the current one;
+ * answered like `/auth/refresh` (cookie on web, body on mobile).
  *
- * @implements ProcessorInterface<mixed, null>
+ * @implements ProcessorInterface<mixed, Response>
  */
 final readonly class ChangePasswordProcessor implements ProcessorInterface
 {
@@ -31,7 +33,7 @@ final readonly class ChangePasswordProcessor implements ProcessorInterface
     ) {
     }
 
-    public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): null
+    public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): Response
     {
         $user = $this->currentUser->require();
         /** @var Request $request */
@@ -42,12 +44,13 @@ final readonly class ChangePasswordProcessor implements ProcessorInterface
             throw ApiProblemException::validation('currentPassword', 'The current password is incorrect.');
         }
 
-        $this->em->wrapInTransaction(function () use ($user, $input): void {
-            $user->setPassword($this->hasher->hashPassword($user, (string) $input->newPassword));
-            $this->em->flush();
-            $this->sessions->revokeAll($user);
-        });
+        $hash = $this->hasher->hashPassword($user, (string) $input->newPassword);
 
-        return null;
+        return $this->em->wrapInTransaction(function () use ($user, $hash, $request): Response {
+            $user->setPassword($hash);
+            $this->em->flush();
+
+            return $this->sessions->keepOnlyCurrent($user, $request);
+        });
     }
 }
