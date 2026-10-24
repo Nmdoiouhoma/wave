@@ -1,0 +1,6 @@
+# Used only for its entity, manager and generator: issuing, rotation and the
+# cookie/body split (D3) are done by App\Controller\Auth\* (see App\Security\SessionIssuer).
+gesdinet_jwt_refresh_token:
+    refresh_token_class: App\Entity\RefreshToken
+    ttl: '%env(int:REFRESH_TOKEN_TTL)%'
+    single_use: true

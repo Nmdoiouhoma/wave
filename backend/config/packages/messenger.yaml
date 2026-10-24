@@ -1,0 +1,44 @@
+# Transports and routing: docs/CONVENTIONS.md §8.
+# The Doctrine transport shares the default DBAL connection on purpose: a message
+# dispatched inside EntityManager::wrapInTransaction() commits or rolls back with it.
+framework:
+    messenger:
+        failure_transport: failed
+
+        transports:
+            media:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    queue_name: media
+                retry_strategy:
+                    max_retries: 2
+                    delay: 10000
+                    multiplier: 4
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    queue_name: async
+                retry_strategy:
+                    max_retries: 3
+                    delay: 1000
+                    multiplier: 2
+            failed:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    queue_name: failed
+
+        routing:
+            App\Message\ProcessTrack: media
+            App\Message\ProcessImage: media
+            App\Message\GenerateClip: media
+            App\Message\ProcessPostVisual: media
+            App\Message\PurgeObjects: async
+            App\Message\CleanupQuarantine: async
+            App\Message\SendVerificationEmail: async
+            App\Message\SendPasswordResetEmail: async
+            App\Message\SendAccountDeletedEmail: async
+            App\Message\PurgeAccountTokens: async
+            App\Message\RecomputeAffinity: async
+            App\Message\RecomputeAffinityAll: async
+            App\Message\RecomputeTrending: async
+            # Mail is sent synchronously inside the handlers above: SendEmailMessage is NOT routed.

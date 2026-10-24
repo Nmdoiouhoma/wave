@@ -1,0 +1,21 @@
+# ADR 003: two buckets behind App\Storage\ObjectStorage. Tests use in-memory adapters.
+flysystem:
+    storages:
+        wave.storage.private:
+            adapter: 'aws'
+            options:
+                client: 'wave.s3_client'
+                bucket: '%env(S3_BUCKET_PRIVATE)%'
+        wave.storage.public:
+            adapter: 'aws'
+            options:
+                client: 'wave.s3_client'
+                bucket: '%env(S3_BUCKET_PUBLIC)%'
+
+when@test:
+    flysystem:
+        storages:
+            wave.storage.private:
+                adapter: 'memory'
+            wave.storage.public:
+                adapter: 'memory'

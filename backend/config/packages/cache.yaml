@@ -1,0 +1,7 @@
+framework:
+    cache:
+        prefix_seed: wave/backend
+        pools:
+            # Shared by every FPM worker (CONVENTIONS §9): rate limiter state lives in Postgres.
+            cache.rate_limiter:
+                adapter: cache.adapter.doctrine_dbal

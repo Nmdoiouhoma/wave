@@ -1,0 +1,19 @@
+lexik_jwt_authentication:
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    pass_phrase: '%env(JWT_PASSPHRASE)%'
+    token_ttl: '%env(int:JWT_TTL)%'
+    clock_skew: 0
+    allow_no_expiration: false
+    token_extractors:
+        authorization_header:
+            enabled: true
+            prefix: Bearer
+            name: Authorization
+        cookie:
+            enabled: false
+        query_parameter:
+            enabled: false
+    # Identity = user id (immutable). `sub` is not a User property, so Lexik falls back
+    # to getUserIdentifier() (a readable claim name like `username` would leak the handle).
+    user_id_claim: sub

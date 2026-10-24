@@ -1,0 +1,46 @@
+security:
+    password_hashers:
+        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface: 'auto'
+
+    providers:
+        app_user:
+            id: App\Security\UserProvider
+
+    role_hierarchy:
+        ROLE_ADMIN: [ROLE_MODERATOR]
+        ROLE_MODERATOR: [ROLE_USER]
+
+    firewalls:
+        dev:
+            pattern: ^/(_profiler|_wdt|_error)/
+            security: false
+        # Session endpoints authenticate themselves (App\Controller\Auth); a stale
+        # bearer header sent by a client must not break login/refresh.
+        auth:
+            pattern: ^/api/v1/auth/
+            security: false
+        # Hit once per Range request, authorised by the signed token only (ADR 001).
+        stream:
+            pattern: ^/api/v1/stream/
+            security: false
+        api:
+            pattern: ^/
+            stateless: true
+            provider: app_user
+            user_checker: App\Security\UserChecker
+            jwt: ~
+            entry_point: jwt
+
+    access_control:
+        - { path: ^/api/v1/genres$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/docs, roles: PUBLIC_ACCESS }
+        - { path: ^/api/v1/, roles: IS_AUTHENTICATED_FULLY }
+
+when@test:
+    security:
+        password_hashers:
+            Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+                algorithm: auto
+                cost: 4
+                time_cost: 3
+                memory_cost: 10
