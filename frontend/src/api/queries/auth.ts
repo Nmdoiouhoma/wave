@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { api } from '../instance';
+import { api, apiClient } from '../instance';
 import type {
   AuthSession,
   LoginRequest,
@@ -10,8 +10,9 @@ import { sessionStore } from '@/stores/session';
 import { playerStore } from '@/stores/player';
 import { keys } from './keys';
 
-function openSession(qc: QueryClient, session: AuthSession) {
-  sessionStore.getState().setSession(session);
+/** Stores a fresh session (and shares it with the other tabs). */
+export function openSession(qc: QueryClient, session: AuthSession) {
+  apiClient.adoptSession(session);
   qc.setQueryData(keys.me(), session.user);
 }
 
@@ -43,7 +44,7 @@ export function useLogout() {
       }
     },
     onSettled: () => {
-      sessionStore.getState().clearSession();
+      apiClient.endSession('logout');
       qc.clear();
     },
   });

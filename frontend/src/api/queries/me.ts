@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../instance';
 import type { ChangePasswordRequest, Me, UpdateMeRequest } from '../types';
 import { sessionStore, useSession } from '@/stores/session';
+import { openSession } from './auth';
 import { keys } from './keys';
 
 export function useMe() {
@@ -49,8 +50,13 @@ export function useResendVerification() {
   return useMutation({ mutationFn: () => api.me.resendVerification() });
 }
 
+/** ADR 008: other sessions are revoked, this one is rotated (new access token + cookie). */
 export function useChangePassword() {
-  return useMutation({ mutationFn: (body: ChangePasswordRequest) => api.me.changePassword(body) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ChangePasswordRequest) => api.me.changePassword(body),
+    onSuccess: (session) => openSession(qc, session),
+  });
 }
 
 export function useUploadMyAvatar() {

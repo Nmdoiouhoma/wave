@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
-import { useLogin, useLogout } from '@/api/queries/auth';
+import { useLogout } from '@/api/queries/auth';
 import {
   useChangePassword,
   useCurrentUser,
@@ -130,12 +130,10 @@ function ProfileForm() {
 }
 
 function PasswordForm() {
-  const me = useCurrentUser();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [local, setLocal] = useState<string | null>(null);
   const change = useChangePassword();
-  const login = useLogin();
   const { fields, message } = formErrors(change.error, ['currentPassword', 'newPassword']);
   const [done, setDone] = useState(false);
 
@@ -150,19 +148,11 @@ function PasswordForm() {
     change.mutate(
       { currentPassword: current, newPassword: next },
       {
-        // The change revokes every refresh token, including this browser's: reopen a session
-        // right away so the user is not logged out 15 minutes later.
-        onSuccess: () =>
-          login.mutate(
-            { email: me.email, password: next },
-            {
-              onSettled: () => {
-                setDone(true);
-                setCurrent('');
-                setNext('');
-              },
-            },
-          ),
+        onSuccess: () => {
+          setDone(true);
+          setCurrent('');
+          setNext('');
+        },
       },
     );
   };
@@ -193,11 +183,7 @@ function PasswordForm() {
         hint="10 caractères minimum."
       />
       <div>
-        <Button
-          type="submit"
-          loading={change.isPending || login.isPending}
-          disabled={!current || !next}
-        >
+        <Button type="submit" loading={change.isPending} disabled={!current || !next}>
           Changer le mot de passe
         </Button>
       </div>

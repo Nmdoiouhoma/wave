@@ -11,6 +11,7 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   token_expired: 'Votre session a expiré, reconnectez-vous.',
   invalid_credentials: 'E-mail ou mot de passe incorrect.',
   refresh_token_invalid: 'Votre session a expiré, reconnectez-vous.',
+  token_reused: 'Session expirée pour des raisons de sécurité, reconnecte-toi.',
   forbidden: 'Vous n’avez pas le droit de faire cela.',
   account_suspended: 'Ce compte est suspendu.',
   email_not_verified: 'Confirmez votre adresse e-mail pour effectuer cette action.',
@@ -29,6 +30,9 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   rate_limited: 'Trop de tentatives.',
   internal_error: 'Une erreur est survenue. Réessayez dans un instant.',
 };
+
+/** ADR 008: a reused refresh token revoked the whole session family. */
+export const TOKEN_REUSED_MESSAGE = 'Session expirée pour des raisons de sécurité, reconnecte-toi.';
 
 export function retryHint(seconds: number | null): string {
   if (seconds === null) return 'Réessayez plus tard.';

@@ -20,6 +20,12 @@ export interface AccountToken {
   used: boolean;
 }
 
+export interface MockRefreshToken {
+  userId: string;
+  familyId: string;
+  rotated: boolean;
+}
+
 export interface MailEntry {
   to: string;
   subject: string;
@@ -38,7 +44,8 @@ export interface MockState {
   users: MockUser[];
   artists: MockArtist[];
   tracks: MockTrack[];
-  refreshTokens: Record<string, string>;
+  /** ADR 008: refresh tokens rotate inside a family; rotated ones are kept to detect reuse. */
+  refreshTokens: Record<string, MockRefreshToken>;
   /** Simulates the httpOnly `wave_refresh` cookie of this browser. */
   cookie: string | null;
   accountTokens: Record<string, AccountToken>;
@@ -52,6 +59,8 @@ export const mockConfig = {
   streamTtlMs: 300_000,
   /** Fake worker latency. */
   trackProcessingMs: 8_000,
+  /** Server time between reading the refresh cookie and rotating it (makes races observable). */
+  refreshLatencyMs: 20,
   imageProcessingMs: 3_000,
   persist: typeof window !== 'undefined' && typeof localStorage !== 'undefined',
 };
@@ -91,6 +100,17 @@ function load(): MockState {
 
 export const db: { state: MockState } = { state: load() };
 
+/** Several tabs share one mock backend through localStorage: re-read it before each request. */
+export function syncFromStorage(): void {
+  if (!mockConfig.persist) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) db.state = JSON.parse(raw) as MockState;
+  } catch {
+    /* keep the in-memory state */
+  }
+}
+
 export function persist(): void {
   if (!mockConfig.persist) return;
   try {
@@ -125,13 +145,32 @@ export function isoNow(ms = Date.now()): string {
   return new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
 }
 
-export function issueAccessToken(userId: string): string {
-  return `mock.${userId}.${Date.now() + mockConfig.accessTtlMs}`;
+/** `mock.{userId}.{expMs}.{sid}` — `sid` = refresh family, like the real JWT claim. */
+export function issueAccessToken(userId: string, sid: string): string {
+  return `mock.${userId}.${Date.now() + mockConfig.accessTtlMs}.${sid}`;
 }
 
-export function parseAccessToken(token: string): { userId: string; exp: number } | null {
-  const m = /^mock\.([0-9a-f-]+)\.(\d+)$/.exec(token);
-  return m ? { userId: m[1]!, exp: Number(m[2]) } : null;
+export function parseAccessToken(
+  token: string,
+): { userId: string; exp: number; sid: string | null } | null {
+  const m = /^mock\.([0-9a-f-]+)\.(\d+)(?:\.([0-9a-f-]+))?$/.exec(token);
+  return m ? { userId: m[1]!, exp: Number(m[2]), sid: m[3] ?? null } : null;
+}
+
+/** Deletes refresh families: of a user (except `keepFamily`), or one family. */
+export function revokeFamilies(filter: {
+  userId?: string;
+  familyId?: string;
+  keepFamily?: string;
+}) {
+  for (const [k, t] of Object.entries(db.state.refreshTokens)) {
+    const match =
+      (filter.familyId !== undefined && t.familyId === filter.familyId) ||
+      (filter.userId !== undefined &&
+        t.userId === filter.userId &&
+        t.familyId !== filter.keepFamily);
+    if (match) delete db.state.refreshTokens[k];
+  }
 }
 
 export function slugify(name: string): string {
@@ -158,6 +197,7 @@ export function pickAudio(seedStr: string): MockAudio {
 
 /** Applies fake-worker transitions that are due (called at the start of every handler). */
 export function tick(now = Date.now()): void {
+  syncFromStorage();
   let changed = false;
   for (const tr of db.state.tracks) {
     if (tr.status === 'processing' && tr.processAt !== undefined && tr.processAt <= now) {

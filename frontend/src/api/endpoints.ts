@@ -56,8 +56,9 @@ export function createWaveApi(client: ApiClient) {
       get: () => request<Me>('GET', '/me'),
       update: (body: UpdateMeRequest) => request<Me>('PATCH', '/me', { body }),
       resendVerification: () => request<undefined>('POST', '/me/email-verification'),
+      // ADR 008: returns a rotated session for this device (other sessions are revoked).
       changePassword: (body: ChangePasswordRequest) =>
-        request<undefined>('POST', '/me/password', { body }),
+        request<AuthSession>('POST', '/me/password', { body }),
       uploadAvatar: (file: Blob) => upload<Me>('POST', '/me/avatar', imageForm(file)),
       deleteAvatar: () => request<undefined>('DELETE', '/me/avatar'),
     },

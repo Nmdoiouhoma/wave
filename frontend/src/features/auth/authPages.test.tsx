@@ -181,3 +181,13 @@ describe('emailed-token pages', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe('session ended for security (ADR 008)', () => {
+  it('login page explains a token_reused logout', () => {
+    sessionStore.getState().clearSession('token_reused');
+    renderRoute(<LoginPage />, { path: '/login' });
+    expect(
+      screen.getByText('Session expirée pour des raisons de sécurité, reconnecte-toi.'),
+    ).toBeInTheDocument();
+  });
+});

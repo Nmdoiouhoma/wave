@@ -1,6 +1,6 @@
 // MSW handlers for every phase-1 operation of docs/openapi.yaml.
 // `/stream/{token}` is not mocked: mock stream URLs point at static files in public/mock-audio.
-import { http, HttpResponse, type JsonBodyType } from 'msw';
+import { delay, http, HttpResponse, type JsonBodyType } from 'msw';
 import type {
   AuthSession,
   ListenRequest,
@@ -28,6 +28,8 @@ import {
   randomToken,
   sendMail,
   slugify,
+  revokeFamilies,
+  syncFromStorage,
   tick,
   toArtist,
   toMe,
@@ -93,6 +95,11 @@ function viewerOf(request: Request): MockUser | null {
   return user;
 }
 
+function currentSid(request: Request): string | null {
+  const header = request.headers.get('Authorization');
+  return header?.startsWith('Bearer ') ? (parseAccessToken(header.slice(7))?.sid ?? null) : null;
+}
+
 function requireUser(request: Request): MockUser {
   tick();
   const user = viewerOf(request);
@@ -112,13 +119,14 @@ async function readJson<T>(request: Request): Promise<T> {
   }
 }
 
-function openSession(user: MockUser, status = 200) {
+/** Issues a refresh token (new family on login/register, same family on rotation). */
+function openSession(user: MockUser, status = 200, familyId: string = uuid7()) {
   const refresh = randomToken();
-  db.state.refreshTokens[refresh] = user.id;
+  db.state.refreshTokens[refresh] = { userId: user.id, familyId, rotated: false };
   db.state.cookie = refresh;
   persist();
   const body: AuthSession = {
-    accessToken: issueAccessToken(user.id),
+    accessToken: issueAccessToken(user.id, familyId),
     tokenType: 'Bearer',
     expiresIn: 900,
     user: toMe(user),
@@ -296,23 +304,35 @@ export const handlers = [
     return openSession(user);
   }),
 
-  http.post(`${API}/auth/refresh`, () => {
+  http.post(`${API}/auth/refresh`, async () => {
     tick();
+    // The cookie travels with the request: read it now, as concurrent requests all carry it.
     const token = db.state.cookie;
-    const userId = token ? db.state.refreshTokens[token] : undefined;
-    const user = userId ? findUserById(userId) : undefined;
-    if (!token || !user) {
+    await delay(mockConfig.refreshLatencyMs);
+    syncFromStorage();
+    const stored = token ? db.state.refreshTokens[token] : undefined;
+    const user = stored ? findUserById(stored.userId) : undefined;
+    if (!token || !stored || !user) {
       db.state.cookie = null;
       persist();
       return problem(401, 'refresh_token_invalid');
     }
-    delete db.state.refreshTokens[token]; // rotation
+    if (stored.rotated) {
+      // ADR 008: reuse of a rotated token → revoke the whole family.
+      revokeFamilies({ familyId: stored.familyId });
+      db.state.cookie = null;
+      persist();
+      return problem(401, 'token_reused');
+    }
+    stored.rotated = true;
     if (user.suspended) return problem(403, 'account_suspended');
-    return openSession(user);
+    return openSession(user, 200, stored.familyId);
   }),
 
   http.post(`${API}/auth/logout`, () => {
-    if (db.state.cookie) delete db.state.refreshTokens[db.state.cookie];
+    syncFromStorage();
+    const stored = db.state.cookie ? db.state.refreshTokens[db.state.cookie] : undefined;
+    if (stored) revokeFamilies({ familyId: stored.familyId });
     db.state.cookie = null;
     persist();
     return noContent();
@@ -353,9 +373,7 @@ export const handlers = [
     const user = consumeAccountToken(body.token, 'password_reset');
     user.password = body.newPassword;
     user.emailVerified = true;
-    for (const [k, uid] of Object.entries(db.state.refreshTokens)) {
-      if (uid === user.id) delete db.state.refreshTokens[k];
-    }
+    revokeFamilies({ userId: user.id });
     persist();
     return noContent();
   }),
@@ -406,11 +424,11 @@ export const handlers = [
       v.push(violation('newPassword', 'Le mot de passe doit contenir au moins 10 caractères.'));
     if (v.length) return invalid(v);
     user.password = body.newPassword as string;
-    for (const [k, uid] of Object.entries(db.state.refreshTokens)) {
-      if (uid === user.id) delete db.state.refreshTokens[k];
-    }
-    persist();
-    return noContent();
+    // ADR 008: other sessions revoked, the current one (`sid`) rotated and returned.
+    const sid = currentSid(request) ?? uuid7();
+    revokeFamilies({ userId: user.id, keepFamily: sid });
+    revokeFamilies({ familyId: sid });
+    return openSession(user, 200, sid);
   }),
 
   http.post(`${API}/me/avatar`, async ({ request }) => {

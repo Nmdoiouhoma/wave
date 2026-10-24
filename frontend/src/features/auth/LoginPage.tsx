@@ -5,6 +5,8 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
 import { MOCKS_ENABLED } from '@/lib/config';
+import { TOKEN_REUSED_MESSAGE } from '@/lib/errorMessages';
+import { useSession } from '@/stores/session';
 import { AuthLayout } from './AuthLayout';
 import { formErrors } from './formErrors';
 import { safeNext } from './safeNext';
@@ -16,6 +18,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { fields, message } = formErrors(login.error, ['email', 'password']);
+  const endedForSecurity = useSession((s) => s.endReason === 'token_reused');
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -39,6 +42,9 @@ export function LoginPage() {
       }
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        {endedForSecurity && !login.isPending && (
+          <Alert tone="warning">{TOKEN_REUSED_MESSAGE}</Alert>
+        )}
         {message && <Alert tone="error">{message}</Alert>}
         <TextField
           label="Adresse e-mail"

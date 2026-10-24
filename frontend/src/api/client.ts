@@ -1,12 +1,16 @@
-// Framework-agnostic HTTP client: in-memory bearer, single-flight refresh, typed problem+json errors.
-// No React import here so the React Native app can reuse it with another SessionPort.
+// Framework-agnostic HTTP client: in-memory bearer, refresh single-flight within and across tabs
+// (ADR 008), typed problem+json errors.
+// No React import here so the React Native app can reuse it with another SessionPort / TabSync.
 import { ApiError, problemToError, responseToError } from './errors';
+import { createTabSync, type SessionEndReason, type TabSync } from './tabSync';
 import type { AuthSession } from './types';
 
 export interface SessionPort {
   getAccessToken(): string | null;
+  /** Current session to hand over to another tab (null when logged out). */
+  getSession(): AuthSession | null;
   setSession(session: AuthSession): void;
-  clearSession(): void;
+  clearSession(reason: SessionEndReason): void;
 }
 
 export type QueryValue = string | number | boolean | null | undefined;
@@ -34,13 +38,22 @@ export interface ApiClientOptions {
   baseUrl: string;
   session: SessionPort;
   fetchImpl?: typeof fetch;
+  /** Cross-tab coordination; defaults to an in-tab only lock (tests, React Native). */
+  tabSync?: TabSync;
 }
 
 export interface ApiClient {
   request<T>(method: string, path: string, options?: RequestOptions): Promise<T>;
   upload<T>(method: string, path: string, form: FormData, options?: UploadOptions): Promise<T>;
-  /** Single-flight refresh; resolves `true` when a new session was opened. */
+  /** Single-flight refresh (across tabs); resolves `true` when a session is available. */
   refresh(): Promise<boolean>;
+  /** Boot: take the session of another open tab if any, else refresh from the cookie. */
+  restoreSession(): Promise<boolean>;
+  /** Stores a session obtained by login/register/password change and shares it with other tabs. */
+  adoptSession(session: AuthSession): void;
+  /** Clears the session here and in every other tab. */
+  endSession(reason: SessionEndReason): void;
+  dispose(): void;
   url(path: string, query?: Record<string, QueryValue>): string;
 }
 
@@ -61,9 +74,33 @@ function parseJson(text: string): unknown {
   }
 }
 
-export function createApiClient({ baseUrl, session, fetchImpl }: ApiClientOptions): ApiClient {
+export function createApiClient({
+  baseUrl,
+  session,
+  fetchImpl,
+  tabSync = createTabSync(),
+}: ApiClientOptions): ApiClient {
   const doFetch: typeof fetch = (...args) => (fetchImpl ?? fetch)(...args);
   let refreshing: Promise<boolean> | null = null;
+
+  const adoptSession = (s: AuthSession) => {
+    session.setSession(s);
+    tabSync.publish({ type: 'session', session: s });
+  };
+  const endSession = (reason: SessionEndReason) => {
+    session.clearSession(reason);
+    tabSync.publish({ type: 'logout', reason });
+  };
+
+  // Other tabs: adopt their fresh tokens and logouts, hand ours over on request.
+  const unsubscribe = tabSync.subscribe((m) => {
+    if (m.type === 'session') session.setSession(m.session);
+    else if (m.type === 'logout') session.clearSession(m.reason);
+    else if (m.type === 'session-request') {
+      const current = session.getSession();
+      if (current) tabSync.publish({ type: 'session-reply', id: m.id, session: current });
+    }
+  });
 
   const url = (path: string, query?: Record<string, QueryValue>): string => {
     const u = new URL(resolveBase(baseUrl) + path);
@@ -90,11 +127,13 @@ export function createApiClient({ baseUrl, session, fetchImpl }: ApiClientOption
       throw new ApiError({ status: 0, code: 'network_error' });
     }
     if (res.ok) {
-      session.setSession((await res.json()) as AuthSession);
+      adoptSession((await res.json()) as AuthSession);
       return true;
     }
     if (res.status === 401 || res.status === 403) {
-      session.clearSession();
+      const err = await responseToError(res);
+      // token_reused: the server revoked the whole family (probable theft) — every tab is out.
+      endSession(err.code === 'token_reused' ? 'token_reused' : 'expired');
       return false;
     }
     // 429/5xx: keep the current state, surface the error.
@@ -102,10 +141,30 @@ export function createApiClient({ baseUrl, session, fetchImpl }: ApiClientOption
   }
 
   function refresh(): Promise<boolean> {
-    refreshing ??= doRefresh().finally(() => {
-      refreshing = null;
-    });
+    if (refreshing) return refreshing;
+    const tokenAtStart = session.getAccessToken();
+    refreshing = tabSync
+      .withRefreshLock(async () => {
+        // Another tab refreshed while we waited for the lock and shared its token: the cookie
+        // we hold is already rotated, refreshing again would only burn a rotation.
+        const current = session.getAccessToken();
+        if (current && current !== tokenAtStart) return true;
+        return doRefresh();
+      })
+      .finally(() => {
+        refreshing = null;
+      });
     return refreshing;
+  }
+
+  async function restoreSession(): Promise<boolean> {
+    const peer = await tabSync.askPeersForSession();
+    if (peer && !session.getAccessToken()) {
+      session.setSession(peer);
+      return true;
+    }
+    if (session.getAccessToken()) return true;
+    return refresh();
   }
 
   /** After a 401 `token_expired` sent with `usedToken`: true if the request may be replayed. */
@@ -213,5 +272,17 @@ export function createApiClient({ baseUrl, session, fetchImpl }: ApiClientOption
     return result.data;
   }
 
-  return { request, upload, refresh, url };
+  return {
+    request,
+    upload,
+    refresh,
+    url,
+    restoreSession,
+    adoptSession,
+    endSession,
+    dispose: () => {
+      unsubscribe();
+      tabSync.close();
+    },
+  };
 }

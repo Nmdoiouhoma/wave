@@ -32,7 +32,7 @@ export interface paths {
     put?: never;
     /**
      * Log in with email and password
-     * @description Wrong email or password both answer 401 `invalid_credentials` (no user enumeration). Suspended account → 403 `account_suspended`.
+     * @description Wrong email or password both answer 401 `invalid_credentials` (no user enumeration). Missing `email`/`password` or non-string value → 400 `malformed_request`. Suspended account → 403 `account_suspended`.
      */
     post: operations['login'];
     delete?: never;
@@ -54,7 +54,8 @@ export interface paths {
      * Rotate the refresh token and get a new access token
      * @description Web (no `X-Wave-Client: mobile`): refresh token read from the `wave_refresh` cookie, body ignored; new cookie set.
      *     Mobile (`X-Wave-Client: mobile`): refresh token read from the body; new token returned in the body; no cookie.
-     *     Tokens are single-use (rotation). Invalid, expired or already used → 401 `refresh_token_invalid` (web: cookie cleared).
+     *     Tokens are single-use and rotate within a **family** (one family = one login session, ADR 008).
+     *     Unknown or expired → 401 `refresh_token_invalid`. An already-rotated token (reuse, i.e. probable theft) → the **whole family is revoked** (every descendant, so the legitimate holder is logged out too) and 401 `token_reused`. Web: cookie cleared in both cases.
      */
     post: operations['refresh'];
     delete?: never;
@@ -200,7 +201,8 @@ export interface paths {
     put?: never;
     /**
      * Change password
-     * @description Revokes every refresh token of the user (all devices logged out at next refresh). Wrong current password → 422 `validation_failed` on `currentPassword`.
+     * @description Revokes the refresh-token families of every **other** session (identified by the `sid` claim of the access JWT); the current session survives and is rotated: the response carries a new access token and a new refresh token (cookie on web, body on mobile), exactly like `/auth/refresh`.
+     *     Wrong current password → 422 `validation_failed` on `currentPassword`. (Password **reset** confirm, by contrast, revokes all sessions.)
      */
     post: operations['changePassword'];
     delete?: never;
@@ -599,7 +601,7 @@ export interface paths {
     head?: never;
     /**
      * Update track
-     * @description Owner only. `artistId` must be another artist owned by the caller.
+     * @description Owner only. `artistId` must be another artist owned by the caller, else 404 `not_found`.
      */
     patch: operations['updateTrack'];
     trace?: never;
@@ -1226,6 +1228,7 @@ export interface components {
       | 'token_expired'
       | 'invalid_credentials'
       | 'refresh_token_invalid'
+      | 'token_reused'
       | 'forbidden'
       | 'account_suspended'
       | 'stream_token_invalid'
@@ -1721,7 +1724,7 @@ export interface components {
         'application/problem+json': components['schemas']['Problem'];
       };
     };
-    /** @description `unauthenticated`, `token_expired`, `invalid_credentials`, `refresh_token_invalid`. */
+    /** @description `unauthenticated`, `token_expired`, `invalid_credentials`, `refresh_token_invalid`, `token_reused`. */
     Unauthorized: {
       headers: {
         [name: string]: unknown;
@@ -2096,7 +2099,10 @@ export interface operations {
   changePassword: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description `mobile` → refresh token in JSON body, no cookie. Absent or `web` → refresh token only in the `wave_refresh` cookie (D3). */
+        'X-Wave-Client'?: components['parameters']['WaveClient'];
+      };
       path?: never;
       cookie?: never;
     };
@@ -2106,13 +2112,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Password changed. */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
+      200: components['responses']['AuthSession'];
       401: components['responses']['Unauthorized'];
       422: components['responses']['Unprocessable'];
       429: components['responses']['TooManyRequests'];
