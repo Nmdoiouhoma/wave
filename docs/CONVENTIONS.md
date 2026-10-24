@@ -41,6 +41,8 @@ compose.yaml  Makefile  .env.example   (media-infra)
 
 - API Platform: `formats: json` only, `patch_formats: json + merge-patch+json`, `error_formats: problem+json`, Hydra and JSON-LD disabled, docs (`/api/docs`) disabled outside dev, `route_prefix: /api/v1`. Custom controllers only for `/stream/{token}` and `/auth/*` (gesdinet/lexik).
 - Visibility: providers resolve "can the viewer see it" and throw `NotFound` (404) themselves; voters guard mutations (403). Never leak existence through 403.
+- Verified-email gate: operations flagged `x-requires-verified-email` in `openapi.yaml` declare `security: "is_granted('ROLE_USER') and is_granted('EMAIL_VERIFIED')"`; `EmailVerifiedVoter` grants when `emailVerifiedAt !== null`; a denial on that attribute is rendered as 403 `email_not_verified` (not `forbidden`).
+- Account tokens: `AccountTokenIssuer::issue(User, AccountTokenPurpose): string` (returns the raw token, stores only its SHA-256) and `consume(string $raw, AccountTokenPurpose): User` (throws `account_token_invalid`). Raw tokens exist only in the handler that sends the email.
 - Counters: repository methods `incrementX(id, delta)` issuing DQL `UPDATE`. Never `$entity->setCount($entity->getCount()+1)`.
 - Transactions: processors that touch counters run in `EntityManager::wrapInTransaction`. Messages are dispatched **inside** that transaction: the Doctrine transport shares the DBAL connection, so the message row commits atomically with the data (outbox for free) and a worker never sees an uncommitted entity. Do not give the transport its own connection.
 - Tests: `tests/Unit`, `tests/Functional` (ApiTestCase, real Postgres), `tests/Security` (qa-security). Test DB reset with DAMA DoctrineTestBundle.
@@ -159,9 +161,15 @@ Messages are `final readonly` in `App\Message`, scalar payloads only (ids as RFC
 | `ProcessPostVisual` | `postId` | media | backend (post processor, only if visual) | media-infra | validate image/video (ffprobe; video ≤ 60 s, strip audio) → public keys → `Post::setVisual(key, posterKey)`, then ready-transition SQL |
 | `PurgeObjects` | `area`, `keys: list<string>` | async | backend (deletes, replacements) and media-infra | media-infra | `ObjectStorage::delete` each, idempotent |
 | `CleanupQuarantine` | — (scheduled daily 03:30 UTC) | async | Scheduler | media-infra | delete quarantine objects of failed items older than 7 days, and orphans older than 24 h |
+| `SendVerificationEmail` | `userId` | async | backend (register, resend) | backend | skip if user gone or verified; issue token (24 h), send `email/verify_email` |
+| `SendPasswordResetEmail` | `email` (normalized) | async | backend (`POST /auth/password-reset`, always) | backend | no-op if no user / suspended; issue token (1 h), send `email/password_reset` |
+| `SendAccountDeletedEmail` | `email`, `displayName` | async | backend (`DELETE /me`) | backend | send `email/account_deleted` |
+| `PurgeAccountTokens` | — (scheduled daily 03:00 UTC) | async | Scheduler | backend | delete `account_token` rows older than 7 days |
 | `RecomputeAffinity` | `userId` | async | backend on like/counted listen/completed view, with `DeduplicateStamp("affinity-{userId}", 300 s)` | backend | rewrite `user_affinity` for the user (ADR 005) |
 | `RecomputeAffinityAll` | — (scheduled daily 04:00 UTC) | async | Scheduler | backend | dispatch `RecomputeAffinity` for users active in last 30 days |
 | `RecomputeTrending` | — (scheduled every 15 min) | async | Scheduler | backend | recompute `track.trending_score`, `post.trending_score` (ADR 005) |
+
+Email: Symfony Mailer called **synchronously inside these handlers** (do not also route `SendEmailMessage` to a transport); Twig templates `templates/email/<name>.html.twig` + `.txt.twig`, English, links built from `FRONT_PUBLIC_URL` (`/verify-email?token=…`, `/reset-password?token=…`). Front pages read the token, `history.replaceState` it out of the URL, then POST it; they set `Referrer-Policy: no-referrer`.
 
 Entity mutators used by media handlers are part of the contract (backend implements, media-infra calls): `Track::markReady(string $audioKey, int $durationMs)`, `Track::markFailed(FailureReason)`, `Track::setCoverKey(?string)`, `User::setAvatarKey(?string)`, `Artist::setAvatarKey(?string)`, `Post::setClipKey(string)`, `Post::setVisual(string $key, ?string $posterKey)`, `Post::markFailed(FailureReason)`, and `PostRepository::tryMarkReady(Uuid): bool` (the ready-transition SQL). `markReady` also triggers `ArtistRepository::recountTracks(artistId)`.
 Handlers must be idempotent (re-delivery): skip if the entity is gone or no longer `processing`. Validation failures throw `UnrecoverableMessageHandlingException` after marking failed.
@@ -184,6 +192,9 @@ Handlers must be idempotent (re-delivery): skip if the entity is gone or no long
 | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_USE_PATH_STYLE` | `http://minio:9000`, `us-east-1`, …, `1` | php, worker |
 | `S3_BUCKET_PRIVATE`, `S3_BUCKET_PUBLIC` | `wave-private`, `wave-public` | php, worker, nginx |
 | `FFMPEG_BIN`, `FFPROBE_BIN` | `/usr/bin/ffmpeg`, `/usr/bin/ffprobe` | worker |
+| `FRONT_PUBLIC_URL` | `http://localhost:8080` | worker (links in emails) |
+| `MAILER_DSN` | `smtp://mailpit:1025` (dev), real SMTP in prod | worker |
+| `MAILER_FROM` | `Wave <no-reply@wave.local>` | worker |
 | `CORS_ALLOW_ORIGIN` | `^http://localhost:5173$` | php |
 | `TRUSTED_PROXIES` | `172.16.0.0/12` | php (real client IP for rate limits) |
 | `LOCK_DSN` | `postgresql+advisory://…` (= DATABASE_URL) | php, worker (dedup stamp) |

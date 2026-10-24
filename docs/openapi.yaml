@@ -15,6 +15,7 @@ info:
     - Every endpoint requires `Authorization: Bearer <access JWT>` unless it declares `security: []`. Access JWT TTL 15 min.
     - Visibility: a resource the caller may not see (private track/playlist of someone else, hidden by moderation, not ready and not owned, non-playable post) answers **404 `not_found`**, never 403. 403 is only for resources the caller can see but may not mutate.
     - Rate-limited routes declare `x-rate-limit` and may answer 429 with `Retry-After` (seconds).
+    - Unverified accounts (`emailVerified: false`) may browse, stream, like, follow, manage playlists; operations tagged `x-requires-verified-email: true` answer 403 `email_not_verified` for them.
     - PATCH bodies are partial JSON (merge-patch semantics); `application/json` and `application/merge-patch+json` are both accepted.
 servers:
   - url: /api/v1
@@ -129,6 +130,63 @@ paths:
               description: Web only, clears `wave_refresh`.
               schema: { type: string }
 
+  /auth/verify-email:
+    post:
+      tags: [auth]
+      operationId: verifyEmail
+      summary: Confirm email ownership with the emailed token
+      description: 'Token from the link `{FRONT_PUBLIC_URL}/verify-email?token=…` (the front page posts it here). Unknown, expired or used → 400 `account_token_invalid`. Already verified with a valid token → 204 (idempotent).'
+      security: []
+      x-rate-limit: 10 per minute per IP (bucket `account_token`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountTokenRequest' }
+      responses:
+        '204': { description: Email verified. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/password-reset:
+    post:
+      tags: [auth]
+      operationId: requestPasswordReset
+      summary: Request a password reset email
+      description: |
+        Anti-enumeration: always 202 with an empty body, whether the email exists, is suspended or not. The request only dispatches `SendPasswordResetEmail{email}`; the worker looks the user up, issues the token (TTL 1 h) and sends the mail, so response time does not depend on existence.
+      security: []
+      x-rate-limit: 3 per hour per email (normalized lowercase) and 10 per hour per IP (bucket `password_reset`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordResetRequest' }
+      responses:
+        '202': { description: Accepted (always). }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/password-reset/confirm:
+    post:
+      tags: [auth]
+      operationId: confirmPasswordReset
+      summary: Set a new password with the emailed token
+      description: Token from `{FRONT_PUBLIC_URL}/reset-password?token=…`. Sets the password, marks the email verified if it was not, revokes every refresh token. Does not open a session (client then logs in). Bad token → 400 `account_token_invalid`.
+      security: []
+      x-rate-limit: 10 per 15 minutes per IP (bucket `account_token`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PasswordResetConfirmRequest' }
+      responses:
+        '204': { description: Password changed. }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
   # ───────────────────────────── me ─────────────────────────────
   /me:
     get:
@@ -161,6 +219,43 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [me]
+      operationId: deleteMe
+      summary: Delete my account (GDPR erasure)
+      description: |
+        Hard delete of the account and everything it authored (DATA_MODEL §13b, ADR 007), including other users' posts made from my tracks. Irreversible.
+        Requires the current password (wrong → 422 `validation_failed` on `password`). Revokes all sessions; web cookie cleared. A confirmation email is sent to the former address.
+      x-rate-limit: 5 per 15 minutes per user (bucket `account_delete`)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteAccountRequest' }
+      responses:
+        '204':
+          description: Account deleted.
+          headers:
+            Set-Cookie:
+              description: Web only, clears `wave_refresh`.
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /me/email-verification:
+    post:
+      tags: [me]
+      operationId: resendEmailVerification
+      summary: Send a new verification email
+      description: Invalidates previous unused verification tokens, issues a new one (TTL 24 h) asynchronously. Already verified → 409 `email_already_verified`.
+      x-rate-limit: 3 per hour per user (bucket `verification_resend`)
+      responses:
+        '202': { description: Email queued. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /me/password:
     post:
@@ -184,6 +279,7 @@ paths:
     post:
       tags: [me]
       operationId: uploadMyAvatar
+      x-requires-verified-email: true
       summary: Upload my avatar
       description: Async. Returns 202 with the user unchanged; `avatarUrl` switches when processing succeeds. Invalid image (detected by worker) is dropped silently and the previous avatar is kept.
       x-rate-limit: 30 image uploads per hour per user (shared bucket `image_upload`)
@@ -201,6 +297,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/Unprocessable' }
@@ -426,6 +523,7 @@ paths:
     post:
       tags: [artists]
       operationId: createArtist
+      x-requires-verified-email: true
       summary: Create artist
       description: Slug is generated from the name and is immutable. More than 10 artists → 409 `artist_limit_reached`.
       requestBody:
@@ -441,6 +539,7 @@ paths:
               schema: { $ref: '#/components/schemas/Artist' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
@@ -462,6 +561,7 @@ paths:
     patch:
       tags: [artists]
       operationId: updateArtist
+      x-requires-verified-email: true
       summary: Update artist
       description: Owner only (403 `forbidden` otherwise). Renaming does not change the slug.
       requestBody:
@@ -498,6 +598,7 @@ paths:
     post:
       tags: [artists]
       operationId: uploadArtistAvatar
+      x-requires-verified-email: true
       summary: Upload artist avatar
       description: Owner only. Async, same semantics as `POST /me/avatar`.
       x-rate-limit: shared bucket `image_upload`
@@ -573,6 +674,7 @@ paths:
     post:
       tags: [tracks]
       operationId: uploadTrack
+      x-requires-verified-email: true
       summary: Upload track
       description: |
         Multipart upload of the audio file (MP3 or AAC/M4A, ≤ 30 MB). Returns 202 with `status: processing`.
@@ -600,6 +702,7 @@ paths:
               schema: { $ref: '#/components/schemas/Track' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
@@ -659,6 +762,7 @@ paths:
     post:
       tags: [tracks]
       operationId: uploadTrackCover
+      x-requires-verified-email: true
       summary: Upload track cover
       description: Owner only. Async (202), same semantics as `POST /me/avatar`.
       x-rate-limit: shared bucket `image_upload`
@@ -1008,6 +1112,7 @@ paths:
     post:
       tags: [posts]
       operationId: createPost
+      x-requires-verified-email: true
       summary: Create post
       description: |
         Multipart. Returns 202 `status: processing`; clip (and visual) produced by the worker; poll `GET /posts/{id}`.
@@ -1032,6 +1137,7 @@ paths:
               schema: { $ref: '#/components/schemas/Post' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
@@ -1139,6 +1245,7 @@ paths:
     post:
       tags: [posts]
       operationId: createComment
+      x-requires-verified-email: true
       summary: Create comment
       x-rate-limit: 10 per minute and 200 per day per user (bucket `comment`)
       requestBody:
@@ -1154,6 +1261,7 @@ paths:
               schema: { $ref: '#/components/schemas/Comment' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
@@ -1313,6 +1421,7 @@ paths:
     post:
       tags: [reports]
       operationId: createReport
+      x-requires-verified-email: true
       summary: Create report
       description: |
         Target must be visible to the caller (else 404). Own content → 422 `cannot_report_own`. Same reporter + target twice → 409 `already_reported`.
@@ -1331,6 +1440,7 @@ paths:
               schema: { $ref: '#/components/schemas/ReportReceipt' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
@@ -1497,7 +1607,7 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/AuthSession' }
     BadRequest:
-      description: 'Malformed body/query (`malformed_request`) or bad cursor (`invalid_cursor`).'
+      description: 'Malformed body/query (`malformed_request`), bad cursor (`invalid_cursor`), bad emailed token (`account_token_invalid`).'
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1507,7 +1617,7 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Forbidden:
-      description: '`forbidden`, `account_suspended`, `stream_token_invalid`.'
+      description: '`forbidden`, `account_suspended`, `stream_token_invalid`, `email_not_verified`.'
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1558,6 +1668,7 @@ components:
       enum:
         - malformed_request          # 400
         - invalid_cursor             # 400
+        - account_token_invalid      # 400
         - unauthenticated            # 401
         - token_expired              # 401
         - invalid_credentials        # 401
@@ -1565,6 +1676,7 @@ components:
         - forbidden                  # 403
         - account_suspended          # 403
         - stream_token_invalid       # 403
+        - email_not_verified         # 403
         - not_found                  # 404
         - email_taken                # 409
         - username_taken             # 409
@@ -1575,6 +1687,7 @@ components:
         - playlist_full              # 409
         - playlist_order_mismatch    # 409
         - already_reported           # 409
+        - email_already_verified     # 409
         - stream_token_expired       # 410
         - payload_too_large          # 413
         - unsupported_media_type     # 415
@@ -1673,6 +1786,31 @@ components:
       additionalProperties: false
       properties:
         refreshToken: { type: string, description: Mobile only; ignored on web. }
+    AccountTokenRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token: { type: string, minLength: 1, maxLength: 128 }
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 180 }
+    PasswordResetConfirmRequest:
+      type: object
+      required: [token, newPassword]
+      additionalProperties: false
+      properties:
+        token: { type: string, minLength: 1, maxLength: 128 }
+        newPassword: { type: string, minLength: 10, maxLength: 128 }
+    DeleteAccountRequest:
+      type: object
+      required: [password]
+      additionalProperties: false
+      properties:
+        password: { type: string }
     AuthSession:
       type: object
       required: [accessToken, tokenType, expiresIn, user]
@@ -1709,9 +1847,10 @@ components:
       allOf:
         - $ref: '#/components/schemas/UserProfile'
         - type: object
-          required: [email, roles]
+          required: [email, emailVerified, roles]
           properties:
             email: { type: string, format: email }
+            emailVerified: { type: boolean }
             roles:
               type: array
               items: { type: string, enum: [ROLE_USER, ROLE_MODERATOR, ROLE_ADMIN] }

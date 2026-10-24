@@ -10,6 +10,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - php/worker images `FROM php:8.4.27-fpm-bookworm@sha256:…`; worker adds ffmpeg/ffprobe; memory limits and hardening of ADR 006 applied.
 - `make audit` fails when PHP < 8.4.27 or security-http < 7.4.13 (test by temporarily pinning an older tag).
 - `.env.example` lists every var of CONVENTIONS §9.
+- `mailpit` service (SMTP 1025 internal, web UI 8025 published in dev only, absent from prod profile).
 
 **W-02 · media-infra · W-01** nginx + FPM config
 - `/api/` → FPM; `/media/` → `wave-public` read-only with `immutable` cache; `/_protected/private/` internal-only (direct request → 404) with slice + proxy cache (ADR 001).
@@ -30,6 +31,15 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - register/login/refresh/logout per contract; web = cookie (`HttpOnly; Secure`(prod)`; SameSite=Strict; Path=/api/v1/auth`), `X-Wave-Client: mobile` = body; refresh rotation (reused token → 401).
 - Rate limits of the contract return 429 + `Retry-After`; login error identical for unknown email and wrong password.
 - Suspended user → 403 `account_suspended` on login and refresh.
+
+**W-17 · backend · W-05, W-07** Email verification
+- `account_token` table + `AccountTokenIssuer`; register dispatches `SendVerificationEmail`; mail visible in Mailpit with a working link.
+- `POST /auth/verify-email` sets `emailVerifiedAt`; expired, reused or unknown token → 400 `account_token_invalid`; `POST /me/email-verification` 202, 409 when verified, 429 after 3/h.
+- Unverified user gets 403 `email_not_verified` on every `x-requires-verified-email` operation (one functional test per operation, added as those operations land); `Me.emailVerified` reflects state.
+
+**W-18 · backend · W-17** Password reset
+- `POST /auth/password-reset` returns 202 with identical body for existing, unknown and suspended emails (test asserts byte-identical responses); mail only for the existing one.
+- Confirm sets the password, marks email verified, revokes all refresh tokens (old refresh → 401); token single-use, expires after 1 h.
 
 **W-06 · backend · W-05** Me and profiles
 - `GET/PATCH /me`, `POST /me/password` (revokes refresh tokens), `GET /users/{username}` with `isMe`.
@@ -69,6 +79,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 **W-13 · frontend · W-12** Auth and profile screens
 - Register/login/logout, session restore via refresh on load, field errors mapped from `violations`.
 - Profile page (`/u/:username`) and edit-profile + avatar upload with 202 pending state; mobile-first layout at 360 px.
+- Email flows (W-17, W-18): "verify your email" banner with resend while unverified, gated actions disabled with explanation; `/verify-email` and `/reset-password` pages strip the token from the URL; "forgot password" form shows the same message whatever the answer.
 
 **W-14 · frontend · W-12** Artists and upload
 - Upload form (file, title, genre, artist, visibility, allowClips) with client-side size check, progress bar, then polling until ready/failed with readable failure reason.
@@ -80,7 +91,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - Media Session API (lock-screen controls); sends `POST /tracks/{id}/listens` once per play session (ready for W-23).
 
 **W-16 · qa-security · W-05, W-09, W-11** Phase 1 security review
-- `tests/Security`: login/register/refresh rate limits, refresh reuse, cookie flags, JWT `alg` confusion / expired token, private track 404 (not 403), `/_protected/` direct access 404, oversize/forged uploads.
+- `tests/Security`: password-reset anti-enumeration (body and status identical, rate limit per email and IP), account-token reuse/expiry/brute force, verified-email gate bypass attempts, login/register/refresh rate limits, refresh reuse, cookie flags, JWT `alg` confusion / expired token, private track 404 (not 403), `/_protected/` direct access 404, oversize/forged uploads.
 - `docs/SECURITY.md` threat model v1; findings filed to owners.
 
 ## Phase 2 — Playlists, follow, likes, listens
@@ -191,5 +202,13 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - `compose.prod.yaml`: TLS-ready nginx, `REFRESH_COOKIE_SECURE=1`, no dev ports, restart policies, healthchecks, Postgres + MinIO backups script.
 - `README.md` (French): install, `make` targets, architecture, prod checklist (secrets rotation, versions, audit).
 
+**W-55 · backend · W-33, W-40** Account deletion (GDPR)
+- `DELETE /me` with password per DATA_MODEL §13b: wrong password 422; success 204, cookie cleared, refresh token → 401, login → 401.
+- After deletion no row references the user (query every table) and counters of surviving rows are exact (followers, likes, comment counts, playlist item counts/positions, hashtag counts); other users' posts on the user's tracks are gone.
+- `PurgeObjects` dispatched for every collected key (asserted against the in-memory storage); confirmation email in Mailpit; user with 100 tracks / 500 posts deleted in < 5 s.
+
+**W-56 · frontend · W-55** Delete-account UI
+- Settings → "Delete my account": explicit consequences text, password field, typed confirmation (`username`), then logout and redirect to home.
+
 **W-54 · qa-security · all** Final security sign-off
-- `make audit` green; full `tests/Security` suite green; `docs/SECURITY.md` final with residual risks; every open finding closed or accepted by the user.
+- `make audit` green; full `tests/Security` suite green, including deletion (another user cannot delete my account; no residual personal data in DB or storage); `docs/SECURITY.md` final with residual risks; every open finding closed or accepted by the user.

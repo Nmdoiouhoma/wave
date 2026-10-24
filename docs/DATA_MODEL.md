@@ -49,6 +49,7 @@ Source of truth for the PostgreSQL 16 schema. API shapes live in `openapi.yaml`;
 | roles | json | no | default `[]` |
 | followers_count | int | no | counter (Follow) |
 | following_count | int | no | counter (Follow) |
+| email_verified_at | timestamptz | yes | null = unverified (§3b); set by verify-email or password-reset confirm |
 | suspended_at | timestamptz | yes | set by moderator; blocks login/refresh |
 | created_at | timestamptz | no | |
 
@@ -57,6 +58,23 @@ Indexes: unique(email), unique(username), GIN `gin_trgm_ops` on `wave_unaccent(l
 ## 3. RefreshToken — `refresh_token` (gesdinet)
 
 Standard gesdinet mapped superclass (`id` int, `refresh_token` varchar(128) unique, `username` = user id string, `valid` timestamptz). Rotation on (`single_use: true`). TTL 30 days. Password change and suspension delete all rows for the user. Expired rows purged daily (`gesdinet:jwt:clear` via Scheduler).
+
+## 3b. AccountToken — `account_token` (email verification, password reset)
+
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| id | uuid PK | no | |
+| user_id | uuid FK → app_user | no | CASCADE |
+| purpose | varchar(32) | no | `email_verification` \| `password_reset` |
+| token_hash | char(64) | no | UNIQUE, hex SHA-256 of the raw token; raw token = 32 random bytes base64url, sent only by email, never stored nor put in a queue |
+| expires_at | timestamptz | no | verification: created + 24 h; reset: created + 1 h |
+| used_at | timestamptz | yes | single use |
+| created_at | timestamptz | no | |
+
+Index (user_id, purpose). Issuing a new token deletes the user's unused tokens of the same purpose. Lookup by `token_hash` then check `used_at IS NULL AND expires_at > now()`; any failure → 400 `account_token_invalid` (one code, no oracle). Successful use sets `used_at`. Rows older than 7 days purged daily (`PurgeAccountTokens`).
+Password-reset confirm also sets `email_verified_at` if null (proves mailbox ownership) and deletes all refresh tokens of the user.
+
+**Unverified accounts** (`email_verified_at IS NULL`) may log in, browse, stream, like, follow, manage playlists and record listens/views. They may **not** (403 `email_not_verified`): upload tracks/covers/avatars, create/edit artists, create posts, comment, report. Email is immutable in v1, so verification is one-shot.
 
 ## 4. Artist — `artist` (D6)
 
@@ -266,6 +284,16 @@ UNIQUE(reporter_id, target_type, target_id) → 409 `already_reported`. Indexes:
 A user cannot report their own content (422 `cannot_report_own`) and can only report what they can see.
 **Auto-hide**: in the report transaction, if `COUNT(DISTINCT reporter_id) WHERE target AND status='open' ≥ 5` and target_type ∈ {track, post, comment, playlist, artist} → target `moderation = hidden` (counters adjusted, e.g. comment_count, artist track_count recount). `user` targets are never auto-hidden: queue only.
 **Moderator decision** (per target, applies to all its open reports): `hide` → moderation=hidden, reports `actioned`; `dismiss` → moderation=visible, reports `dismissed`; `suspend` (user targets only) → `suspended_at = now()`, refresh tokens deleted, reports `actioned`. All set `handled_by_id`, `handled_at`, `decision_note`.
+
+## 13b. Account deletion (GDPR erasure) — hard delete
+
+`DELETE /me` (password re-confirmed) **hard-deletes** the user and everything they authored; no anonymised remnants (rationale: ADR 007). One transaction, in this order:
+1. Collect every storage key: user avatar; avatars of owned artists; raw/audio/cover keys of owned tracks; clip/visual/poster keys of posts authored by the user **and** of other users' posts using the user's tracks (they are deleted with the track, decision D5 follow-up).
+2. Fix counters on rows that survive, with set-based SQL: `followers_count`/`following_count` of the other side of each follow; `like_count` of tracks/playlists/posts the user liked; `comment_count` of posts the user commented (visible comments only); `item_count` of others' playlists containing the user's tracks (then compact `position`); `post_count` of hashtags of deleted posts. `play_count` is **not** decremented (aggregate, not personal data).
+3. Delete `report` rows whose target is any deleted row (polymorphic); reports filed by the user go by cascade; `handled_by_id` → NULL by FK.
+4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, listens, post views, affinity, account tokens, reports filed). Refresh tokens deleted by `username = id`.
+5. Dispatch `PurgeObjects` (batches of ≤ 500 keys) and `SendAccountDeletedEmail` inside the same transaction.
+Username and email are free for re-registration immediately. Backups keep the data until their rotation (documented in the README prod checklist; 30 days). Synchronous; target < 5 s for 100 tracks / 500 posts; move to an async `DeleteAccount` message if it ever exceeds that.
 
 ## 14. Object storage layout
 
