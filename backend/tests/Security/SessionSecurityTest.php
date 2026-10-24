@@ -160,10 +160,8 @@ final class SessionSecurityTest extends SecurityTestCase
     }
 
     /**
-     * CONTRACT GAP (expected to fail until the architect decides): replaying a rotated
-     * refresh token is the signature of a stolen token (RFC 9700 §4.14.2). The descendant
-     * session should be revoked so that the thief's copy dies too. Today only the replay
-     * is refused and the thief keeps a 30-day session.
+     * ADR 008 (F2): replaying a rotated refresh token is the signature of a stolen token
+     * (RFC 9700 §4.14.2): the whole family is revoked so that the thief's copy dies too.
      */
     public function testReplayOfRotatedRefreshTokenRevokesItsDescendants(): void
     {
@@ -311,6 +309,103 @@ final class SessionSecurityTest extends SecurityTestCase
         self::assertSame(401, $this->raw('GET', '/api/v1/me')->getStatusCode());
     }
 
+    // ------------------------------------------------ ADR 008 families ---
+
+    public function testReuseRevokesOnlyThatFamilyNotOtherDevices(): void
+    {
+        $this->createUser('alice');
+        $stolen = $this->mobileLogin();
+        $otherDevice = $this->mobileLogin();
+        $this->mobileRefresh($stolen); // rotates $stolen
+        $r = $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $stolen], ['HTTP_X_WAVE_CLIENT' => 'mobile']);
+        self::assertSame('token_reused', self::problemCode($r));
+        self::assertSame(200, $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $otherDevice], ['HTTP_X_WAVE_CLIENT' => 'mobile'])->getStatusCode(), 'unrelated session survives');
+    }
+
+    public function testWebReuseClearsTheCookie(): void
+    {
+        $this->createUser('alice');
+        $login = $this->rawJson('POST', '/api/v1/auth/login', ['email' => 'alice@example.test', 'password' => self::PASSWORD]);
+        $first = (string) $this->refreshCookie($login)->getValue();
+        $this->useRefreshCookie($first);
+        self::assertSame(200, $this->raw('POST', '/api/v1/auth/refresh')->getStatusCode());
+        $this->useRefreshCookie($first);
+        $r = $this->raw('POST', '/api/v1/auth/refresh');
+        self::assertSame(401, $r->getStatusCode());
+        self::assertSame('token_reused', self::problemCode($r));
+        self::assertSame('', (string) $this->refreshCookie($r)->getValue());
+        self::assertSame(0, (int) static::getContainer()->get(Connection::class)->fetchOne('SELECT count(*) FROM refresh_token'));
+    }
+
+    public function testAccessTokenCarriesTheFamilyAsSid(): void
+    {
+        $this->createUser('alice');
+        $r = $this->rawJson('POST', '/api/v1/auth/login', ['email' => 'alice@example.test', 'password' => self::PASSWORD], ['HTTP_X_WAVE_CLIENT' => 'mobile']);
+        $body = json_decode((string) $r->getContent(), true);
+        [, $claims] = $this->decodeJwt($body['accessToken']);
+        $family = static::getContainer()->get(Connection::class)->fetchOne('SELECT family_id FROM refresh_token WHERE refresh_token = :t', ['t' => $body['refreshToken']]);
+        self::assertSame($family, $claims['sid'] ?? null);
+        $refreshed = json_decode((string) $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $body['refreshToken']], ['HTTP_X_WAVE_CLIENT' => 'mobile'])->getContent(), true);
+        self::assertSame($family, $this->decodeJwt($refreshed['accessToken'])[1]['sid'] ?? null, 'rotation keeps the family');
+    }
+
+    public function testLogoutRevokesTheWholeFamilyIncludingRotatedAncestors(): void
+    {
+        $this->createUser('alice');
+        $a = $this->mobileLogin();
+        $b = $this->mobileRefresh($a);
+        self::assertSame(204, $this->rawJson('POST', '/api/v1/auth/logout', ['refreshToken' => $b], ['HTTP_X_WAVE_CLIENT' => 'mobile'])->getStatusCode());
+        self::assertSame(0, (int) static::getContainer()->get(Connection::class)->fetchOne('SELECT count(*) FROM refresh_token'));
+        self::assertSame(401, $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $b], ['HTTP_X_WAVE_CLIENT' => 'mobile'])->getStatusCode());
+    }
+
+    /** Thief holding the current device's refresh token: the password change rotates it away. */
+    public function testPasswordChangeInvalidatesStolenCopyOfTheCurrentSession(): void
+    {
+        $this->createUser('alice');
+        [$access, $stolen] = $this->mobileLoginFull();
+        $r = $this->raw('POST', '/api/v1/me/password', (string) json_encode(['currentPassword' => self::PASSWORD, 'newPassword' => 'a brand new password']), ['HTTP_AUTHORIZATION' => 'Bearer '.$access, 'HTTP_X_WAVE_CLIENT' => 'mobile']);
+        self::assertSame(200, $r->getStatusCode(), (string) $r->getContent());
+        $fresh = json_decode((string) $r->getContent(), true)['refreshToken'];
+
+        $replay = $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $stolen], ['HTTP_X_WAVE_CLIENT' => 'mobile']);
+        self::assertSame(401, $replay->getStatusCode());
+        self::assertSame('token_reused', self::problemCode($replay), 'the stolen copy is detected as reuse');
+        self::assertSame(401, $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $fresh], ['HTTP_X_WAVE_CLIENT' => 'mobile'])->getStatusCode(), 'family revoked on both sides (ADR 008)');
+    }
+
+    public function testPasswordChangeDoesNotResurrectALoggedOutSession(): void
+    {
+        $this->createUser('alice');
+        [$access, $refresh] = $this->mobileLoginFull();
+        [, $claims] = $this->decodeJwt($access);
+        self::assertSame(204, $this->rawJson('POST', '/api/v1/auth/logout', ['refreshToken' => $refresh], ['HTTP_X_WAVE_CLIENT' => 'mobile'])->getStatusCode());
+
+        $r = $this->raw('POST', '/api/v1/me/password', (string) json_encode(['currentPassword' => self::PASSWORD, 'newPassword' => 'a brand new password']), ['HTTP_AUTHORIZATION' => 'Bearer '.$access, 'HTTP_X_WAVE_CLIENT' => 'mobile']);
+        self::assertSame(200, $r->getStatusCode());
+        $new = json_decode((string) $r->getContent(), true);
+        self::assertNotSame($claims['sid'], $this->decodeJwt($new['accessToken'])[1]['sid'] ?? null);
+        self::assertSame(1, (int) static::getContainer()->get(Connection::class)->fetchOne('SELECT count(*) FROM refresh_token'));
+    }
+
+    /** A forged `sid` (other user's family) is ignored: the JWT signature check precedes it and DB updates are scoped to the user. */
+    public function testPasswordChangeCannotTouchAnotherUsersFamily(): void
+    {
+        $this->createUser('alice');
+        $this->createUser('bob');
+        $r = $this->rawJson('POST', '/api/v1/auth/login', ['email' => 'bob@example.test', 'password' => self::PASSWORD], ['HTTP_X_WAVE_CLIENT' => 'mobile', 'REMOTE_ADDR' => '198.51.100.9']);
+        $bobBody = json_decode((string) $r->getContent(), true);
+        $bobSid = $this->decodeJwt($bobBody['accessToken'])[1]['sid'];
+
+        [$aliceAccess] = $this->mobileLoginFull();
+        [, $claims] = $this->decodeJwt($aliceAccess);
+        $claims['sid'] = $bobSid; // signed by us: simulates a server-issued token with a foreign sid
+        $r = $this->raw('POST', '/api/v1/me/password', (string) json_encode(['currentPassword' => self::PASSWORD, 'newPassword' => 'a brand new password']), ['HTTP_AUTHORIZATION' => 'Bearer '.$this->rs256($claims), 'HTTP_X_WAVE_CLIENT' => 'mobile']);
+        self::assertSame(200, $r->getStatusCode());
+        self::assertNotSame($bobSid, $this->decodeJwt(json_decode((string) $r->getContent(), true)['accessToken'])[1]['sid'] ?? null);
+        self::assertSame(200, $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $bobBody['refreshToken']], ['HTTP_X_WAVE_CLIENT' => 'mobile'])->getStatusCode(), "bob's session untouched");
+    }
+
     // -------------------------------------------------------------- helpers ---
 
     private function mobileLogin(): string
@@ -321,6 +416,24 @@ final class SessionSecurityTest extends SecurityTestCase
         self::assertSame([], $r->headers->getCookies(), 'mobile: no cookie');
 
         return $body['refreshToken'];
+    }
+
+    /** @return array{string, string} access and refresh tokens */
+    private function mobileLoginFull(): array
+    {
+        $r = $this->rawJson('POST', '/api/v1/auth/login', ['email' => 'alice@example.test', 'password' => self::PASSWORD], ['HTTP_X_WAVE_CLIENT' => 'mobile', 'REMOTE_ADDR' => '198.51.100.'.random_int(1, 250)]);
+        self::assertSame(200, $r->getStatusCode(), (string) $r->getContent());
+        $body = json_decode((string) $r->getContent(), true);
+
+        return [$body['accessToken'], $body['refreshToken']];
+    }
+
+    private function mobileRefresh(string $token): string
+    {
+        $r = $this->rawJson('POST', '/api/v1/auth/refresh', ['refreshToken' => $token], ['HTTP_X_WAVE_CLIENT' => 'mobile']);
+        self::assertSame(200, $r->getStatusCode(), (string) $r->getContent());
+
+        return json_decode((string) $r->getContent(), true)['refreshToken'];
     }
 
     private function refreshCookie(Response $r): Cookie
