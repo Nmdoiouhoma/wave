@@ -5,3 +5,4 @@ var/
 .env.*.local
 /backend/config/jwt/*.pem
 .DS_Store
+/.env
