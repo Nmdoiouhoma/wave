@@ -1,6 +1,8 @@
 # Wave — base stack (prod-shaped). Dev additions live in compose.override.yaml,
 # which `docker compose` merges automatically; prod runs `-f compose.yaml` only
-# (no mailpit, no Vite, no bind mounts).
+# (no mailpit, no Vite, no bind mounts): php/worker images contain the app
+# (composer --no-dev, warmed cache), nginx contains the built SPA.
+# Every third-party image is pinned by version AND digest (ADR 006, F8).
 #
 # Only nginx publishes a port. postgres, minio, php and the workers sit on the
 # `internal` network, which has no route out of the host (ADR 006).
@@ -43,7 +45,7 @@ x-app-env: &app-env
   MAILER_DSN: ${MAILER_DSN:?}
   MAILER_FROM: ${MAILER_FROM:?}
   CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:?}
-  TRUSTED_PROXIES: ${TRUSTED_PROXIES:?}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES-}
   PHP_OPCACHE_VALIDATE_TIMESTAMPS: ${PHP_OPCACHE_VALIDATE_TIMESTAMPS:-0}
 
 x-worker: &worker
@@ -52,7 +54,7 @@ x-worker: &worker
     context: .
     dockerfile: infra/php/Dockerfile
     target: worker
-  image: wave/worker:local
+  image: wave/worker:${WAVE_IMAGE_TAG:-local}
   environment:
     <<: *app-env
     FFMPEG_BIN: /usr/bin/ffmpeg
@@ -60,6 +62,10 @@ x-worker: &worker
   read_only: true
   tmpfs:
     - /tmp:size=512m,mode=1777
+    # Runtime state of the read-only app image: cache.app pools (scheduler
+    # checkpoint...) and logs. Per container, not shared.
+    - /app/var/share:size=64m,uid=33,gid=33,mode=0755
+    - /app/var/log:size=16m,uid=33,gid=33,mode=0755
   networks: [internal]
   depends_on:
     postgres: { condition: service_healthy }
@@ -72,11 +78,13 @@ services:
       context: .
       dockerfile: infra/php/Dockerfile
       target: php
-    image: wave/php:local
+    image: wave/php:${WAVE_IMAGE_TAG:-local}
     environment: *app-env
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
+      - /app/var/share:size=64m,uid=33,gid=33,mode=0755
+      - /app/var/log:size=16m,uid=33,gid=33,mode=0755
     networks: [internal]
     deploy:
       resources:
@@ -106,19 +114,25 @@ services:
 
   nginx:
     <<: *hardening
-    image: nginxinc/nginx-unprivileged:1.30.6-alpine
+    # Prod image: configs + built SPA (infra/nginx/Dockerfile, target nginx).
+    build:
+      context: .
+      dockerfile: infra/nginx/Dockerfile
+      target: nginx
+    image: wave/nginx:${WAVE_IMAGE_TAG:-local}
     ports:
       - "${WAVE_HTTP_PORT:-8090}:8080"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./infra/nginx/snippets:/etc/nginx/snippets:ro
-      - ./infra/nginx/snippets/front-static.conf:/etc/nginx/wave/front.conf:ro
       - nginx_cache:/var/cache/nginx
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
-    networks: [internal, edge]
+    networks:
+      internal: {}
+      edge: {}
+      # Fixed address: the only anonymous reader of wave-private/audio (F5).
+      storage:
+        ipv4_address: ${WAVE_NGINX_STORAGE_IP:-172.30.91.10}
     deploy:
       resources:
         limits: { memory: 128M }
@@ -133,7 +147,7 @@ services:
 
   postgres:
     <<: *hardening
-    image: postgres:16.15-alpine3.24
+    image: postgres:16.15-alpine3.24@sha256:f4610795587492cd4fb887c2dc3de301b813278bb6f616992061141b5f15ac36
     user: postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?}
@@ -156,11 +170,12 @@ services:
       timeout: 3s
       retries: 20
 
-  # Community build of MinIO (the minio/minio images are no longer published
-  # on Docker Hub / quay.io anonymously).
+  # DEV ONLY (F8): community build of MinIO (`pgsty/minio`; upstream images
+  # are no longer published anonymously). Prod must use managed S3 (S3_* env
+  # vars, ADR 003) or a MinIO image built from upstream sources in-house.
   minio:
     <<: *hardening
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
@@ -169,7 +184,12 @@ services:
       MINIO_UPDATE: "off"
     volumes:
       - minio_data:/data
-    networks: [internal]
+    networks:
+      internal: {}
+      # nginx reaches MinIO only through this network, as `minio-edge`, so its
+      # requests come from WAVE_NGINX_STORAGE_IP (bucket policy condition).
+      storage:
+        aliases: [minio-edge]
     deploy:
       resources:
         limits: { memory: 512M }
@@ -182,7 +202,7 @@ services:
   # One-shot: buckets, bucket policies (ADR 001 §5), application user.
   minio-init:
     <<: *hardening
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     restart: "no"
     entrypoint: ["/bin/sh", "/init.sh"]
     environment:
@@ -192,7 +212,7 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:?}
       S3_BUCKET_PRIVATE: ${S3_BUCKET_PRIVATE:?}
       S3_BUCKET_PUBLIC: ${S3_BUCKET_PUBLIC:?}
-      WAVE_INTERNAL_SUBNET: ${WAVE_INTERNAL_SUBNET:-172.30.90.0/24}
+      WAVE_NGINX_STORAGE_IP: ${WAVE_NGINX_STORAGE_IP:-172.30.91.10}
     volumes:
       - ./infra/minio/init.sh:/init.sh:ro
     read_only: true
@@ -208,6 +228,12 @@ networks:
     ipam:
       config:
         - subnet: ${WAVE_INTERNAL_SUBNET:-172.30.90.0/24}
+  # nginx <-> minio only (F5).
+  storage:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${WAVE_STORAGE_SUBNET:-172.30.91.0/24}
   edge: {}
 
 volumes:

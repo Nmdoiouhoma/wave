@@ -1,0 +1,11 @@
+# Build context = repository root (infra/php/Dockerfile).
+**
+!infra/php/
+!backend/
+backend/vendor/
+backend/var/
+backend/.phpunit.cache/
+backend/.php-cs-fixer.cache
+backend/config/jwt/*.pem
+backend/.env.local
+backend/.env.*.local

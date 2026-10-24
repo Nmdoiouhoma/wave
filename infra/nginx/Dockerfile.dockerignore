@@ -1,0 +1,10 @@
+# Build context = repository root (infra/nginx/Dockerfile).
+**
+!infra/nginx/
+!docs/openapi.yaml
+!frontend/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.env.local
+frontend/.env.*.local

@@ -113,11 +113,11 @@ final class TrackAudioProcessorTest extends TestCase
     public function testVideoIsInvalidMedia(): void
     {
         $video = $this->fx->path('.mp4');
-        (new \Symfony\Component\Process\Process([
+        new \Symfony\Component\Process\Process([
             MediaFixtures::ffmpegBin(), '-v', 'error', '-y',
             '-f', 'lavfi', '-i', 'testsrc2=s=320x240:d=3', '-f', 'lavfi', '-i', 'sine=d=3',
             '-c:v', 'libx264', '-c:a', 'aac', '-shortest', $video,
-        ]))->mustRun();
+        ])->mustRun();
 
         $this->assertRejected(FailureReason::InvalidMedia, $video);
     }

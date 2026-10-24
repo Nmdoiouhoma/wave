@@ -5,7 +5,7 @@
 # changes the line below (digest of the multi-arch index, from
 # `docker buildx imagetools inspect php:<version>-fpm-bookworm`).
 
-FROM composer:2.10.3 AS composer
+FROM composer:2.10.3@sha256:b6dcd72ca98fa19d0e5b8476de179859704891fad06dd9e0b96833d4c430a5fc AS composer
 
 FROM php:8.4.27-fpm-bookworm@sha256:df5a5113e1179ddf4560cd15727eb3812f6457829756d2a96c6c11bb4c250089 AS base
 
@@ -41,7 +41,8 @@ RUN chown www-data:www-data /app \
     && chown www-data:www-data /tmp/composer /tmp/composer-cache
 
 # ---------------------------------------------------------------------------
-FROM base AS php
+# Runtime flavours (no application code). Dev targets bind-mount ./backend.
+FROM base AS fpm-runtime
 
 COPY infra/php/fpm/zz-wave.conf /usr/local/etc/php-fpm.d/zz-wave.conf
 RUN php-fpm -t
@@ -51,8 +52,7 @@ USER www-data
 EXPOSE 9000
 CMD ["php-fpm", "-F"]
 
-# ---------------------------------------------------------------------------
-FROM base AS worker
+FROM base AS worker-runtime
 
 RUN set -eux; \
     apt-get update; \
@@ -71,3 +71,36 @@ USER www-data
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["worker-entrypoint"]
 CMD ["media"]
+
+FROM fpm-runtime AS php-dev
+FROM worker-runtime AS worker-dev
+
+# ---------------------------------------------------------------------------
+# Prod application: vendor without dev packages, optimized autoloader, warmed
+# prod cache. Secrets (.env, JWT keys) are never baked: runtime env + mounts.
+FROM base AS app
+
+ENV APP_ENV=prod APP_DEBUG=0
+USER www-data
+COPY --chown=www-data:www-data backend/composer.json backend/composer.lock backend/symfony.lock /app/
+RUN composer install --no-dev --no-scripts --no-autoloader --no-progress --prefer-dist --no-interaction
+
+COPY --chown=www-data:www-data backend/ /app/
+RUN set -eux; \
+    composer dump-autoload --no-dev --classmap-authoritative --no-interaction; \
+    composer check-platform-reqs --no-dev; \
+    rm -rf var/cache var/log; \
+    # Throwaway values so the prod config guard lets the kernel boot for the
+    # warmup; %env()% are resolved at runtime, nothing here is baked in.
+    r="$(php -r 'echo bin2hex(random_bytes(24));')"; \
+    APP_SECRET="$r-a" STREAM_SIGNING_KEY="$r-s" JWT_PASSPHRASE="$r-j" S3_SECRET_KEY="$r-k" REFRESH_COOKIE_SECURE=1 \
+        php bin/console cache:warmup --no-interaction; \
+    APP_SECRET="$r-a" STREAM_SIGNING_KEY="$r-s" JWT_PASSPHRASE="$r-j" S3_SECRET_KEY="$r-k" REFRESH_COOKIE_SECURE=1 \
+        php bin/console assets:install public --no-interaction; \
+    rm -rf /tmp/composer /tmp/composer-cache tests .env.test .env.local* phpunit.dist.xml phpstan.dist.neon .php-cs-fixer.dist.php
+
+FROM fpm-runtime AS php
+COPY --from=app --chown=www-data:www-data /app /app
+
+FROM worker-runtime AS worker
+COPY --from=app --chown=www-data:www-data /app /app

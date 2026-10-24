@@ -6,29 +6,47 @@
 
 services:
   php:
+    build:
+      target: php-dev
+    image: wave/php-dev:local
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+      # Dev is plain HTTP on localhost: a Secure cookie would never be sent back.
+      REFRESH_COOKIE_SECURE: "0"
     volumes:
       - ./backend:/app
 
   worker:
+    build:
+      target: worker-dev
+    image: wave/worker-dev:local
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
     volumes:
       - ./backend:/app
 
   worker-async:
+    build:
+      target: worker-dev
+    image: wave/worker-dev:local
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
     volumes:
       - ./backend:/app
 
   nginx:
+    build:
+      target: nginx-dev
+    image: wave/nginx-dev:local
+    # Live-edited configs; the SPA comes from Vite.
     volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infra/nginx/snippets:/etc/nginx/snippets:ro
       - ./infra/nginx/snippets/front-dev.conf:/etc/nginx/wave/front.conf:ro
 
   front:
-    image: node:24.22.0-alpine3.24
+    image: node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
     # Root without capabilities: the node_modules named volume is root-owned
     # and must not be shared with the host (Linux-native esbuild/rollup).
     working_dir: /app
@@ -57,7 +75,7 @@ services:
         limits: { memory: 256M }
 
   mailpit:
-    image: axllent/mailpit:v1.31.6
+    image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
@@ -80,7 +98,7 @@ services:
   # postgres on 127.0.0.1:${POSTGRES_TOOLS_PORT:-5436} for a SQL client.
   db-tunnel:
     profiles: [tools]
-    image: alpine/socat:1.8.0.3
+    image: alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
     command: ["TCP-LISTEN:5432,fork,reuseaddr", "TCP:postgres:5432"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -95,7 +113,7 @@ services:
   # Used by `make composer c="..."`.
   composer:
     profiles: [tools]
-    image: wave/php:local
+    image: wave/php-dev:local
     entrypoint: ["composer"]
     user: www-data
     working_dir: /app

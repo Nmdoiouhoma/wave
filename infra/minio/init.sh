@@ -1,15 +1,16 @@
 #!/bin/sh
 # Wave MinIO bootstrap (idempotent, re-run on every `make up`).
 #  - buckets wave-private / wave-public
-#  - ADR 001 §5: anonymous GetObject on wave-private ONLY from the compose
-#    subnet (nginx X-Accel), and only under audio/ (quarantine is never served)
+#  - ADR 001 §5 / F5: anonymous GetObject on wave-private ONLY from nginx's
+#    fixed address on the `storage` network, and only under audio/
+#    (quarantine is never served); php/worker/others must use credentials
 #  - wave-public: anonymous GetObject (served read-only by nginx /media/)
 #  - application user (S3_ACCESS_KEY) limited to the two buckets; the root
 #    credentials stay with this init job.
 set -eu
 
 : "${MINIO_ROOT_USER:?}" "${MINIO_ROOT_PASSWORD:?}" "${S3_ACCESS_KEY:?}" "${S3_SECRET_KEY:?}"
-: "${S3_BUCKET_PRIVATE:?}" "${S3_BUCKET_PUBLIC:?}" "${WAVE_INTERNAL_SUBNET:?}"
+: "${S3_BUCKET_PRIVATE:?}" "${S3_BUCKET_PUBLIC:?}" "${WAVE_NGINX_STORAGE_IP:?}"
 
 export MC_CONFIG_DIR=/tmp/.mc
 work=$(mktemp -d)
@@ -29,7 +30,7 @@ cat > "$work/private.json" <<JSON
     "Principal": {"AWS": ["*"]},
     "Action": ["s3:GetObject"],
     "Resource": ["arn:aws:s3:::${S3_BUCKET_PRIVATE}/audio/*"],
-    "Condition": {"IpAddress": {"aws:SourceIp": ["${WAVE_INTERNAL_SUBNET}"]}}
+    "Condition": {"IpAddress": {"aws:SourceIp": ["${WAVE_NGINX_STORAGE_IP}/32"]}}
   }]
 }
 JSON

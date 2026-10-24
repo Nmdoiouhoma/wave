@@ -7,7 +7,7 @@ EXEC_PHP := $(COMPOSE) exec -T php
 TOOLS := $(COMPOSE) --profile tools
 
 .PHONY: help env up down stop restart build pull ps logs sh console composer \
-        test test-media audit audit-php audit-symfony audit-composer audit-npm \
+        init qa test test-media audit audit-php audit-symfony audit-composer audit-npm \
         fpm-config db-tunnel minio-init reset
 
 help: ## Show this help
@@ -25,7 +25,14 @@ env: .env ## Create .env from .env.example (random secrets) if missing
 
 up: .env ## Build and start the dev stack (http://localhost:8090, Mailpit :8027)
 	$(COMPOSE) up -d --build --remove-orphans
+	@$(MAKE) --no-print-directory init
 	@$(COMPOSE) ps
+
+init: ## Idempotent app bootstrap: JWT keypair if missing (composer jwt-keys) + DB migrations
+	@if [ -f backend/bin/console ] && [ -f backend/vendor/autoload_runtime.php ]; then \
+		$(EXEC_PHP) composer jwt-keys --no-interaction && \
+		$(EXEC_PHP) php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration; \
+	else echo "init: backend not installed yet (make composer c=install), skipped"; fi
 
 down: ## Stop and remove containers (volumes kept)
 	$(COMPOSE) --profile tools down --remove-orphans
@@ -61,6 +68,15 @@ test: ## Backend test suite
 
 test-media: ## Media tests with real ffmpeg (worker image)
 	$(COMPOSE) run --rm --no-deps -T --entrypoint php worker vendor/bin/phpunit tests/Media $(c)
+
+# Full quality gate, strictly sequential (the security suite and the media
+# suite must never run at the same time: shared test DB).
+qa: ## phpstan + php-cs-fixer + phpunit + test-media + audit, in sequence
+	$(EXEC_PHP) php vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+	$(EXEC_PHP) php vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no
+	$(MAKE) --no-print-directory test
+	$(MAKE) --no-print-directory test-media
+	$(MAKE) --no-print-directory audit
 
 fpm-config: ## Dump the effective FPM configuration (php-fpm -tt)
 	$(EXEC_PHP) php-fpm -tt 2>&1
