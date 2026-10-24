@@ -146,11 +146,14 @@ final readonly class SearchHits
     public function __construct(public array $ids, public ?int $nextOffset) {}
 }
 ```
+`ObjectStorage` has no listing method on purpose. Listing quarantine objects (only `CleanupQuarantine` needs it) goes through `App\Media\QuarantineScanner` (interface + `FlysystemQuarantineScanner`, owned by media-infra) and must not leak into backend code.
+
 Implementations return ids only; providers hydrate and map (keeps CF/embeddings/Meilisearch swaps cheap). Cursors are opaque strings owned by the implementation (signed with the same codec as §6).
 
 ## 8. Messenger
 
-Transports (Doctrine): `media` (ffmpeg jobs, worker concurrency 2, retry 2× ×4 delay 10 s), `async` (everything else, retry 3×), `failed`. Scheduler: `RecurringMessage`s in `App\Schedule\WaveSchedule` (backend).
+Transports (Doctrine): `media` (ffmpeg jobs, retry 2× ×4 delay 10 s), `async` (everything else, retry 3×), `failed`. Scheduler: `RecurringMessage`s in `App\Schedule\WaveSchedule` (backend).
+Consumers (ADR 006): service `worker` consumes `media` only (2 replicas, 1G each); service `worker-async` consumes `async` + `scheduler_default` (1 replica, 512M — the scheduler must run in exactly one process).
 Messages are `final readonly` in `App\Message`, scalar payloads only (ids as RFC 4122 strings), never entities.
 
 | Message | Payload | Transport | Dispatched by | Handler owner | Effect |
@@ -176,30 +179,32 @@ Handlers must be idempotent (re-delivery): skip if the entity is gone or no long
 
 ## 9. Environment variables
 
+Dev host port: nginx on **8090** (front, `/api`, `/media` same origin). Mailpit UI on **8027**.
+
 | Var | Example (dev) | Used by |
 |---|---|---|
 | `APP_ENV`, `APP_SECRET` | `dev`, random 32 bytes | php, worker |
-| `APP_PUBLIC_URL` | `http://localhost:8080` | php (stream URLs, CORS) |
-| `MEDIA_PUBLIC_BASE_URL` | `http://localhost:8080/media` | php |
+| `APP_PUBLIC_URL` | `http://localhost:8090` | php (stream URLs, CORS) |
+| `MEDIA_PUBLIC_BASE_URL` | `http://localhost:8090/media` | php |
 | `DATABASE_URL` | `postgresql://wave:wave@postgres:5432/wave?serverVersion=16&charset=utf8` | php, worker |
 | `MESSENGER_TRANSPORT_DSN` | `doctrine://default?auto_setup=0` | php, worker |
 | `JWT_SECRET_KEY`, `JWT_PUBLIC_KEY`, `JWT_PASSPHRASE` | `%kernel.project_dir%/config/jwt/private.pem` … | php |
 | `JWT_TTL` | `900` | php |
 | `REFRESH_TOKEN_TTL` | `2592000` | php |
-| `REFRESH_COOKIE_SECURE` | `0` dev, `1` prod | php |
+| `REFRESH_COOKIE_SECURE` | `0` dev, `1` prod (**forced to 1 when `APP_ENV=prod`**, boot fails otherwise) | php |
 | `STREAM_SIGNING_KEY` | random 32 bytes, ≠ APP_SECRET | php |
 | `STREAM_URL_TTL` | `300` | php |
 | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_USE_PATH_STYLE` | `http://minio:9000`, `us-east-1`, …, `1` | php, worker |
 | `S3_BUCKET_PRIVATE`, `S3_BUCKET_PUBLIC` | `wave-private`, `wave-public` | php, worker, nginx |
 | `FFMPEG_BIN`, `FFPROBE_BIN` | `/usr/bin/ffmpeg`, `/usr/bin/ffprobe` | worker |
-| `FRONT_PUBLIC_URL` | `http://localhost:8080` | worker (links in emails) |
-| `MAILER_DSN` | `smtp://mailpit:1025` (dev), real SMTP in prod | worker |
+| `FRONT_PUBLIC_URL` | `http://localhost:8090` | worker (links in emails) |
+| `MAILER_DSN` | `smtp://mailpit:1025` (dev; Mailpit UI on host port **8027**), real SMTP in prod | worker-async |
 | `MAILER_FROM` | `Wave <no-reply@wave.local>` | worker |
-| `CORS_ALLOW_ORIGIN` | `^http://localhost:5173$` | php |
+| `CORS_ALLOW_ORIGIN` | `^http://localhost:8090$` | php |
 | `TRUSTED_PROXIES` | `172.16.0.0/12` | php (real client IP for rate limits) |
 | `LOCK_DSN` | `postgresql+advisory://…` (= DATABASE_URL) | php, worker (dedup stamp) |
 | `POSTGRES_DB/USER/PASSWORD`, `MINIO_ROOT_USER/PASSWORD` | | compose |
-| `VITE_API_BASE_URL` | `/api/v1` | front |
+| `VITE_API_BASE_URL` | `/api/v1` | front (canonical name; no other alias) |
 
 Rate limiters use a cache pool on Doctrine DBAL (`cache.adapter.doctrine_dbal`) so all FPM workers share counters.
 

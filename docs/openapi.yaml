@@ -16,6 +16,9 @@ info:
     - Visibility: a resource the caller may not see (private track/playlist of someone else, hidden by moderation, not ready and not owned, non-playable post) answers **404 `not_found`**, never 403. 403 is only for resources the caller can see but may not mutate.
     - Rate-limited routes declare `x-rate-limit` and may answer 429 with `Retry-After` (seconds).
     - Unverified accounts (`emailVerified: false`) may browse, stream, like, follow, manage playlists; operations tagged `x-requires-verified-email: true` answer 403 `email_not_verified` for them.
+    - Unsupported method on an existing path (405) is answered as 404 `not_found`, so the route map is not disclosed.
+    - Body with a missing required field or wrong JSON type → 400 `malformed_request` on auth routes (`/auth/*`, deserialized before validation); 422 `validation_failed` elsewhere.
+    - An `artistId` (or any referenced id) the caller does not own or cannot see → 404 `not_found`, in bodies as in paths.
     - PATCH bodies are partial JSON (merge-patch semantics); `application/json` and `application/merge-patch+json` are both accepted.
 servers:
   - url: /api/v1
@@ -65,7 +68,7 @@ paths:
       tags: [auth]
       operationId: login
       summary: Log in with email and password
-      description: Wrong email or password both answer 401 `invalid_credentials` (no user enumeration). Suspended account → 403 `account_suspended`.
+      description: Wrong email or password both answer 401 `invalid_credentials` (no user enumeration). Missing `email`/`password` or non-string value → 400 `malformed_request`. Suspended account → 403 `account_suspended`.
       security: []
       x-rate-limit: 5 per minute per IP+email; 20 per 15 minutes per IP
       parameters:
@@ -91,7 +94,8 @@ paths:
       description: |
         Web (no `X-Wave-Client: mobile`): refresh token read from the `wave_refresh` cookie, body ignored; new cookie set.
         Mobile (`X-Wave-Client: mobile`): refresh token read from the body; new token returned in the body; no cookie.
-        Tokens are single-use (rotation). Invalid, expired or already used → 401 `refresh_token_invalid` (web: cookie cleared).
+        Tokens are single-use and rotate within a **family** (one family = one login session, ADR 008).
+        Unknown or expired → 401 `refresh_token_invalid`. An already-rotated token (reuse, i.e. probable theft) → the **whole family is revoked** (every descendant, so the legitimate holder is logged out too) and 401 `token_reused`. Web: cookie cleared in both cases.
       security: []
       x-rate-limit: 30 per minute per IP
       parameters:
@@ -137,7 +141,7 @@ paths:
       summary: Confirm email ownership with the emailed token
       description: 'Token from the link `{FRONT_PUBLIC_URL}/verify-email?token=…` (the front page posts it here). Unknown, expired or used → 400 `account_token_invalid`. Already verified with a valid token → 204 (idempotent).'
       security: []
-      x-rate-limit: 10 per minute per IP (bucket `account_token`)
+      x-rate-limit: 10 per minute per IP (bucket `verify_email`, separate from reset confirm)
       requestBody:
         required: true
         content:
@@ -175,7 +179,7 @@ paths:
       summary: Set a new password with the emailed token
       description: Token from `{FRONT_PUBLIC_URL}/reset-password?token=…`. Sets the password, marks the email verified if it was not, revokes every refresh token. Does not open a session (client then logs in). Bad token → 400 `account_token_invalid`.
       security: []
-      x-rate-limit: 10 per 15 minutes per IP (bucket `account_token`)
+      x-rate-limit: 10 per 15 minutes per IP (bucket `password_reset_confirm`, separate from verify-email)
       requestBody:
         required: true
         content:
@@ -262,15 +266,20 @@ paths:
       tags: [me]
       operationId: changePassword
       summary: Change password
-      description: Revokes every refresh token of the user (all devices logged out at next refresh). Wrong current password → 422 `validation_failed` on `currentPassword`.
+      description: |
+        Revokes the refresh-token families of every **other** session (identified by the `sid` claim of the access JWT); the current session survives and is rotated: the response carries a new access token and a new refresh token (cookie on web, body on mobile), exactly like `/auth/refresh`.
+        Wrong current password → 422 `validation_failed` on `currentPassword`. (Password **reset** confirm, by contrast, revokes all sessions.)
       x-rate-limit: 5 per 15 minutes per user
+      parameters:
+        - $ref: '#/components/parameters/WaveClient'
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
       responses:
-        '204': { description: Password changed. }
+        '200':
+          $ref: '#/components/responses/AuthSession'
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
@@ -728,7 +737,7 @@ paths:
       tags: [tracks]
       operationId: updateTrack
       summary: Update track
-      description: Owner only. `artistId` must be another artist owned by the caller.
+      description: Owner only. `artistId` must be another artist owned by the caller, else 404 `not_found`.
       requestBody:
         required: true
         content:
@@ -1612,7 +1621,7 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Unauthorized:
-      description: '`unauthenticated`, `token_expired`, `invalid_credentials`, `refresh_token_invalid`.'
+      description: '`unauthenticated`, `token_expired`, `invalid_credentials`, `refresh_token_invalid`, `token_reused`.'
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1673,6 +1682,7 @@ components:
         - token_expired              # 401
         - invalid_credentials        # 401
         - refresh_token_invalid      # 401
+        - token_reused               # 401
         - forbidden                  # 403
         - account_suspended          # 403
         - stream_token_invalid       # 403

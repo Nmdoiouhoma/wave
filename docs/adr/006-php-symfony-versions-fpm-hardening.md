@@ -14,12 +14,17 @@ PHP2Shell (CVE-2026-109618/109619) is fixed in PHP 8.4.27; CVE-2026-48489 (Symfo
 **FPM / PHP ini (php container)**
 - Pool: `php_admin_value[session.upload_progress.enabled] = 0`, `php_admin_value[post_max_size] = 32M`, `php_admin_value[upload_max_filesize] = 30M`, `php_admin_value[max_file_uploads] = 2`, `php_admin_flag[expose_php] = off`, `php_admin_value[disable_functions] = exec,passthru,shell_exec,system,proc_open,popen,pcntl_exec`, `php_admin_flag[allow_url_include] = off`, `pm = dynamic` with `pm.max_children` sized to the memory limit (~ 64 MB/child), `request_terminate_timeout = 60s`.
 - ini: `memory_limit=256M`, `max_execution_time=30`, `opcache.validate_timestamps=0` in prod, `session.use_strict_mode=1` (sessions unused by the API anyway).
-- Worker (php-cli) keeps `proc_open` (ffmpeg via Symfony Process), `memory_limit=512M`, no FPM, no published port.
+- Workers (php-cli) keep `proc_open` (ffmpeg via Symfony Process), `memory_limit=512M`, no FPM, no published port. **Two consumers** (accepted amendment, 2026-10-24): `worker` = `media` transport, 2 replicas × 1G (ffmpeg bound); `worker-async` = `async` + scheduler, 1 replica × 512M (scheduler must be single-instance; emails/purges no longer queue behind a 10-min loudnorm).
 
 **Containers / nginx**
-- Non-root users, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, read-only root FS where possible (tmpfs `/tmp`), memory limits: php 512M, worker 1G, nginx 128M, postgres 1G, minio 512M, front 256M.
+- Non-root users, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, read-only root FS where possible (tmpfs `/tmp`), memory limits: php 512M, worker 1G (×2), worker-async 512M, nginx 128M, postgres 1G, minio 512M, front 256M.
 - Only nginx publishes a port. postgres, minio, php, worker on an internal network.
 - nginx `client_max_body_size 32m` on `POST /api/v1/tracks` and `POST /api/v1/posts`, `6m` on avatar/cover routes, `1m` elsewhere; `server_tokens off`; security headers (CSP, `X-Content-Type-Options: nosniff`, `Referrer-Policy`).
+
+**Production**
+- TLS termination is mandatory (at nginx or the load balancer) with HSTS (`Strict-Transport-Security: max-age=31536000; includeSubDomains`); plain HTTP only redirects.
+- `REFRESH_COOKIE_SECURE=1` is enforced when `APP_ENV=prod` (container boot fails otherwise).
+- Object storage in prod: see ADR 003 (no official MinIO image).
 
 ## Consequences
 + A vulnerable runtime cannot be built or pass `make audit`.

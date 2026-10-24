@@ -13,6 +13,9 @@ MinIO locally, S3-compatible in prod; media code (media-infra) and API code (bac
 - Deletions are asynchronous (`PurgeObjects`) and idempotent; DB is the source of truth, orphan objects are tolerated and swept by `CleanupQuarantine`.
 - Tests use an in-memory Flysystem adapter behind the same interface.
 
+## Amendment 2026-10-24 — MinIO images
+Official MinIO images are no longer pullable. **Dev** uses `pgsty/minio` pinned by digest (community rebuild; acceptable for local data only). **Prod** must use a managed S3-compatible service (AWS S3, R2, Scaleway…) or an image built in-house from the upstream MinIO source, also pinned by digest. Nothing in code changes: only `S3_*` env vars. ADR 001's nginx → private bucket access then requires either a network-restricted bucket policy or nginx-side SigV4 (e.g. a presigned internal URL); to be settled in W-53.
+
 ## Consequences
 + Swap MinIO → S3/R2 by env vars only. Media code is testable without network.
 − Upload goes through PHP (no presigned direct upload); fine at ≤ 30 MB, revisit for larger files (presigned PUT to quarantine + `POST /tracks/{id}/complete`).

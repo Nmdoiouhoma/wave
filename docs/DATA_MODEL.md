@@ -57,7 +57,15 @@ Indexes: unique(email), unique(username), GIN `gin_trgm_ops` on `wave_unaccent(l
 
 ## 3. RefreshToken — `refresh_token` (gesdinet)
 
-Standard gesdinet mapped superclass (`id` int, `refresh_token` varchar(128) unique, `username` = user id string, `valid` timestamptz). Rotation on (`single_use: true`). TTL 30 days. Password change and suspension delete all rows for the user. Expired rows purged daily (`gesdinet:jwt:clear` via Scheduler).
+Entity extends gesdinet `RefreshToken` mapped superclass: `id` int identity, `refresh_token` varchar(128) unique, `username` = user id string, `valid` **`timestamp(0) without time zone`** (gesdinet limitation, kept; values are UTC by convention: PHP and Postgres session timezone are UTC). Added columns (ADR 008):
+
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| family_id | uuid | no | same for every token of one login session; new family at login/register |
+| rotated_at | timestamp(0) | yes | set when the token is exchanged; rotated tokens are **kept** until `valid` to detect reuse |
+
+Indexes: (family_id), (username). TTL 30 days, sliding: each rotation issues a child with a fresh 30-day `valid`.
+Rules: presenting a token with `rotated_at` set → `DELETE … WHERE family_id = :f` + 401 `token_reused`. Logout deletes the family. `POST /me/password` deletes every family of the user except the current `sid`, then rotates the current one. Password-reset confirm, suspension and account deletion delete all rows for the user. The access JWT carries `sid` = family_id. Expired rows purged daily (`gesdinet:jwt:clear` via Scheduler).
 
 ## 3b. AccountToken — `account_token` (email verification, password reset)
 

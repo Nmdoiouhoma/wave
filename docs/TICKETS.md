@@ -10,7 +10,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - php/worker images `FROM php:8.4.27-fpm-bookworm@sha256:…`; worker adds ffmpeg/ffprobe; memory limits and hardening of ADR 006 applied.
 - `make audit` fails when PHP < 8.4.27 or security-http < 7.4.13 (test by temporarily pinning an older tag).
 - `.env.example` lists every var of CONVENTIONS §9.
-- `mailpit` service (SMTP 1025 internal, web UI 8025 published in dev only, absent from prod profile).
+- `mailpit` service (SMTP 1025 internal, web UI on host 8027 in dev only, absent from prod profile).
 
 **W-02 · media-infra · W-01** nginx + FPM config
 - `/api/` → FPM; `/media/` → `wave-public` read-only with `immutable` cache; `/_protected/private/` internal-only (direct request → 404) with slice + proxy cache (ADR 001).
@@ -28,7 +28,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - `doctrine:schema:validate` passes except the documented GIN/tsvector items; migration runs up/down on an empty DB.
 
 **W-05 · backend · W-04** Auth
-- register/login/refresh/logout per contract; web = cookie (`HttpOnly; Secure`(prod)`; SameSite=Strict; Path=/api/v1/auth`), `X-Wave-Client: mobile` = body; refresh rotation (reused token → 401).
+- register/login/refresh/logout per contract; web = cookie (`HttpOnly; Secure`(prod)`; SameSite=Strict; Path=/api/v1/auth`), `X-Wave-Client: mobile` = body; refresh rotation with families: reused token → whole family revoked + 401 `token_reused` (ADR 008).
 - Rate limits of the contract return 429 + `Retry-After`; login error identical for unknown email and wrong password.
 - Suspended user → 403 `account_suspended` on login and refresh.
 
