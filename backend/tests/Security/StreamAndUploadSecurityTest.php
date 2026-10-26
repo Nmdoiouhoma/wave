@@ -200,7 +200,7 @@ final class StreamAndUploadSecurityTest extends SecurityTestCase
         self::assertCount(1, $this->queued('media', ProcessTrack::class));
         $track = $this->em()->getRepository(Track::class)->findOneBy(['title' => 'x']);
         self::assertNotNull($track);
-        self::assertMatchesRegularExpression('#^quarantine/uploads/[0-9a-f-]{36}/[0-9a-f-]{36}$#', (string) $track->getRawKey());
+        self::assertMatchesRegularExpression('#^quarantine/tracks/[0-9a-f-]{36}/source$#', (string) $track->getRawKey());
     }
 
     public function testMultipartFieldInjectionOnTrackUpload(): void

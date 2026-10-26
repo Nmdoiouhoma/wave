@@ -68,12 +68,36 @@ final class MediaSecurityTest extends TestCase
         self::assertFileDoesNotExist($target);
     }
 
-    public function testVideoDisguisedAsAudioIsRejected(): void
+    /** ADR 009: video in MP4 is accepted but never kept; a video without audio is refused. */
+    public function testMp4VideoIsDroppedAndVideoOnlyIsRejected(): void
     {
         $video = $this->fx->path('.mp4');
-        $this->ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=s=320x240:d=2', '-f', 'lavfi', '-i', 'sine=d=2', '-c:v', 'mpeg4', '-c:a', 'aac', '-shortest', '-f', 'mp4', $video]);
+        $this->ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=s=320x240:d=3', '-f', 'lavfi', '-i', 'sine=d=3', '-c:v', 'mpeg4', '-c:a', 'aac', '-shortest', '-f', 'mp4', $video]);
+        $target = $this->fx->path('.m4a');
+        new TrackAudioProcessor($this->runner)->process($video, $target);
+        $out = $this->fx->probe($target);
+        self::assertSame(['audio'], array_values(array_unique(array_column($out['streams'] ?? [], 'codec_type'))));
+
+        $silent = $this->fx->path('.mp4');
+        $this->ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=s=320x240:d=2', '-c:v', 'mpeg4', '-f', 'mp4', $silent]);
         $this->expectException(MediaRejected::class);
-        new TrackAudioProcessor($this->runner)->validate($video);
+        new TrackAudioProcessor($this->runner)->validate($silent);
+    }
+
+    public function testThousandsOfStreamsAreRejectedBeforeDecoding(): void
+    {
+        $many = $this->fx->path('.mp4');
+        $args = ['-f', 'lavfi', '-i', 'sine=d=1', '-c:a', 'aac'];
+        for ($i = 0; $i < 20; ++$i) {
+            array_push($args, '-map', '0:a');
+        }
+        $this->ffmpeg([...$args, '-f', 'mp4', $many]);
+        try {
+            new TrackAudioProcessor($this->runner)->validate($many);
+            self::fail('20 streams accepted');
+        } catch (MediaRejected $e) {
+            self::assertStringContainsString('streams', $e->getMessage());
+        }
     }
 
     public function testWavRenamedMp3IsRejected(): void
@@ -155,6 +179,39 @@ final class MediaSecurityTest extends TestCase
         $target = $this->fx->path('.webp');
         new ImageProcessor($this->runner)->toWebp($source, $target, ImageVariant::Avatar);
         self::assertStringNotContainsString('secret', (string) file_get_contents($target));
+    }
+
+    /**
+     * W-66: the 10-min limit is checked on the duration the container DECLARES. An MP3 whose
+     * Xing header claims 100 frames (7.2 s) but carries 40 min of audio passes validate();
+     * the passes must then stop at the limit (or reject), not transcode everything.
+     */
+    public function testDeclaredDurationLieCannotBypassTheTenMinuteLimit(): void
+    {
+        $long = $this->fx->path('.mp3');
+        $this->ffmpeg(['-f', 'lavfi', '-i', 'sine=f=440:d=2400', '-ac', '1', '-ar', '8000', '-c:a', 'libmp3lame', '-b:a', '8k', '-write_xing', '1', '-f', 'mp3', $long]);
+        $data = (string) file_get_contents($long);
+        $tag = false !== strpos($data, 'Xing') ? 'Xing' : 'Info';
+        $pos = strpos($data, $tag);
+        self::assertNotFalse($pos);
+        $lying = $this->fx->bytes('.mp3', substr_replace($data, pack('N', 100), $pos + 8, 4));
+
+        $processor = new TrackAudioProcessor($this->runner);
+        $declared = $processor->validate($lying);
+        self::assertLessThan(60.0, (float) ($declared->audioStreams[0]['duration'] ?? $declared->durationSeconds), 'precondition: ffprobe believes the header');
+
+        $target = $this->fx->path('.m4a');
+        $t = microtime(true);
+        try {
+            $ms = $processor->process($lying, $target);
+        } catch (MediaRejected $e) {
+            self::assertNotSame('', $e->getMessage());
+
+            return;
+        }
+        $elapsed = microtime(true) - $t;
+        fwrite(\STDERR, \sprintf("\n[media-security] lying MP3 (declared 7 s, real 2400 s): output %d s, %.1f s of work\n", intdiv($ms, 1000), $elapsed));
+        self::assertLessThanOrEqual(601_000, $ms, 'a track longer than 10 min was produced');
     }
 
     private static function pngWithHeader(int $w, int $h): string
