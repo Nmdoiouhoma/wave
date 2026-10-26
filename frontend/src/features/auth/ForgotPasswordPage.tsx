@@ -4,6 +4,7 @@ import { useRequestPasswordReset } from '@/api/queries/auth';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/Field';
+import { MailpitHint } from '@/components/ui/MailpitHint';
 import { AuthLayout } from './AuthLayout';
 
 /** Anti-enumeration: whatever the server answers, the user sees the same message. */
@@ -37,7 +38,10 @@ export function ForgotPasswordPage() {
       }
     >
       {sent ? (
-        <Alert tone="success">{RESET_REQUESTED_MESSAGE}</Alert>
+        <div className="flex flex-col gap-3">
+          <Alert tone="success">{RESET_REQUESTED_MESSAGE}</Alert>
+          <MailpitHint />
+        </div>
       ) : (
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <TextField

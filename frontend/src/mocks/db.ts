@@ -20,6 +20,19 @@ export interface AccountToken {
   used: boolean;
 }
 
+export interface MockUpload {
+  id: string;
+  userId: string;
+  key: string;
+  filename: string;
+  size: number;
+  contentType: string;
+  maxBytes: number;
+  status: 'pending' | 'consumed' | 'expired';
+  createdAt: number;
+  expiresAt: number;
+}
+
 export interface MockRefreshToken {
   userId: string;
   familyId: string;
@@ -52,6 +65,10 @@ export interface MockState {
   outbox: MailEntry[];
   pendingImages: PendingImage[];
   listens: { userId: string; trackId: string; at: number }[];
+  /** ADR 009 `track_upload` rows. */
+  uploads: Record<string, MockUpload>;
+  /** Objects written to the mock storage by presigned POSTs, by key. */
+  storedObjects: Record<string, { size: number; name: string }>;
 }
 
 export const mockConfig = {
@@ -59,6 +76,9 @@ export const mockConfig = {
   streamTtlMs: 300_000,
   /** Fake worker latency. */
   trackProcessingMs: 8_000,
+  /** ADR 009: presigned policy TTL and upload consumption window. */
+  uploadPolicyTtlMs: 15 * 60_000,
+  uploadMaxAgeMs: 2 * 3600_000,
   /** Server time between reading the refresh cookie and rotating it (makes races observable). */
   refreshLatencyMs: 20,
   imageProcessingMs: 3_000,
@@ -78,6 +98,8 @@ function seed(): MockState {
     outbox: [],
     pendingImages: [],
     listens: [],
+    uploads: {},
+    storedObjects: {},
   };
 }
 
@@ -87,6 +109,8 @@ function load(): MockState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return seed();
     const state = JSON.parse(raw) as MockState;
+    state.uploads ??= {};
+    state.storedObjects ??= {};
     // Blob URLs do not survive a reload.
     const unblob = (u: string | null) => (u?.startsWith('blob:') ? null : u);
     state.users.forEach((u) => (u.avatarUrl = unblob(u.avatarUrl)));

@@ -22,8 +22,8 @@ export function HomePage() {
   const firstName = me.displayName.split(' ')[0];
 
   const shortcuts = [
-    { to: '/upload', label: 'Importer un titre', icon: UploadIcon },
-    { to: '/me/artists', label: 'Mes artistes', icon: MicIcon },
+    { to: '/upload', label: 'Importer des morceaux', icon: UploadIcon },
+    { to: '/me/artists/new', label: 'Créer un artiste', icon: MicIcon },
     { to: `/u/${me.username}`, label: 'Mon profil', icon: UserIcon },
   ];
 

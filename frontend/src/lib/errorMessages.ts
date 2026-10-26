@@ -23,11 +23,17 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   track_not_ready: 'Ce titre n’est pas encore prêt.',
   email_already_verified: 'Votre adresse e-mail est déjà confirmée.',
   stream_token_expired: 'Le lien de lecture a expiré.',
-  payload_too_large: 'Fichier trop lourd.',
-  unsupported_media_type: 'Format de fichier non pris en charge.',
+  payload_too_large: 'Fichier trop lourd : 30 Mo maximum (200 Mo pour un MP4).',
+  unsupported_media_type: 'Format de fichier non pris en charge : MP3, AAC/M4A ou MP4.',
   validation_failed: 'Certains champs sont invalides.',
   artist_required: 'Choisissez l’artiste sous lequel publier ce titre.',
   rate_limited: 'Trop de tentatives.',
+  too_many_pending_uploads:
+    'Trop d’envois en cours (10 maximum). Attends qu’ils se terminent avant d’en lancer d’autres.',
+  upload_already_used: 'Ce fichier a déjà été utilisé pour créer un titre.',
+  upload_expired: 'L’envoi a expiré (plus de 2 heures). Relance l’import de ce fichier.',
+  upload_incomplete: 'Le fichier n’est pas arrivé complètement. Relance l’import.',
+  storage_rejected: 'Le stockage a refusé le fichier (lien expiré ou taille non conforme).',
   internal_error: 'Une erreur est survenue. Réessayez dans un instant.',
 };
 
@@ -42,6 +48,9 @@ export function retryHint(seconds: number | null): string {
 
 export function errorMessage(error: unknown): string {
   if (!isApiError(error)) return MESSAGES.internal_error!;
+  // Client-side pre-check failures carry their own French message.
+  if (error.status === 0 && error.code === 'unsupported_media_type' && error.detail)
+    return error.detail;
   if (error.code === 'rate_limited')
     return `${MESSAGES.rate_limited} ${retryHint(error.retryAfter)}`;
   return MESSAGES[error.code] ?? MESSAGES.internal_error!;

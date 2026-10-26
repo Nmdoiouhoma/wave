@@ -1,7 +1,8 @@
 import type { Problem, ProblemCode, Violation } from './types';
 
 /** Client-side codes that never come from the server. */
-export type ClientErrorCode = 'network_error' | 'aborted';
+/** `storage_rejected`: the object storage refused the presigned POST (expired policy, size…). */
+export type ClientErrorCode = 'network_error' | 'aborted' | 'storage_rejected';
 export type ErrorCode = ProblemCode | ClientErrorCode;
 
 const STATUS_FALLBACK: Record<number, ProblemCode> = {

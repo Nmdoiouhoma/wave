@@ -45,6 +45,16 @@ export interface ApiClientOptions {
 export interface ApiClient {
   request<T>(method: string, path: string, options?: RequestOptions): Promise<T>;
   upload<T>(method: string, path: string, form: FormData, options?: UploadOptions): Promise<T>;
+  /**
+   * ADR 009: browser → object storage form POST (presigned policy). No bearer, no cookies;
+   * `fields` first, file last. Resolves on 2xx (storage answers 204).
+   */
+  postToStorage(
+    url: string,
+    fields: Record<string, string>,
+    file: Blob,
+    options?: Omit<UploadOptions, 'query'>,
+  ): Promise<void>;
   /** Single-flight refresh (across tabs); resolves `true` when a session is available. */
   refresh(): Promise<boolean>;
   /** Boot: take the session of another open tab if any, else refresh from the cookie. */
@@ -272,9 +282,51 @@ export function createApiClient({
     return result.data;
   }
 
+  function postToStorage(
+    target: string,
+    fields: Record<string, string>,
+    file: Blob,
+    options: Omit<UploadOptions, 'query'> = {},
+  ): Promise<void> {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    form.append('file', file);
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', target);
+      xhr.withCredentials = false;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) options.onProgress?.(e.loaded, e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        // S3 answers XML errors (EntityTooLarge, AccessDenied: policy expired…), not problem+json.
+        else
+          reject(
+            new ApiError({
+              status: xhr.status,
+              code: xhr.status === 413 ? 'payload_too_large' : 'storage_rejected',
+              detail: xhr.responseText.slice(0, 200),
+            }),
+          );
+      };
+      xhr.onerror = () => reject(new ApiError({ status: 0, code: 'network_error' }));
+      xhr.onabort = () => reject(new ApiError({ status: 0, code: 'aborted' }));
+      if (options.signal) {
+        if (options.signal.aborted) {
+          reject(new ApiError({ status: 0, code: 'aborted' }));
+          return;
+        }
+        options.signal.addEventListener('abort', () => xhr.abort(), { once: true });
+      }
+      xhr.send(form);
+    });
+  }
+
   return {
     request,
     upload,
+    postToStorage,
     refresh,
     url,
     restoreSession,

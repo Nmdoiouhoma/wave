@@ -6,6 +6,7 @@ import type {
   ListenRequest,
   ListenResult,
   ProblemCode,
+  TrackUploadSlot,
   StreamUrl,
   TrackPage,
   Violation,
@@ -184,7 +185,9 @@ function consumeAccountToken(raw: unknown, purpose: 'verify_email' | 'password_r
 }
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const AUDIO_TYPES = ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/x-m4a', 'audio/mp3'];
+const UPLOAD_TYPES = ['audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/x-m4a', 'video/mp4'];
+const UPLOAD_EXT = ['mp3', 'm4a', 'aac', 'mp4'];
+const origin = () => (typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
 
 async function readImage(request: Request): Promise<File> {
   let form: FormData;
@@ -569,39 +572,114 @@ export const handlers = [
   http.get(`${API}/genres`, () => json(GENRES.map((g) => ({ ...g })))),
 
   // ───────────── tracks ─────────────
-  http.post(`${API}/tracks`, async ({ request }) => {
+  // ADR 009 step 1: upload slot with a (fake) presigned POST policy.
+  http.post(`${API}/tracks/uploads`, async ({ request }) => {
     const user = requireUser(request);
     requireVerified(user);
+    const body = await readJson<Record<string, unknown>>(request);
+    const filename = typeof body.filename === 'string' ? body.filename : '';
+    const size = body.size;
+    if (!filename || typeof size !== 'number' || !Number.isInteger(size) || size < 1)
+      return invalid([violation('size', 'Taille invalide.')]);
+    const ext = filename.includes('.') ? filename.split('.').pop()!.toLowerCase() : '';
+    if (!UPLOAD_EXT.includes(ext) || !UPLOAD_TYPES.includes(String(body.contentType)))
+      return problem(415, 'unsupported_media_type');
+    const maxBytes = ext === 'mp4' ? 209_715_200 : 31_457_280;
+    if (size > maxBytes) return problem(413, 'payload_too_large');
+    const pending = Object.values(db.state.uploads).filter(
+      (u) => u.userId === user.id && u.status === 'pending',
+    );
+    if (pending.length >= 10) return problem(409, 'too_many_pending_uploads');
+    const id = uuid7();
+    const key = `quarantine/uploads/${user.id}/${id}`;
+    const now = Date.now();
+    db.state.uploads[id] = {
+      id,
+      userId: user.id,
+      key,
+      filename,
+      size,
+      contentType: String(body.contentType),
+      maxBytes,
+      status: 'pending',
+      createdAt: now,
+      expiresAt: now + mockConfig.uploadPolicyTtlMs,
+    };
+    persist();
+    const policy = btoa(JSON.stringify({ key, maxBytes, exp: now + mockConfig.uploadPolicyTtlMs }));
+    const slot: TrackUploadSlot = {
+      uploadId: id,
+      method: 'POST',
+      url: `${origin()}/mock-storage/wave-private`,
+      fields: {
+        key,
+        policy,
+        'x-amz-algorithm': 'AWS4-HMAC-SHA256',
+        'x-amz-credential': 'mock/20261026/us-east-1/s3/aws4_request',
+        'x-amz-date': '20261026T000000Z',
+        'x-amz-signature': 'mock-signature',
+      },
+      maxBytes,
+      expiresAt: isoNow(now + mockConfig.uploadPolicyTtlMs),
+    };
+    return json(slot, 201);
+  }),
+
+  // ADR 009 step 2: the "object storage" (S3 POST policy semantics, XML errors, 204).
+  http.post('*/mock-storage/wave-private', async ({ request }) => {
+    syncFromStorage();
+    const s3Error = (status: number, code: string) =>
+      new HttpResponse(`<?xml version="1.0"?><Error><Code>${code}</Code></Error>`, {
+        status,
+        headers: { 'Content-Type': 'application/xml' },
+      });
     let form: FormData;
     try {
       form = await request.formData();
     } catch {
-      return problem(400, 'malformed_request');
+      return s3Error(400, 'MalformedPOSTRequest');
     }
     const file = form.get('file');
-    if (file instanceof File) {
-      if (file.size > 31_457_280) return problem(413, 'payload_too_large');
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-      if (!AUDIO_TYPES.includes(file.type) && !['mp3', 'm4a', 'aac'].includes(ext))
-        return problem(415, 'unsupported_media_type');
+    let policy: { key: string; maxBytes: number; exp: number };
+    try {
+      policy = JSON.parse(atob(String(form.get('policy')))) as typeof policy;
+    } catch {
+      return s3Error(403, 'AccessDenied');
     }
-    const title = form.get('title');
-    const genreId = form.get('genreId');
+    if (form.get('key') !== policy.key) return s3Error(403, 'AccessDenied');
+    if (Date.now() > policy.exp) return s3Error(403, 'AccessDenied');
+    if (!(file instanceof File)) return s3Error(400, 'MalformedPOSTRequest');
+    if (file.size < 1 || file.size > policy.maxBytes) return s3Error(400, 'EntityTooLarge');
+    db.state.storedObjects[policy.key] = { size: file.size, name: file.name };
+    persist();
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // ADR 009 step 3: create the track from a completed upload.
+  http.post(`${API}/tracks`, async ({ request }) => {
+    const user = requireUser(request);
+    requireVerified(user);
+    const body = await readJson<Record<string, unknown>>(request);
+    const upload = typeof body.uploadId === 'string' ? db.state.uploads[body.uploadId] : undefined;
+    if (!upload || upload.userId !== user.id) return problem(404, 'not_found');
+    if (upload.status === 'consumed') return problem(409, 'upload_already_used');
+    if (upload.status === 'expired' || Date.now() - upload.createdAt > mockConfig.uploadMaxAgeMs)
+      return problem(409, 'upload_expired');
+    const object = db.state.storedObjects[upload.key];
+    if (!object) return problem(409, 'upload_incomplete');
+
     const v: Violation[] = [];
-    if (!(file instanceof File)) v.push(violation('file', 'Le fichier audio est requis.'));
-    checkLength(v, 'title', title, 1, 120, 'Le titre');
-    if (typeof genreId !== 'string' || !findGenre(genreId))
+    checkLength(v, 'title', body.title, 1, 120, 'Le titre');
+    if (typeof body.genreId !== 'string' || !findGenre(body.genreId))
       v.push(violation('genreId', 'Genre inconnu.'));
-    const visibility = form.get('visibility') ?? 'public';
+    const visibility = body.visibility ?? 'public';
     if (visibility !== 'public' && visibility !== 'private')
       v.push(violation('visibility', 'Visibilité invalide.'));
     if (v.length) return invalid(v);
 
-    const artistId = form.get('artistId');
     const owned = db.state.artists.filter((a) => a.ownerId === user.id);
-    let artist =
-      typeof artistId === 'string' && artistId ? owned.find((a) => a.id === artistId) : undefined;
-    if (typeof artistId === 'string' && artistId && !artist) return problem(404, 'not_found');
+    let artist = body.artistId ? owned.find((a) => a.id === body.artistId) : undefined;
+    if (body.artistId && !artist) return problem(404, 'not_found');
     if (!artist) {
       if (owned.length === 0) {
         artist = {
@@ -621,26 +699,27 @@ export const handlers = [
         return problem(422, 'artist_required', { detail: 'Choose one of your artists.' });
       }
     }
-    const f = file as File;
-    const name = f.name.toLowerCase();
+    upload.status = 'consumed';
+    const name = upload.filename.toLowerCase();
     const track: MockTrack = {
       id: uuid7(),
-      title: (title as string).trim(),
+      title: (body.title as string).trim(),
       artistId: artist.id,
       ownerId: user.id,
-      genreId: genreId as string,
+      genreId: body.genreId as string,
       coverUrl: null,
       durationMs: null,
       status: 'processing',
       failureReason: null,
       visibility: visibility as 'public' | 'private',
-      allowClips: form.get('allowClips') !== 'false',
+      allowClips: body.allowClips !== false,
       moderation: 'visible',
       playCount: 0,
       likeCount: 0,
       createdAt: isoNow(),
-      audio: pickAudio(f.name + Date.now()),
+      audio: pickAudio(upload.filename + Date.now()),
       processAt: Date.now() + mockConfig.trackProcessingMs,
+      // Fake worker outcomes driven by the file name (demo/testing).
       processOutcome: name.includes('fail')
         ? 'invalid_media'
         : name.includes('long')

@@ -15,7 +15,9 @@ import type {
   StreamUrl,
   Track,
   TrackPage,
-  TrackUploadFields,
+  TrackUploadSlot,
+  CreateTrackRequest,
+  CreateTrackUploadRequest,
   UpdateArtistRequest,
   UpdateMeRequest,
   UpdateTrackRequest,
@@ -84,20 +86,17 @@ export function createWaveApi(client: ApiClient) {
       list: () => request<Genre[]>('GET', '/genres', { auth: false }),
     },
     tracks: {
-      upload: (
+      // ADR 009 — step 1: upload slot (presigned POST policy).
+      createUpload: (body: CreateTrackUploadRequest) =>
+        request<TrackUploadSlot>('POST', '/tracks/uploads', { body }),
+      // Step 2: the browser posts the file straight to storage.
+      sendToStorage: (
+        slot: TrackUploadSlot,
         file: Blob,
-        fields: TrackUploadFields,
         opts: { onProgress?: (loaded: number, total: number) => void; signal?: AbortSignal } = {},
-      ) => {
-        const form = new FormData();
-        form.append('file', file);
-        form.append('title', fields.title);
-        form.append('genreId', fields.genreId);
-        if (fields.artistId) form.append('artistId', fields.artistId);
-        if (fields.visibility) form.append('visibility', fields.visibility);
-        if (fields.allowClips !== undefined) form.append('allowClips', String(fields.allowClips));
-        return upload<Track>('POST', '/tracks', form, opts);
-      },
+      ) => client.postToStorage(slot.url, slot.fields, file, opts),
+      // Step 3: create the track from the completed upload.
+      create: (body: CreateTrackRequest) => request<Track>('POST', '/tracks', { body }),
       get: (id: string) => request<Track>('GET', `/tracks/${enc(id)}`),
       update: (id: string, body: UpdateTrackRequest) =>
         request<Track>('PATCH', `/tracks/${enc(id)}`, { body }),

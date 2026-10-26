@@ -3,6 +3,7 @@ import { isApiError } from '@/api/errors';
 import { useQueryClient } from '@tanstack/react-query';
 import { keys } from '@/api/queries/keys';
 import { MailIcon } from '@/components/ui/icons';
+import { MailpitHint } from '@/components/ui/MailpitHint';
 import { errorMessage } from '@/lib/errorMessages';
 
 export function VerifyEmailBanner() {
@@ -37,6 +38,7 @@ export function VerifyEmailBanner() {
           ) : resend.isError ? (
             <span className="text-danger">{errorMessage(resend.error)}</span>
           ) : null}
+          <MailpitHint className="text-warning font-semibold underline" />
           {!resend.isSuccess && (
             <button
               type="button"

@@ -111,18 +111,11 @@ describe('api client', () => {
     expect(sessionStore.getState().user?.username).toBe('lea');
   });
 
-  it('uploads with progress through XHR and refreshes on token_expired', async () => {
+  it('multipart uploads (images) go through XHR and refresh on token_expired', async () => {
     await loginAs('lea@wave.local');
     sessionStore.setState({ accessToken: `mock.${USER_IDS.lea}.${Date.now() - 1000}` });
-    const progress: number[] = [];
-    const file = new File([new Uint8Array(2048)], 'demo.mp3', { type: 'audio/mpeg' });
-    const track = await api.tracks.upload(
-      file,
-      { title: 'Démo', genreId: 'pop', artistId: '0192f3a1-0000-7000-8000-000000000001' },
-      { onProgress: (l, t) => progress.push(l / t) },
-    );
-    expect(track.status).toBe('processing');
-    expect(track.title).toBe('Démo');
-    expect(track.artist.slug).toBe('lea-martin');
+    const png = new File([new Uint8Array(64)], 'a.png', { type: 'image/png' });
+    const me = await api.me.uploadAvatar(png);
+    expect(me.username).toBe('lea');
   });
 });

@@ -1,5 +1,6 @@
 import { createBrowserRouter, type RouteObject } from 'react-router';
 import { ArtistPage } from '@/features/artists/ArtistPage';
+import { CreateArtistPage } from '@/features/artists/CreateArtistPage';
 import { MyArtistsPage } from '@/features/artists/MyArtistsPage';
 import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -19,6 +20,7 @@ const appChildren: RouteObject[] = [
   { index: true, element: <HomePage /> },
   { path: 'upload', element: <UploadPage /> },
   { path: 'me/artists', element: <MyArtistsPage /> },
+  { path: 'me/artists/new', element: <CreateArtistPage /> },
   { path: 'settings', element: <SettingsPage /> },
   { path: 'u/:username', element: <ProfilePage /> },
   { path: 'a/:slug', element: <ArtistPage /> },

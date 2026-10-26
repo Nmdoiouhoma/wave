@@ -2,7 +2,6 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   useArtist,
-  useCreateArtist,
   useDeleteArtist,
   useDeleteArtistAvatar,
   useUpdateArtist,
@@ -12,9 +11,9 @@ import { useCurrentUser } from '@/api/queries/me';
 import { useUserArtists } from '@/api/queries/users';
 import type { Artist } from '@/api/types';
 import { Alert } from '@/components/ui/Alert';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import { TextArea, TextField } from '@/components/ui/Field';
-import { EditIcon, MicIcon, PlusIcon, TrashIcon } from '@/components/ui/icons';
+import { EditIcon, MicIcon, PlusIcon, TrashIcon, UploadIcon } from '@/components/ui/icons';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Avatar } from '@/components/ui/Media';
 import { PageSpinner } from '@/components/ui/Spinner';
@@ -31,7 +30,6 @@ export function MyArtistsPage() {
   const gate = useVerifiedGate('créer ou modifier un artiste');
   const [params, setParams] = useSearchParams();
   const editing = params.get('edit');
-  const [creating, setCreating] = useState(false);
   const setEditing = (slug: string | null) =>
     setParams(slug ? { edit: slug } : {}, { replace: true });
 
@@ -50,14 +48,14 @@ export function MyArtistsPage() {
             {list.length}/{MAX_ARTISTS} · chaque titre est publié sous l’un de vos artistes.
           </p>
         </div>
-        {!creating && (
-          <Button
-            icon={<PlusIcon size={16} />}
-            onClick={() => setCreating(true)}
-            disabled={!!gate || full}
-          >
+        {gate || full ? (
+          <Button icon={<PlusIcon size={16} />} disabled>
             Nouvel artiste
           </Button>
+        ) : (
+          <ButtonLink to="/me/artists/new">
+            <PlusIcon size={16} /> Nouvel artiste
+          </ButtonLink>
         )}
       </div>
       {gate && (
@@ -70,8 +68,6 @@ export function MyArtistsPage() {
           Vous avez atteint la limite de {MAX_ARTISTS} artistes.
         </p>
       )}
-
-      {creating && <CreateArtistForm onDone={() => setCreating(false)} />}
 
       <ul className="mt-6 flex flex-col gap-3">
         {list.map((a) => (
@@ -87,6 +83,15 @@ export function MyArtistsPage() {
                   {a.trackCount > 1 ? 's' : ''} · /a/{a.slug}
                 </p>
               </div>
+              <ButtonLink
+                to={`/a/${a.slug}?ajouter=1`}
+                variant="secondary"
+                size="sm"
+                aria-label={`Ajouter des morceaux à ${a.name}`}
+              >
+                <UploadIcon size={16} />
+                <span className="hidden sm:inline">Ajouter des morceaux</span>
+              </ButtonLink>
               <Button
                 variant="ghost"
                 size="sm"
@@ -103,60 +108,19 @@ export function MyArtistsPage() {
           </li>
         ))}
       </ul>
-      {!list.length && !creating && (
+      {!list.length && (
         <div className="mt-6">
           <EmptyState icon={<MicIcon size={28} />} title="Aucun artiste">
-            Créez-en un, ou importez directement un titre : un artiste à votre nom sera créé.
+            <p>Crée ton artiste, puis ajoute-lui tes morceaux en une seule étape.</p>
+            {!gate && (
+              <ButtonLink to="/me/artists/new" size="sm" className="mt-3">
+                <PlusIcon size={16} /> Créer un artiste
+              </ButtonLink>
+            )}
           </EmptyState>
         </div>
       )}
     </div>
-  );
-}
-
-function CreateArtistForm({ onDone }: { onDone: () => void }) {
-  const [name, setName] = useState('');
-  const [bio, setBio] = useState('');
-  const create = useCreateArtist();
-  const { fields, message } = formErrors(create.error, ['name', 'bio']);
-
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    create.mutate({ name: name.trim(), bio: bio.trim() || null }, { onSuccess: onDone });
-  };
-
-  return (
-    <form
-      onSubmit={onSubmit}
-      className="bg-surface ring-accent/40 mt-6 flex flex-col gap-4 rounded-2xl p-5 ring-1"
-      noValidate
-    >
-      <h2 className="font-semibold">Nouvel artiste</h2>
-      {message && <Alert tone="error">{message}</Alert>}
-      <TextField
-        label="Nom"
-        value={name}
-        maxLength={80}
-        onChange={(e) => setName(e.target.value)}
-        error={fields.name}
-        hint="L’adresse de la page est générée à partir du nom et ne change plus ensuite."
-      />
-      <TextArea
-        label="Bio (facultatif)"
-        value={bio}
-        maxLength={1000}
-        onChange={(e) => setBio(e.target.value)}
-        error={fields.bio}
-      />
-      <div className="flex gap-2">
-        <Button type="submit" loading={create.isPending} disabled={!name.trim()}>
-          Créer
-        </Button>
-        <Button variant="ghost" onClick={onDone}>
-          Annuler
-        </Button>
-      </div>
-    </form>
   );
 }
 

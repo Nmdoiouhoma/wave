@@ -30,7 +30,10 @@ export type StreamUrl = S['StreamUrl'];
 export type ListenRequest = S['ListenRequest'];
 export type ListenResult = S['ListenResult'];
 
-/** Fields of the multipart track upload (the file travels separately). */
-export type TrackUploadFields = Omit<S['TrackUpload'], 'file'>;
+export type CreateTrackUploadRequest = S['CreateTrackUploadRequest'];
+export type TrackUploadSlot = S['TrackUploadSlot'];
+export type CreateTrackRequest = S['CreateTrackRequest'];
+/** Track metadata sent with `POST /tracks` (everything but the uploadId). */
+export type TrackMetadata = Omit<CreateTrackRequest, 'uploadId'>;
 
 export type CursorParams = NonNullable<operations['listUserTracks']['parameters']['query']>;

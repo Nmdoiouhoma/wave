@@ -555,6 +555,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/tracks/uploads': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Open a direct-to-storage upload for an audio file
+     * @description Step 1 of the only track upload flow (ADR 009). Declares the file; returns a **presigned S3 POST** (form policy) valid 15 min, bound to the caller, writing to `quarantine/uploads/{userId}/{uploadId}`.
+     *     The policy enforces `content-length-range` [1, `maxBytes`] and the exact key; the browser sends `multipart/form-data` with every `fields` entry first and the file last (field `file`) to `url`. Storage answers 204.
+     *     Limits by declared extension: `.mp4` → 200 MB (209715200 bytes); `.mp3`, `.m4a`, `.aac` → 30 MB (31457280 bytes). `declaredSize` above the limit → 413; other extension/MIME → 415.
+     *     Declared values are a pre-filter only: the worker re-checks container, codec, size and duration with ffprobe.
+     *     At most 10 pending uploads per user (409 `too_many_pending_uploads`).
+     */
+    post: operations['createTrackUpload'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/tracks': {
     parameters: {
       query?: never;
@@ -565,14 +589,14 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Upload track
-     * @description Multipart upload of the audio file (MP3 or AAC/M4A, ≤ 30 MB). Returns 202 with `status: processing`.
-     *     The worker validates with ffprobe (duration ≤ 10 min, real audio codec) then sets `ready` or `failed` + `failureReason`; clients poll `GET /tracks/{id}` (every 3 s, stop after 2 min).
+     * Create a track from a completed upload
+     * @description Step 2 (ADR 009). JSON body with the `uploadId` of step 1 and the metadata. Returns 202 with `status: processing`.
+     *     Upload checks: not the caller's or unknown → 404; already used → 409 `upload_already_used`; older than 2 h → 409 `upload_expired`; object absent in storage → 409 `upload_incomplete`. The upload is consumed atomically (single use).
+     *     The worker validates with ffprobe (audio stream present, MP3/AAC codec, ≤ 10 min, non-MP4 containers ≤ 30 MB, MP4 ≤ 200 MB; any video stream is discarded) then sets `ready` or `failed` + `failureReason`; clients poll `GET /tracks/{id}` (every 3 s, stop after 10 min).
      *     Artist resolution: `artistId` given → must be owned (else 404); omitted and user owns 0 artists → one is auto-created from `displayName`; omitted and exactly 1 → that one; omitted and several → 422 `artist_required`.
-     *     Size check is synchronous (413). Declared extension/MIME outside the allowed list → 415 (pre-filter only; the worker never trusts it).
-     *     Cover is uploaded separately (`POST /tracks/{id}/cover`) to stay under `post_max_size`.
+     *     Several files = several upload/create pairs in parallel (no batch endpoint). Cover is uploaded separately (`POST /tracks/{id}/cover`).
      */
-    post: operations['uploadTrack'];
+    post: operations['createTrack'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1243,6 +1267,10 @@ export interface components {
       | 'playlist_full'
       | 'playlist_order_mismatch'
       | 'already_reported'
+      | 'too_many_pending_uploads'
+      | 'upload_already_used'
+      | 'upload_expired'
+      | 'upload_incomplete'
       | 'email_already_verified'
       | 'stream_token_expired'
       | 'payload_too_large'
@@ -1442,9 +1470,33 @@ export interface components {
       canClip: boolean;
       createdAt: components['schemas']['DateTime'];
     };
-    TrackUpload: {
-      /** @description MP3 or AAC/M4A, ≤ 30 MB (31457280 bytes), ≤ 10 min (checked by worker). */
-      file: string;
+    CreateTrackUploadRequest: {
+      /** @description Original name; only its extension is used (`mp3`, `m4a`, `aac`, `mp4`). */
+      filename: string;
+      /** @description Declared bytes. */
+      size: number;
+      /** @enum {string} */
+      contentType: 'audio/mpeg' | 'audio/mp4' | 'audio/aac' | 'audio/x-m4a' | 'video/mp4';
+    };
+    TrackUploadSlot: {
+      uploadId: components['schemas']['Id'];
+      /** @constant */
+      method: 'POST';
+      /**
+       * Format: uri
+       * @description Dev: `http://localhost:8090/upload/wave-private`; prod: the S3 bucket endpoint.
+       */
+      url: string;
+      /** @description Form fields to send verbatim before `file` (key, policy, x-amz-algorithm, x-amz-credential, x-amz-date, x-amz-signature…). */
+      fields: {
+        [key: string]: string;
+      };
+      maxBytes: number;
+      expiresAt: components['schemas']['DateTime'];
+    };
+    CreateTrackRequest: {
+      /** Format: uuid */
+      uploadId: string;
       title: string;
       genreId: string;
       /** Format: uuid */
@@ -2674,7 +2726,7 @@ export interface operations {
       };
     };
   };
-  uploadTrack: {
+  createTrackUpload: {
     parameters: {
       query?: never;
       header?: never;
@@ -2683,7 +2735,39 @@ export interface operations {
     };
     requestBody: {
       content: {
-        'multipart/form-data': components['schemas']['TrackUpload'];
+        'application/json': components['schemas']['CreateTrackUploadRequest'];
+      };
+    };
+    responses: {
+      /** @description Upload slot created. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TrackUploadSlot'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      409: components['responses']['Conflict'];
+      413: components['responses']['PayloadTooLarge'];
+      415: components['responses']['UnsupportedMediaType'];
+      422: components['responses']['Unprocessable'];
+      429: components['responses']['TooManyRequests'];
+    };
+  };
+  createTrack: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTrackRequest'];
       };
     };
     responses: {
@@ -2701,10 +2785,8 @@ export interface operations {
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
-      413: components['responses']['PayloadTooLarge'];
-      415: components['responses']['UnsupportedMediaType'];
+      409: components['responses']['Conflict'];
       422: components['responses']['Unprocessable'];
-      429: components['responses']['TooManyRequests'];
     };
   };
   getTrack: {

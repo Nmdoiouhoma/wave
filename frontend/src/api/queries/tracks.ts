@@ -4,9 +4,9 @@ import { api } from '../instance';
 import type { Track, UpdateTrackRequest } from '../types';
 import { keys } from './keys';
 
-/** openapi: clients poll `GET /tracks/{id}` every 3 s and stop after 2 min. */
+/** openapi (ADR 009): clients poll `GET /tracks/{id}` every 3 s and stop after 10 min. */
 export const TRACK_POLL_INTERVAL_MS = 3_000;
-export const TRACK_POLL_TIMEOUT_MS = 120_000;
+export const TRACK_POLL_TIMEOUT_MS = 600_000;
 
 export function useTrack(id: string, options: { initialData?: Track } = {}) {
   const [startedAt] = useState(() => Date.now());
