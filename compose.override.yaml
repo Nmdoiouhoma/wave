@@ -9,6 +9,10 @@ services:
     build:
       target: php-dev
     image: wave/php-dev:local
+    # Dev: var/ lives in the writable bind mount (log, share); the small
+    # var/log tmpfs of the prod-shaped base filled up during test runs.
+    tmpfs: !override
+      - /tmp:size=64m,mode=1777
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
       # Dev is plain HTTP on localhost: a Secure cookie would never be sent back.
@@ -22,6 +26,13 @@ services:
     image: wave/worker-dev:local
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+      # Own Symfony cache, outside the shared bind mount: a cache:clear in the
+      # php container (or on the host) cannot pull it from under a running
+      # consumer. Rebuilt on container start.
+      APP_CACHE_DIR: /var/cache/wave
+    tmpfs: !override
+      - /tmp:size=64m,mode=1777
+      - /var/cache/wave:size=256m,uid=33,gid=33,mode=0755
     volumes:
       - ./backend:/app
 
@@ -31,6 +42,13 @@ services:
     image: wave/worker-dev:local
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+      # Own Symfony cache, outside the shared bind mount: a cache:clear in the
+      # php container (or on the host) cannot pull it from under a running
+      # consumer. Rebuilt on container start.
+      APP_CACHE_DIR: /var/cache/wave
+    tmpfs: !override
+      - /tmp:size=64m,mode=1777
+      - /var/cache/wave:size=256m,uid=33,gid=33,mode=0755
     volumes:
       - ./backend:/app
 

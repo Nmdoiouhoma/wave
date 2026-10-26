@@ -152,6 +152,25 @@ final class TrackAudioProcessorTest extends TestCase
         $this->assertRejected(FailureReason::TooLong, $source);
     }
 
+    /**
+     * W-66 F1: an MP3 whose Xing header claims 100 frames (~7 s) but holds
+     * 40 min passes validate(); the capped measure pass must catch it fast.
+     */
+    public function testLyingDurationHeaderIsTooLongAndCheap(): void
+    {
+        $real = $this->fx->audio('.mp3', 2400.0, 0.3, '-ac 1 -ar 8000 -c:a libmp3lame -b:a 8k -write_xing 1', 'mp3');
+        $data = (string) file_get_contents($real);
+        $pos = strpos($data, 'Xing');
+        $pos = false === $pos ? strpos($data, 'Info') : $pos;
+        self::assertNotFalse($pos);
+        $lying = $this->fx->bytes('.mp3', substr_replace($data, pack('N', 100), $pos + 8, 4));
+        self::assertLessThan(60.0, (float) $this->processor->validate($lying)->audioStreams[0]['duration'], 'precondition: header believed');
+
+        $t = microtime(true);
+        $this->assertRejected(FailureReason::TooLong, $lying);
+        self::assertLessThan(60.0, microtime(true) - $t, 'reads at most ~601 s of audio, not 40 min');
+    }
+
     public function testFortyMegabyteMp3RenamedMp4IsTooLarge(): void
     {
         // Real MP3 content padded to 40 MB, named .mp4: the 200 MB MP4 limit

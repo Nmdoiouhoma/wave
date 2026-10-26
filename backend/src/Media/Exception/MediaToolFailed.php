@@ -9,6 +9,6 @@ namespace App\Media\Exception;
  * Treated as transient: the message is retried, then the entity is marked
  * failed with `processing_error` (see MarkMediaFailedOnFinalFailure).
  */
-final class MediaToolFailed extends \RuntimeException
+class MediaToolFailed extends \RuntimeException
 {
 }

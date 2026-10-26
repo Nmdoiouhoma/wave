@@ -7,6 +7,7 @@ namespace App\Media;
 use App\Enum\FailureReason;
 use App\Media\Exception\MediaRejected;
 use App\Media\Exception\MediaToolFailed;
+use App\Media\Exception\MediaToolTimedOut;
 
 /**
  * Validates an uploaded track and transcodes it to the streaming format of
@@ -30,8 +31,19 @@ final class TrackAudioProcessor
     public const ACCEPTED_CODECS = ['mp3', 'aac'];
 
     private const LOUDNORM_TARGET = 'I=-14:TP=-1.5:LRA=11';
-    /** Per ffmpeg pass. Video is demuxed but never decoded: a 10-min HD MP4 takes seconds; generous for slow disks. */
-    private const TIMEOUT_SECONDS = 900.0;
+    /**
+     * Per ffmpeg pass. Input is capped at READ_CAP_SECONDS of media, video is
+     * demuxed but never decoded: a 10-min 720p 200 MB MP4 takes ~60 s per pass.
+     */
+    private const TIMEOUT_SECONDS = 300.0;
+    /**
+     * Never read more than this, whatever the headers declare (W-66 F1: an MP3
+     * whose Xing header claims 7 s may hold hours). One second over the limit
+     * so a too-long input is detected, not silently truncated.
+     */
+    public const READ_CAP_SECONDS = self::MAX_DURATION_SECONDS + 1;
+    /** Frame rounding / AAC priming on a legit 10:00 track. */
+    private const DURATION_TOLERANCE_SECONDS = 0.5;
     /** Below this integrated loudness the input is (near) silence: loudnorm cannot be applied. */
     private const SILENCE_LUFS = -70.0;
 
@@ -101,19 +113,27 @@ final class TrackAudioProcessor
     public function process(string $sourcePath, string $targetPath): int
     {
         $this->validate($sourcePath);
-        $input = FfmpegRunner::inputOptions($sourcePath, FfmpegRunner::AUDIO_DEMUXERS);
+        // `-t` before `-i`: an input option, the demuxer stops reading there.
+        $input = ['-t', (string) self::READ_CAP_SECONDS, ...FfmpegRunner::inputOptions($sourcePath, FfmpegRunner::AUDIO_DEMUXERS)];
 
-        // Pass 1: measure. A decode error here means a corrupt upload.
+        // Pass 1: measure loudness AND the real decoded duration (headers lie).
+        // A decode error here means a corrupt upload; a timeout is final too.
         try {
-            $stderr = $this->ffmpeg->ffmpeg([
+            $pass1 = $this->ffmpeg->run([
                 ...$input,
                 '-map', '0:a:0', '-vn', '-sn', '-dn',
                 '-af', 'loudnorm='.self::LOUDNORM_TARGET.':print_format=json',
                 '-f', 'null', '-',
             ], self::TIMEOUT_SECONDS);
+        } catch (MediaToolTimedOut $e) {
+            throw new MediaRejected(FailureReason::ProcessingError, 'measure pass: '.$e->getMessage(), $e);
         } catch (MediaToolFailed $e) {
             throw new MediaRejected(FailureReason::InvalidMedia, 'decode failed: '.$e->getMessage(), $e);
         }
+        if (null !== $pass1['outTimeSeconds'] && $pass1['outTimeSeconds'] > self::MAX_DURATION_SECONDS + self::DURATION_TOLERANCE_SECONDS) {
+            throw new MediaRejected(FailureReason::TooLong, \sprintf('decoded %.1f s (declared duration was wrong)', $pass1['outTimeSeconds']));
+        }
+        $stderr = $pass1['stderr'];
         $measured = self::parseLoudnormJson($stderr);
 
         $filters = [];
@@ -131,23 +151,31 @@ final class TrackAudioProcessor
         // loudnorm resamples to 192 kHz internally: bring it back to 44.1 kHz.
         $filters[] = 'aresample=44100';
 
-        // Pass 2: normalize + encode.
-        $this->ffmpeg->ffmpeg([
-            ...$input,
-            '-map', '0:a:0', '-vn', '-sn', '-dn',
-            '-map_metadata', '-1', '-map_chapters', '-1',
-            '-af', implode(',', $filters),
-            '-ar', '44100', '-ac', '2',
-            '-c:a', 'aac', '-profile:a', 'aac_low', '-b:a', '160k',
-            '-movflags', '+faststart',
-            '-f', 'mp4',
-            $targetPath,
-        ], self::TIMEOUT_SECONDS);
+        // Pass 2: normalize + encode (same read cap).
+        try {
+            $this->ffmpeg->ffmpeg([
+                ...$input,
+                '-map', '0:a:0', '-vn', '-sn', '-dn',
+                '-map_metadata', '-1', '-map_chapters', '-1',
+                '-af', implode(',', $filters),
+                '-ar', '44100', '-ac', '2',
+                '-c:a', 'aac', '-profile:a', 'aac_low', '-b:a', '160k',
+                '-movflags', '+faststart',
+                '-f', 'mp4',
+                $targetPath,
+            ], self::TIMEOUT_SECONDS);
+        } catch (MediaToolTimedOut $e) {
+            // Bounded input: a timeout is not transient, retrying would pin a worker again.
+            throw new MediaRejected(FailureReason::ProcessingError, 'encode pass: '.$e->getMessage(), $e);
+        }
 
         // Sanity check on our own output; duration comes from it.
         $out = $this->ffmpeg->probe($targetPath, ['mov', 'mp4', 'm4a']);
         if ([] === $out->audioStreams || 'aac' !== $out->audioStreams[0]['codec'] || null === $out->durationSeconds) {
             throw new MediaToolFailed('unexpected ffmpeg output');
+        }
+        if ($out->durationSeconds > self::MAX_DURATION_SECONDS + self::DURATION_TOLERANCE_SECONDS) {
+            throw new MediaRejected(FailureReason::TooLong, \sprintf('output %.1f s', $out->durationSeconds));
         }
 
         return (int) round($out->durationSeconds * 1000);
