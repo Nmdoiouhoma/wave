@@ -31,4 +31,7 @@ interface ObjectStorage
 
     /** Private area only: nginx internal path for X-Accel-Redirect, e.g. /_protected/private/audio/tracks/{id}.m4a */
     public function internalRedirectPath(string $key): string;
+
+    /** Private area only: browser-facing presigned S3 POST (ADR 009), URL built on S3_PRESIGN_ENDPOINT. */
+    public function presignedPost(string $key, int $maxBytes, \DateTimeImmutable $expiresAt): PresignedPost;
 }

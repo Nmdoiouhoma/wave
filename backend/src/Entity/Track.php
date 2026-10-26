@@ -28,7 +28,7 @@ use Symfony\Component\Uid\Uuid;
 #[ORM\HasLifecycleCallbacks]
 class Track
 {
-    public const int MAX_SIZE_BYTES = 31_457_280;
+    public const int MAX_SIZE_BYTES = 209_715_200; // MP4 (ADR 009); other containers 31 457 280, checked by the worker
     public const int MAX_DURATION_MS = 600_000;
 
     #[ORM\Id]

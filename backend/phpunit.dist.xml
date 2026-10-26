@@ -33,6 +33,7 @@
         <env name="LOCK_DSN" value="flock" force="true" />
         <env name="MESSENGER_TRANSPORT_DSN" value="doctrine://default?auto_setup=0" force="true" />
         <env name="CORS_ALLOW_ORIGIN" value="^http://localhost(:[0-9]+)?$" force="true" />
+        <env name="S3_PRESIGN_ENDPOINT" value="http://wave.test/upload" force="true" />
         <env name="TRUSTED_PROXIES" value="127.0.0.1" force="true" />
     </php>
 

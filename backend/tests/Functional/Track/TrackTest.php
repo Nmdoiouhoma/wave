@@ -9,101 +9,13 @@ use App\Entity\Track;
 use App\Enum\Moderation;
 use App\Enum\Visibility;
 use App\Message\ProcessImage;
-use App\Message\ProcessTrack;
 use App\Message\PurgeObjects;
-use App\Storage\ObjectStorage;
-use App\Storage\StorageArea;
 use App\Tests\Functional\WaveApiTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
-use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /** W-09: tracks. */
 final class TrackTest extends WaveApiTestCase
 {
-    public function testUploadAutoCreatesArtistStoresQuarantineAndQueuesProcessing(): void
-    {
-        $alice = $this->createUser('alice', displayName: 'Alice Wonder');
-
-        $response = $this->upload($alice, ['title' => ' First ', 'genreId' => 'lofi', 'visibility' => 'private', 'allowClips' => 'false']);
-
-        self::assertSame(202, $response->getStatusCode(), $response->getContent(false));
-        $track = $this->json($response);
-        self::assertSame([
-            'id', 'title', 'artist', 'owner', 'genre', 'coverUrl', 'durationMs', 'status', 'failureReason', 'visibility',
-            'allowClips', 'moderation', 'playCount', 'likeCount', 'likedByMe', 'isOwner', 'canClip', 'createdAt',
-        ], array_keys($track));
-        self::assertSame('First', $track['title']);
-        self::assertSame('processing', $track['status']);
-        self::assertNull($track['durationMs']);
-        self::assertNull($track['failureReason']);
-        self::assertSame('private', $track['visibility']);
-        self::assertFalse($track['allowClips']);
-        self::assertSame(['id' => 'lofi', 'name' => 'Lo-Fi'], $track['genre']);
-        self::assertSame('alice-wonder', $track['artist']['slug']);
-        self::assertSame('Alice Wonder', $track['artist']['name']);
-        self::assertTrue($track['isOwner']);
-        self::assertFalse($track['canClip'], 'not ready yet');
-        self::assertSame('/api/v1/tracks/'.$track['id'], $response->getHeaders()['location'][0]);
-
-        $messages = $this->queued('media', ProcessTrack::class);
-        self::assertCount(1, $messages);
-        self::assertSame($track['id'], $messages[0]->trackId);
-        $entity = $this->em()->find(Track::class, $track['id']);
-        self::assertNotNull($entity);
-        self::assertSame('quarantine/tracks/'.$track['id'].'/source', $entity->getRawKey());
-        self::assertSame(2048, $entity->getSizeBytes());
-        self::assertTrue(static::getContainer()->get(ObjectStorage::class)->exists(StorageArea::Private, (string) $entity->getRawKey()));
-
-        // Second upload reuses the single artist.
-        $second = $this->json($this->upload($alice, ['title' => 'Second', 'genreId' => 'pop']));
-        self::assertSame('alice-wonder', $second['artist']['slug']);
-        self::assertSame('public', $second['visibility']);
-        self::assertTrue($second['allowClips']);
-    }
-
-    public function testArtistResolutionRules(): void
-    {
-        $alice = $this->createUser('alice');
-        $bob = $this->createUser('bob');
-        $a1 = $this->createArtist($alice, 'One', 'one');
-        $this->createArtist($alice, 'Two', 'two');
-        $bobs = $this->createArtist($bob, 'Bobs', 'bobs');
-
-        $this->assertProblem($this->upload($alice, ['title' => 'x', 'genreId' => 'pop']), 422, 'artist_required');
-        $this->assertProblem($this->upload($alice, ['title' => 'x', 'genreId' => 'pop', 'artistId' => $bobs->getId()->toRfc4122()]), 404, 'not_found');
-        $ok = $this->upload($alice, ['title' => 'x', 'genreId' => 'pop', 'artistId' => $a1->getId()->toRfc4122()]);
-        self::assertSame(202, $ok->getStatusCode(), $ok->getContent(false));
-        self::assertSame('one', $this->json($ok)['artist']['slug']);
-    }
-
-    public function testUploadPreChecks(): void
-    {
-        $alice = $this->createUser('alice');
-
-        $this->assertProblem($this->upload($alice, ['title' => 'x', 'genreId' => 'pop'], $this->file('song.txt', 'text/plain')), 415, 'unsupported_media_type');
-        $this->assertProblem($this->upload($alice, ['title' => 'x', 'genreId' => 'pop'], $this->file('big.mp3', 'audio/mpeg', 31 * 1024 * 1024)), 413, 'payload_too_large');
-        $this->assertProblem($this->upload($alice, ['title' => 'x', 'genreId' => 'nope']), 422, 'validation_failed');
-        $this->assertProblem($this->upload($alice, ['genreId' => 'pop']), 422, 'validation_failed');
-        $this->assertProblem($this->upload($alice, ['title' => 'x', 'genreId' => 'pop', 'visibility' => 'secret']), 422, 'validation_failed');
-        $this->assertProblem($this->api('POST', '/api/v1/tracks', $alice, ['extra' => ['parameters' => ['title' => 'x', 'genreId' => 'pop']]]), 422, 'validation_failed');
-        self::assertSame(202, $this->upload($alice, ['title' => 'x', 'genreId' => 'pop'], $this->file('song.m4a', 'application/octet-stream'))->getStatusCode());
-        self::assertCount(1, $this->queued('media', ProcessTrack::class));
-    }
-
-    public function testUploadRequiresVerifiedEmailAndIsRateLimited(): void
-    {
-        $unverified = $this->createUser('carol', verified: false);
-        $this->assertProblem($this->upload($unverified, ['title' => 'x', 'genreId' => 'pop']), 403, 'email_not_verified');
-
-        $alice = $this->createUser('alice');
-        for ($i = 0; $i < 10; ++$i) {
-            self::assertSame(202, $this->upload($alice, ['title' => 'x'.$i, 'genreId' => 'pop'])->getStatusCode());
-        }
-        $limited = $this->upload($alice, ['title' => 'x', 'genreId' => 'pop']);
-        $this->assertProblem($limited, 429, 'rate_limited');
-        self::assertArrayHasKey('retry-after', $limited->getHeaders(false));
-    }
-
     public function testVisibilityRules(): void
     {
         $alice = $this->createUser('alice');
@@ -248,12 +160,6 @@ final class TrackTest extends WaveApiTestCase
 
         self::assertSame(1, $this->em()->getConnection()->fetchOne('SELECT track_count FROM artist WHERE id = ?', [$artist->getId()->toRfc4122()]));
         self::assertSame(1, $this->em()->find(Artist::class, $artist->getId())?->getTrackCount());
-    }
-
-    /** @param array<string, string> $fields */
-    private function upload(\App\Entity\User $as, array $fields, ?UploadedFile $file = null): ResponseInterface
-    {
-        return $this->api('POST', '/api/v1/tracks', $as, ['extra' => ['parameters' => $fields, 'files' => ['file' => $file ?? $this->file('song.mp3', 'audio/mpeg')]]]);
     }
 
     /** @param int<0, max> $size */

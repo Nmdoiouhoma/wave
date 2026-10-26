@@ -35,7 +35,15 @@ abstract class WaveApiTestCase extends ApiTestCase
 
     protected function em(): EntityManagerInterface
     {
-        return static::getContainer()->get(EntityManagerInterface::class);
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        if (!$em->isOpen()) {
+            // A business error thrown inside wrapInTransaction() closes the manager; the
+            // kernel is shared between requests here (disableReboot), so reopen it.
+            static::getContainer()->get('doctrine')->resetManager();
+            $em = static::getContainer()->get(EntityManagerInterface::class);
+        }
+
+        return $em;
     }
 
     protected function createUser(string $username = 'alice', bool $verified = true, ?string $email = null, ?string $displayName = null): User
@@ -76,6 +84,24 @@ abstract class WaveApiTestCase extends ApiTestCase
         }
 
         return $track;
+    }
+
+    /**
+     * ADR 009 step 1 + the browser's form POST: opens a slot through the API, then writes
+     * $bytes at the policy key in the (in-memory) private storage. Returns the uploadId.
+     */
+    protected function uploadAudio(User $as, string $filename = 'song.mp3', int $bytes = 2048, string $contentType = 'audio/mpeg'): string
+    {
+        $slot = $this->api('POST', '/api/v1/tracks/uploads', $as, ['json' => ['filename' => $filename, 'size' => $bytes, 'contentType' => $contentType]]);
+        self::assertSame(201, $slot->getStatusCode(), $slot->getContent(false));
+        $body = $this->json($slot);
+        $stream = fopen('php://memory', 'r+');
+        self::assertIsResource($stream);
+        fwrite($stream, str_repeat("\0", $bytes));
+        rewind($stream);
+        static::getContainer()->get(\App\Storage\ObjectStorage::class)->write(\App\Storage\StorageArea::Private, $body['fields']['key'], $stream, $contentType);
+
+        return $body['uploadId'];
     }
 
     protected function tokenFor(User $user): string

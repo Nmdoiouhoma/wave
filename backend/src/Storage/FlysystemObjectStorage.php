@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Storage;
 
+use Aws\S3\PostObjectV4;
+use Aws\S3\S3ClientInterface;
 use League\Flysystem\Config;
 use League\Flysystem\FilesystemOperator;
 use League\Flysystem\UnableToDeleteFile;
@@ -25,6 +27,12 @@ final readonly class FlysystemObjectStorage implements ObjectStorage
         private FilesystemOperator $public,
         #[Autowire(env: 'MEDIA_PUBLIC_BASE_URL')]
         private string $mediaPublicBaseUrl,
+        #[Autowire(service: 'wave.s3_client')]
+        private S3ClientInterface $s3,
+        #[Autowire(env: 'S3_BUCKET_PRIVATE')]
+        private string $privateBucket,
+        #[Autowire(env: 'S3_PRESIGN_ENDPOINT')]
+        private string $presignEndpoint,
     ) {
     }
 
@@ -106,6 +114,33 @@ final readonly class FlysystemObjectStorage implements ObjectStorage
     public function internalRedirectPath(string $key): string
     {
         return self::INTERNAL_PREFIX.self::check($key);
+    }
+
+    /**
+     * SigV4 POST policy: exact key, `content-length-range` [1, $maxBytes], expiry. The policy
+     * is signed, not the host, so the form may target the nginx `/upload/` proxy (dev) or the
+     * bucket endpoint (prod) through S3_PRESIGN_ENDPOINT, path-style.
+     */
+    public function presignedPost(string $key, int $maxBytes, \DateTimeImmutable $expiresAt): PresignedPost
+    {
+        $key = self::check($key);
+        $post = new PostObjectV4(
+            $this->s3,
+            $this->privateBucket,
+            ['key' => $key],
+            [
+                ['bucket' => $this->privateBucket],
+                ['eq', '$key', $key],
+                ['content-length-range', 1, $maxBytes],
+            ],
+            $expiresAt->getTimestamp(),
+        );
+        $fields = [];
+        foreach ($post->getFormInputs() as $name => $value) {
+            $fields[(string) $name] = (string) $value;
+        }
+
+        return new PresignedPost(rtrim($this->presignEndpoint, '/').'/'.rawurlencode($this->privateBucket), $fields);
     }
 
     private function fs(StorageArea $area): FilesystemOperator

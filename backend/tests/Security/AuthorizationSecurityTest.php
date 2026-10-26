@@ -35,7 +35,8 @@ final class AuthorizationSecurityTest extends SecurityTestCase
             'createArtist' => ['POST', '/api/v1/artists', ['json' => ['name' => 'Another']]],
             'updateArtist' => ['PATCH', '/api/v1/artists/carol-band', ['json' => ['name' => 'Renamed'], 'headers' => ['Content-Type' => 'application/merge-patch+json']]],
             'uploadArtistAvatar' => ['POST', '/api/v1/artists/carol-band/avatar', ['extra' => ['files' => $png()]]],
-            'uploadTrack' => ['POST', '/api/v1/tracks', ['extra' => ['parameters' => ['title' => 'x', 'genreId' => 'pop'], 'files' => ['file' => $this->upload(str_repeat("\xFF\xFB", 64), 's.mp3', 'audio/mpeg')]]]],
+            'createTrackUpload' => ['POST', '/api/v1/tracks/uploads', ['json' => ['filename' => 's.mp3', 'size' => 128, 'contentType' => 'audio/mpeg']]],
+            'createTrack' => ['POST', '/api/v1/tracks', ['json' => ['uploadId' => '0192f5a4-6b1e-7cc0-9a5e-3f1a2b3c4d5e', 'title' => 'x', 'genreId' => 'pop']]],
             'uploadTrackCover' => ['POST', '/api/v1/tracks/'.$track->getId().'/cover', ['extra' => ['files' => $png()]]],
         ];
         foreach ($calls as $op => [$method, $url, $options]) {
@@ -143,9 +144,8 @@ final class AuthorizationSecurityTest extends SecurityTestCase
         $this->assertProblem($r, 404, 'not_found');
         self::assertSame('alice-band', $this->reload($track)->getArtist()->getSlug());
 
-        $r = $this->api('POST', '/api/v1/tracks', $alice, ['extra' => [
-            'parameters' => ['title' => 'Impersonation', 'genreId' => 'pop', 'artistId' => $bobArtist->getId()->toRfc4122()],
-            'files' => ['file' => $this->upload(str_repeat("\xFF\xFB", 64), 's.mp3', 'audio/mpeg')],
+        $r = $this->api('POST', '/api/v1/tracks', $alice, ['json' => [
+            'uploadId' => $this->uploadAudio($alice), 'title' => 'Impersonation', 'genreId' => 'pop', 'artistId' => $bobArtist->getId()->toRfc4122(),
         ]]);
         $this->assertProblem($r, 404, 'not_found');
         self::assertCount(0, $this->em()->getRepository(Track::class)->findBy(['artist' => $bobArtist->getId()]));

@@ -11,9 +11,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
 use App\Security\EmailVerifiedVoter;
+use App\State\Processor\CreateTrackProcessor;
 use App\State\Processor\TrackCoverProcessor;
 use App\State\Processor\TrackProcessor;
-use App\State\Processor\UploadTrackProcessor;
 use App\State\Provider\TrackListProvider;
 use App\State\Provider\TrackProvider;
 
@@ -23,14 +23,13 @@ use App\State\Provider\TrackProvider;
     operations: [
         new Post(
             uriTemplate: '/tracks',
-            name: 'uploadTrack',
+            name: 'createTrack',
             status: 202,
             read: false,
             deserialize: false,
-            inputFormats: ['multipart' => ['multipart/form-data']],
             security: EmailVerifiedVoter::VERIFIED_EXPRESSION,
             securityMessage: EmailVerifiedVoter::DENIAL_MESSAGE,
-            processor: UploadTrackProcessor::class,
+            processor: CreateTrackProcessor::class,
         ),
         new Get(uriTemplate: '/tracks/{trackId}', uriVariables: ['trackId'], name: 'getTrack', provider: TrackProvider::class),
         new Patch(uriTemplate: '/tracks/{trackId}', uriVariables: ['trackId'], name: 'updateTrack', read: false, deserialize: false, processor: TrackProcessor::class),

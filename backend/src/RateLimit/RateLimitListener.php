@@ -42,7 +42,7 @@ final readonly class RateLimitListener
         'uploadMyAvatar' => [['image_upload_user', self::BY_USER]],
         'uploadArtistAvatar' => [['image_upload_user', self::BY_USER]],
         'uploadTrackCover' => [['image_upload_user', self::BY_USER]],
-        'uploadTrack' => [['track_upload_hour_user', self::BY_USER], ['track_upload_day_user', self::BY_USER]],
+        'createTrackUpload' => [['track_upload_hour_user', self::BY_USER], ['track_upload_day_user', self::BY_USER]],
         'getTrackStreamUrl' => [['stream_url_user', self::BY_USER]],
     ];
 

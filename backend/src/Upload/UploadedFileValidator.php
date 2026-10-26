@@ -10,7 +10,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * Synchronous pre-checks of multipart uploads: presence (422), size (413) and the
+ * Synchronous pre-checks of multipart image uploads (audio goes direct to storage, ADR 009): presence (422), size (413) and the
  * declared MIME type/extension (415). This is a pre-filter only: the media worker
  * re-validates the content with ffprobe and never trusts these values (BRIEF, ADR 003).
  */
@@ -22,13 +22,6 @@ final class UploadedFileValidator
         'image/jpeg' => ['jpg', 'jpeg'],
         'image/png' => ['png'],
         'image/webp' => ['webp'],
-    ];
-    /** @var array<string, list<string>> */
-    public const array AUDIO_TYPES = [
-        'audio/mpeg' => ['mp3'],
-        'audio/mp4' => ['m4a', 'mp4', 'aac'],
-        'audio/aac' => ['aac', 'm4a'],
-        'audio/x-m4a' => ['m4a'],
     ];
 
     /** @param array<string, list<string>> $types */

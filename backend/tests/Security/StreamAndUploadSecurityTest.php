@@ -143,7 +143,10 @@ final class StreamAndUploadSecurityTest extends SecurityTestCase
         $track = $this->createTrack($this->createArtist($alice));
         $this->assertProblem($this->api('POST', '/api/v1/me/avatar', $alice, ['extra' => ['files' => ['file' => $this->sizedUpload(5_242_881, 'a.png', 'image/png')]]]), 413, 'payload_too_large');
         $this->assertProblem($this->api('POST', '/api/v1/tracks/'.$track->getId().'/cover', $alice, ['extra' => ['files' => ['file' => $this->sizedUpload(5_242_881, 'c.jpg', 'image/jpeg')]]]), 413, 'payload_too_large');
-        $this->assertProblem($this->api('POST', '/api/v1/tracks', $alice, ['extra' => ['parameters' => ['title' => 'x', 'genreId' => 'pop'], 'files' => ['file' => $this->sizedUpload(31_457_281, 's.mp3', 'audio/mpeg')]]]), 413, 'payload_too_large');
+        // Audio goes direct to storage (ADR 009): the declared size is refused up front,
+        // the signed policy enforces it at storage level (PresignedPostMinioTest).
+        $this->assertProblem($this->api('POST', '/api/v1/tracks/uploads', $alice, ['json' => ['filename' => 's.mp3', 'size' => 31_457_281, 'contentType' => 'audio/mpeg']]), 413, 'payload_too_large');
+        $this->assertProblem($this->api('POST', '/api/v1/tracks/uploads', $alice, ['json' => ['filename' => 's.mp4', 'size' => 209_715_201, 'contentType' => 'video/mp4']]), 413, 'payload_too_large');
         self::assertSame([], $this->queued('media'));
     }
 
@@ -169,7 +172,7 @@ final class StreamAndUploadSecurityTest extends SecurityTestCase
             $r = $this->api('POST', '/api/v1/me/avatar', $alice, ['extra' => ['files' => ['file' => $this->upload(self::tinyPng(), $name, $mime)]]]);
             self::assertSame(415, $r->getStatusCode(), $label.': '.$r->getContent(false));
         }
-        $r = $this->api('POST', '/api/v1/tracks', $alice, ['extra' => ['parameters' => ['title' => 'x', 'genreId' => 'pop'], 'files' => ['file' => $this->upload('<?php system($_GET[1]);', 'evil.php', 'audio/mpeg')]]]);
+        $r = $this->api('POST', '/api/v1/tracks/uploads', $alice, ['json' => ['filename' => 'evil.php', 'size' => 64, 'contentType' => 'audio/mpeg']]);
         self::assertSame(415, $r->getStatusCode());
         self::assertSame([], $this->queued('media'));
     }
@@ -185,7 +188,10 @@ final class StreamAndUploadSecurityTest extends SecurityTestCase
             $r = $this->api('POST', '/api/v1/me/avatar', $alice, ['extra' => ['files' => ['file' => $this->upload(self::tinyPng(), $name, 'image/png')]]]);
             self::assertContains($r->getStatusCode(), [202, 415, 422], $name);
         }
-        $r = $this->api('POST', '/api/v1/tracks', $alice, ['extra' => ['parameters' => ['title' => 'x', 'genreId' => 'pop'], 'files' => ['file' => $this->upload(str_repeat("\xFF\xFB", 64), '../../../../tmp/x.mp3', 'audio/mpeg')]]]);
+        $slot = $this->api('POST', '/api/v1/tracks/uploads', $alice, ['json' => ['filename' => '../../../../tmp/x.mp3', 'size' => 128, 'contentType' => 'audio/mpeg']]);
+        self::assertSame(201, $slot->getStatusCode(), $slot->getContent(false));
+        self::assertMatchesRegularExpression('#^quarantine/uploads/[0-9a-f-]{36}/[0-9a-f-]{36}$#', $this->json($slot)['fields']['key']);
+        $r = $this->api('POST', '/api/v1/tracks', $alice, ['json' => ['uploadId' => $this->uploadAudio($alice, '../../../../tmp/x.mp3'), 'title' => 'x', 'genreId' => 'pop']]);
         self::assertSame(202, $r->getStatusCode(), $r->getContent(false));
 
         foreach ($this->queued('media', ProcessImage::class) as $m) {
@@ -194,22 +200,20 @@ final class StreamAndUploadSecurityTest extends SecurityTestCase
         self::assertCount(1, $this->queued('media', ProcessTrack::class));
         $track = $this->em()->getRepository(Track::class)->findOneBy(['title' => 'x']);
         self::assertNotNull($track);
-        self::assertMatchesRegularExpression('#^quarantine/tracks/[0-9a-f-]{36}/source$#', (string) $track->getRawKey());
+        self::assertMatchesRegularExpression('#^quarantine/uploads/[0-9a-f-]{36}/[0-9a-f-]{36}$#', (string) $track->getRawKey());
     }
 
     public function testMultipartFieldInjectionOnTrackUpload(): void
     {
         $alice = $this->createUser('alice');
-        $r = $this->api('POST', '/api/v1/tracks', $alice, ['extra' => [
-            'parameters' => ['title' => 'x', 'genreId' => 'pop', 'status' => 'ready', 'audioKey' => 'audio/tracks/stolen.m4a', 'visibility' => 'public'],
-            'files' => ['file' => $this->upload(str_repeat("\xFF\xFB", 64), 's.mp3', 'audio/mpeg')],
+        // JSON body since ADR 009: unknown properties are refused outright (422), nothing created.
+        $r = $this->api('POST', '/api/v1/tracks', $alice, ['json' => [
+            'uploadId' => $this->uploadAudio($alice), 'title' => 'x', 'genreId' => 'pop', 'status' => 'ready', 'audioKey' => 'audio/tracks/stolen.m4a', 'rawKey' => 'audio/tracks/other.m4a',
         ]]);
-        self::assertSame(202, $r->getStatusCode(), $r->getContent(false));
-        $track = $this->em()->getRepository(Track::class)->findOneBy(['title' => 'x']);
-        self::assertNotNull($track);
-        self::assertNull($track->getAudioKey());
-        self::assertSame('processing', $track->getStatus()->value);
-        self::assertSame(['x'], [$this->json($r)['title'] ?? null]);
+        $this->assertProblem($r, 422, 'validation_failed');
+        self::assertEqualsCanonicalizing(['status', 'audioKey', 'rawKey'], array_column($this->json($r)['violations'], 'propertyPath'));
+        self::assertNull($this->em()->getRepository(Track::class)->findOneBy(['title' => 'x']));
+        self::assertSame([], $this->queued('media', ProcessTrack::class));
     }
 
     // -------------------------------------------------------------- helpers ---
