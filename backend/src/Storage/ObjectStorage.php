@@ -26,6 +26,9 @@ interface ObjectStorage
     /** Idempotent: missing key is not an error. */
     public function delete(StorageArea $area, string $key): void;
 
+    /** Server-side copy inside one area (overwrites $to). */
+    public function copy(StorageArea $area, string $from, string $to): void;
+
     /** Public area only: absolute URL (MEDIA_PUBLIC_BASE_URL/key). */
     public function publicUrl(string $key): string;
 

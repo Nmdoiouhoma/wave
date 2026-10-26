@@ -106,6 +106,11 @@ final readonly class FlysystemObjectStorage implements ObjectStorage
         }
     }
 
+    public function copy(StorageArea $area, string $from, string $to): void
+    {
+        $this->fs($area)->copy(self::check($from), self::check($to), [Config::OPTION_VISIBILITY => 'private']);
+    }
+
     public function publicUrl(string $key): string
     {
         return rtrim($this->mediaPublicBaseUrl, '/').'/'.self::check($key);

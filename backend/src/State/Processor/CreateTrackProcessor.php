@@ -36,8 +36,9 @@ use Symfony\Component\Uid\Uuid;
 /**
  * `POST /tracks` (ADR 009 step 2, JSON): the upload must be the caller's (404), unused
  * (409 upload_already_used), younger than 2 h (409 upload_expired) and present in storage
- * (409 upload_incomplete). The Track (`processing`, real object size), the atomic consume
- * and ProcessTrack commit together. Artist resolution: given → must be owned (404); none
+ * (409 upload_incomplete). The object is copied to `quarantine/tracks/{trackId}/source`
+ * (raw_key, real size) so later writes to the presigned key cannot change what the worker
+ * processes; the Track (`processing`), the atomic consume and ProcessTrack commit together. Artist resolution: given → must be owned (404); none
  * owned → auto-created from displayName; exactly one → that one; several → 422 artist_required.
  *
  * @implements ProcessorInterface<mixed, TrackView>
@@ -86,22 +87,52 @@ final readonly class CreateTrackProcessor implements ProcessorInterface
         if (!$this->storage->exists(StorageArea::Private, $key)) {
             throw new ApiProblemException(ProblemCode::UploadIncomplete, 'The file has not been received yet.');
         }
-        $size = $this->storage->size(StorageArea::Private, $key);
+        $trackId = Uuid::v7();
+        $rawKey = 'quarantine/tracks/'.$trackId->toRfc4122().'/source';
 
-        $track = $this->em->wrapInTransaction(function () use ($user, $input, $genre, $upload, $key, $size, $now): Track {
-            $artist = $this->resolveArtist($user, $input->artistId);
-            $track = new Track($artist, $genre, trim((string) $input->title), min($size, Track::MAX_SIZE_BYTES), $input->visibility, $input->allowClips);
-            $track->setRawKey($key);
-            $this->em->persist($track);
-            $this->em->flush();
-            if (!$this->uploads->consume($upload->getId(), $user, $track->getId(), $now)) {
-                // Lost a race with a concurrent consume (or crossed the 2 h window): roll back.
-                throw new ApiProblemException(ProblemCode::UploadAlreadyUsed, 'This upload was already used.');
+        $track = $this->em->wrapInTransaction(function () use ($user, $input, $genre, $upload, $key, $rawKey, $trackId, $now): Track {
+            // F2: serialise this user's track creations before reading their artists, so N
+            // parallel first uploads auto-create exactly one artist.
+            $conn = $this->em->getConnection();
+            $conn->executeQuery('SELECT 1 FROM app_user WHERE id = :id FOR UPDATE', ['id' => $user->getId()->toRfc4122()]);
+            // Re-read under the lock: a concurrent request may have consumed it (and removed
+            // the uploaded object) while we waited.
+            $status = $conn->fetchOne('SELECT status FROM track_upload WHERE id = :id', ['id' => $upload->getId()->toRfc4122()]);
+            if (TrackUploadStatus::Pending->value !== $status) {
+                throw TrackUploadStatus::Expired->value === $status ? new ApiProblemException(ProblemCode::UploadExpired, 'This upload has expired, start a new one.') : new ApiProblemException(ProblemCode::UploadAlreadyUsed, 'This upload was already used.');
             }
-            $this->bus->dispatch(new ProcessTrack($track->getId()->toRfc4122()));
+            if (!$this->storage->exists(StorageArea::Private, $key)) {
+                throw new ApiProblemException(ProblemCode::UploadIncomplete, 'The file has not been received yet.');
+            }
+            $artist = $this->resolveArtist($user, $input->artistId);
+
+            // F3: the presigned form stays valid 15 min, so the browser-writable upload key must
+            // not be what the worker processes: snapshot it server-side to a key only PHP writes.
+            $this->storage->copy(StorageArea::Private, $key, $rawKey);
+            try {
+                $size = $this->storage->size(StorageArea::Private, $rawKey);
+                $track = new Track($artist, $genre, trim((string) $input->title), min($size, Track::MAX_SIZE_BYTES), $input->visibility, $input->allowClips, $trackId);
+                $track->setRawKey($rawKey);
+                $this->em->persist($track);
+                $this->em->flush();
+                if (!$this->uploads->consume($upload->getId(), $user, $track->getId(), $now)) {
+                    // Lost a race with a concurrent consume (or crossed the 2 h window): roll back.
+                    throw new ApiProblemException(ProblemCode::UploadAlreadyUsed, 'This upload was already used.');
+                }
+                $this->bus->dispatch(new ProcessTrack($track->getId()->toRfc4122()));
+            } catch (\Throwable $e) {
+                $this->storage->delete(StorageArea::Private, $rawKey);
+                throw $e;
+            }
 
             return $track;
         });
+
+        // Best effort: an object left behind is swept by CleanupQuarantine.
+        try {
+            $this->storage->delete(StorageArea::Private, $key);
+        } catch (\Throwable) {
+        }
 
         $request->attributes->set(ResponseHeadersListener::LOCATION_ATTRIBUTE, '/api/v1/tracks/'.$track->getId()->toRfc4122());
 

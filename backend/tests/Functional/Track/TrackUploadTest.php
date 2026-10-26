@@ -102,7 +102,10 @@ final class TrackUploadTest extends WaveApiTestCase
 
         $entity = $this->em()->find(Track::class, $track['id']);
         self::assertNotNull($entity);
-        self::assertSame('quarantine/uploads/'.$alice->getId().'/'.$uploadId, $entity->getRawKey());
+        self::assertSame('quarantine/tracks/'.$track['id'].'/source', $entity->getRawKey(), 'snapshot, not the browser-writable key');
+        $storage = static::getContainer()->get(\App\Storage\ObjectStorage::class);
+        self::assertTrue($storage->exists(\App\Storage\StorageArea::Private, (string) $entity->getRawKey()));
+        self::assertFalse($storage->exists(\App\Storage\StorageArea::Private, 'quarantine/uploads/'.$alice->getId().'/'.$uploadId));
         self::assertSame(4096, $entity->getSizeBytes(), 'real object size, not the declared one');
         $this->em()->clear();
         $upload = $this->em()->find(TrackUpload::class, $uploadId);
