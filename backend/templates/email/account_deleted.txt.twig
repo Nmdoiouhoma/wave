@@ -1,5 +1,7 @@
-Hi {{ displayName }},
+{% autoescape false %}
+{{ 'account_deleted.greeting'|trans({'%name%': displayName}, 'emails') }}
 
-Your Wave account and everything you published have been deleted, as you asked. Backups are erased within 30 days.
+{{ 'account_deleted.body'|trans({}, 'emails') }}
 
-Thanks for having been part of Wave.
+{{ 'account_deleted.thanks'|trans({}, 'emails') }}
+{% endautoescape %}

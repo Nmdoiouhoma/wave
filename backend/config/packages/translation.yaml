@@ -1,0 +1,7 @@
+framework:
+    # API messages stay English (problem titles); user-facing emails are French (FB-03).
+    default_locale: fr
+    enabled_locales: ['fr']
+    translator:
+        default_path: '%kernel.project_dir%/translations'
+        fallbacks: ['fr']

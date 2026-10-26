@@ -1,7 +1,10 @@
-Hi {{ displayName }},
+{% autoescape false %}
+{{ 'verify_email.greeting'|trans({'%name%': displayName}, 'emails') }}
 
-Welcome to Wave! Please confirm your email address to start uploading tracks, creating artists and posting:
+{{ 'verify_email.intro'|trans({}, 'emails') }}
 
-{{ url|raw }}
+{{ 'verify_email.text_action'|trans({}, 'emails') }}
+{{ url }}
 
-This link expires in 24 hours. If you did not create a Wave account, you can ignore this email.
+{{ 'verify_email.expiry'|trans({}, 'emails') }}
+{% endautoescape %}

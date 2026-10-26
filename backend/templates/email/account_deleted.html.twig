@@ -1,3 +1,8 @@
-<p>Hi {{ displayName }},</p>
-<p>Your Wave account and everything you published have been deleted, as you asked. Backups are erased within 30 days.</p>
-<p>Thanks for having been part of Wave.</p>
+<!doctype html>
+<html lang="fr">
+<body>
+<p>{{ 'account_deleted.greeting'|trans({'%name%': displayName}, 'emails') }}</p>
+<p>{{ 'account_deleted.body'|trans({}, 'emails') }}</p>
+<p>{{ 'account_deleted.thanks'|trans({}, 'emails') }}</p>
+</body>
+</html>

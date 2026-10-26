@@ -1,0 +1,20 @@
+# Transactional emails (FB-03, CONVENTIONS §8). Placeholders: %name%, %url%.
+verify_email:
+    subject: 'Confirme ton adresse e-mail'
+    greeting: 'Bonjour %name%,'
+    intro: 'Bienvenue sur Wave ! Confirme ton adresse e-mail pour pouvoir publier des morceaux, créer des artistes et poster.'
+    action: 'Confirmer mon adresse e-mail'
+    text_action: 'Confirme ton adresse en ouvrant ce lien :'
+    expiry: "Ce lien expire dans 24 heures. Si tu n'as pas créé de compte Wave, ignore simplement cet e-mail."
+password_reset:
+    subject: 'Réinitialise ton mot de passe Wave'
+    greeting: 'Bonjour %name%,'
+    intro: 'Une demande de réinitialisation du mot de passe de ton compte Wave a été faite.'
+    action: 'Choisir un nouveau mot de passe'
+    text_action: 'Choisis un nouveau mot de passe en ouvrant ce lien :'
+    expiry: "Ce lien expire dans 1 heure et ne fonctionne qu'une fois. Si tu n'es pas à l'origine de cette demande, ignore cet e-mail : ton mot de passe reste inchangé."
+account_deleted:
+    subject: 'Ton compte Wave a été supprimé'
+    greeting: 'Bonjour %name%,'
+    body: 'Comme demandé, ton compte Wave et tout ce que tu as publié ont été supprimés. Les sauvegardes sont effacées sous 30 jours.'
+    thanks: "Merci d'avoir fait partie de Wave."

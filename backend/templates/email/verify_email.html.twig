@@ -1,4 +1,9 @@
-<p>Hi {{ displayName }},</p>
-<p>Welcome to Wave! Please confirm your email address to start uploading tracks, creating artists and posting.</p>
-<p><a href="{{ url }}">Confirm my email address</a></p>
-<p>This link expires in 24 hours. If you did not create a Wave account, you can ignore this email.</p>
+<!doctype html>
+<html lang="fr">
+<body>
+<p>{{ 'verify_email.greeting'|trans({'%name%': displayName}, 'emails') }}</p>
+<p>{{ 'verify_email.intro'|trans({}, 'emails') }}</p>
+<p><a href="{{ url }}">{{ 'verify_email.action'|trans({}, 'emails') }}</a></p>
+<p>{{ 'verify_email.expiry'|trans({}, 'emails') }}</p>
+</body>
+</html>
