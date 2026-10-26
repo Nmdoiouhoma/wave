@@ -47,6 +47,9 @@ x-app-env: &app-env
   CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN:?}
   TRUSTED_PROXIES: ${TRUSTED_PROXIES-}
   PHP_OPCACHE_VALIDATE_TIMESTAMPS: ${PHP_OPCACHE_VALIDATE_TIMESTAMPS:-0}
+  # Browser-facing base URL of presigned POSTs (ADR 009). Dev: nginx proxy
+  # /upload; prod: the public S3 endpoint.
+  S3_PRESIGN_ENDPOINT: ${S3_PRESIGN_ENDPOINT:?}
 
 x-worker: &worker
   <<: *hardening
@@ -59,9 +62,13 @@ x-worker: &worker
     <<: *app-env
     FFMPEG_BIN: /usr/bin/ffmpeg
     FFPROBE_BIN: /usr/bin/ffprobe
+    # Disk-backed (never tmpfs: a 200 MB MP4 + output must not count against
+    # the 1G memory limit). ADR 009.
+    MEDIA_TMP_DIR: ${MEDIA_TMP_DIR:-/var/tmp/wave-media}
   read_only: true
   tmpfs:
-    - /tmp:size=512m,mode=1777
+    # Small: media temp files live on the media_tmp disk volume (MEDIA_TMP_DIR).
+    - /tmp:size=64m,mode=1777
     # Runtime state of the read-only app image: cache.app pools (scheduler
     # checkpoint...) and logs. Per container, not shared.
     - /app/var/share:size=64m,uid=33,gid=33,mode=0755
@@ -97,6 +104,10 @@ services:
   worker:
     <<: *worker
     command: ["media"]
+    # Shared by the 2 replicas (random file names). Peak ~ 2 x (200 MB source
+    # + ~15 MB output): keep >= 2 GB free on the Docker disk (CONVENTIONS §9).
+    volumes:
+      - media_tmp:${MEDIA_TMP_DIR:-/var/tmp/wave-media}
     deploy:
       replicas: 2
       resources:
@@ -182,10 +193,16 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
       MINIO_BROWSER: "off"
       MINIO_UPDATE: "off"
+      # Prod-like rule of ADR 009: only the front origin may POST cross-origin
+      # (dev is same-origin through nginx /upload, so this is a no-op there).
+      MINIO_API_CORS_ALLOW_ORIGIN: ${FRONT_PUBLIC_URL:?}
     volumes:
       - minio_data:/data
     networks:
-      internal: {}
+      internal:
+        # Used by nginx /upload/wave-private: requests arrive from nginx's
+        # `internal` address, which has NO anonymous read (only `storage` has).
+        aliases: [minio-internal]
       # nginx reaches MinIO only through this network, as `minio-edge`, so its
       # requests come from WAVE_NGINX_STORAGE_IP (bucket policy condition).
       storage:
@@ -237,6 +254,7 @@ networks:
   edge: {}
 
 volumes:
+  media_tmp:
   postgres_data:
   minio_data:
   nginx_cache:

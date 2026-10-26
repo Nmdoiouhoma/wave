@@ -55,6 +55,7 @@ services:
     restart: unless-stopped
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:?}
+      VITE_MAILPIT_URL: ${VITE_MAILPIT_URL-}
       # Browser reaches Vite through nginx: HMR client must use nginx's port.
       VITE_HMR_CLIENT_PORT: ${WAVE_HTTP_PORT:-8090}
       NPM_CONFIG_UPDATE_NOTIFIER: "false"

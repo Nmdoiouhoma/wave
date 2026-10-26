@@ -11,7 +11,7 @@ final readonly class Probe
 {
     /**
      * @param list<string>                                                           $formatNames  demuxer names, e.g. ['mov','mp4','m4a',...]
-     * @param list<array{codec: string}>                                             $audioStreams
+     * @param list<array{codec: string, duration: float|null}>                       $audioStreams
      * @param list<array{codec: string, width: int, height: int, attachedPic: bool}> $videoStreams
      */
     public function __construct(
@@ -19,6 +19,7 @@ final readonly class Probe
         public ?float $durationSeconds,
         public array $audioStreams,
         public array $videoStreams,
+        public int $streamCount = 0,
     ) {
     }
 
@@ -41,7 +42,10 @@ final readonly class Probe
             $codec = \is_string($stream['codec_name'] ?? null) ? $stream['codec_name'] : '';
             $type = $stream['codec_type'] ?? null;
             if ('audio' === $type) {
-                $audio[] = ['codec' => $codec];
+                $audio[] = [
+                    'codec' => $codec,
+                    'duration' => isset($stream['duration']) && is_numeric($stream['duration']) ? (float) $stream['duration'] : null,
+                ];
                 if (null === $duration && isset($stream['duration']) && is_numeric($stream['duration'])) {
                     $duration = (float) $stream['duration'];
                 }
@@ -61,7 +65,14 @@ final readonly class Probe
             $duration,
             $audio,
             $video,
+            \count($streams),
         );
+    }
+
+    /** True for the ISO-BMFF family (MP4/M4A/MOV/3GP), whatever the file name. */
+    public function isMp4Family(): bool
+    {
+        return $this->hasFormat('mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2');
     }
 
     public function hasFormat(string ...$names): bool

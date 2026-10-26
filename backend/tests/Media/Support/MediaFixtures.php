@@ -69,6 +69,41 @@ final class MediaFixtures
         return $this->audio('.m4a', $seconds, $amplitude, '-c:a aac -b:a 128k', 'mp4');
     }
 
+    /**
+     * Generated MP4/MOV (testsrc2 video + two-tone audio), FB-04 inputs.
+     *
+     * @param bool   $video       include an H.264 video stream
+     * @param bool   $audio       include an AAC audio stream
+     * @param string $format      'mp4' or 'mov'
+     * @param int    $audioCopies number of audio streams (stream-count abuse)
+     */
+    public function mp4(float $seconds, bool $video = true, bool $audio = true, string $format = 'mp4', string $size = '320x240', int $fps = 25, int $audioCopies = 1): string
+    {
+        $out = $this->path('.'.$format);
+        $args = [];
+        $maps = [];
+        $n = 0;
+        if ($video) {
+            $args = [...$args, '-f', 'lavfi', '-i', \sprintf('testsrc2=s=%s:r=%d:d=%F', $size, $fps, $seconds)];
+            $maps = [...$maps, '-map', $n.':v'];
+            ++$n;
+        }
+        if ($audio) {
+            $args = [...$args, '-f', 'lavfi', '-i', \sprintf('aevalsrc=0.2*sin(2*PI*220*t)|0.2*sin(2*PI*330*t):s=44100:d=%F', $seconds)];
+            for ($i = 0; $i < $audioCopies; ++$i) {
+                $maps = [...$maps, '-map', $n.':a'];
+            }
+        }
+        $this->ffmpeg([
+            ...$args, ...$maps,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac', '-b:a', '96k',
+            '-f', $format, $out,
+        ]);
+
+        return $out;
+    }
+
     /** A still image of the given size (codec chosen by the format). */
     public function image(string $suffix, int $width, int $height, string $format, string $codec): string
     {

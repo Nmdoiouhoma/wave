@@ -60,7 +60,7 @@ final class ProcessTrackHandler
         if (null === $rawKey || !$this->storage->exists(StorageArea::Private, $rawKey)) {
             $this->fail($trackId, FailureReason::ProcessingError, 'quarantine object missing', $context);
         }
-        if ($this->storage->size(StorageArea::Private, $rawKey) > TrackAudioProcessor::MAX_SIZE_BYTES) {
+        if ($this->storage->size(StorageArea::Private, $rawKey) > TrackAudioProcessor::MAX_MP4_SIZE_BYTES) {
             $this->fail($trackId, FailureReason::TooLarge, 'quarantine object too large', $context);
         }
 

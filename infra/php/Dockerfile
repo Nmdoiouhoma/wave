@@ -64,8 +64,13 @@ RUN set -eux; \
 COPY infra/php/conf.d/zz-wave-worker.ini "$PHP_INI_DIR/conf.d/zz-wave-worker.ini"
 COPY --chmod=0755 infra/php/worker-entrypoint.sh /usr/local/bin/worker-entrypoint
 
+# Media temp dir: mount point of the media_tmp disk volume (owned by
+# www-data so a fresh named volume inherits it). ADR 009.
+RUN mkdir -p /var/tmp/wave-media && chown www-data:www-data /var/tmp/wave-media
+
 ENV FFMPEG_BIN=/usr/bin/ffmpeg \
-    FFPROBE_BIN=/usr/bin/ffprobe
+    FFPROBE_BIN=/usr/bin/ffprobe \
+    MEDIA_TMP_DIR=/var/tmp/wave-media
 
 USER www-data
 STOPSIGNAL SIGTERM

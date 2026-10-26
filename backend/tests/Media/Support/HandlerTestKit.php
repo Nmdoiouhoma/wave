@@ -10,6 +10,7 @@ use App\Entity\Track;
 use App\Entity\User;
 use App\Storage\FlysystemObjectStorage;
 use App\Storage\StorageArea;
+use Aws\S3\S3Client;
 use Doctrine\ORM\EntityManagerInterface;
 use League\Flysystem\Filesystem;
 use League\Flysystem\InMemory\InMemoryFilesystemAdapter;
@@ -40,7 +41,9 @@ final class HandlerTestKit
     {
         $this->private = new Filesystem(new InMemoryFilesystemAdapter());
         $this->public = new Filesystem(new InMemoryFilesystemAdapter());
-        $this->storage = new FlysystemObjectStorage($this->private, $this->public, 'http://localhost:8090/media');
+        // The S3 client is only used by presignedPost(), never by the handlers.
+        $s3 = new S3Client(['region' => 'us-east-1', 'version' => 'latest', 'endpoint' => 'http://127.0.0.1:9', 'use_path_style_endpoint' => true, 'credentials' => ['key' => 'test', 'secret' => 'test']]);
+        $this->storage = new FlysystemObjectStorage($this->private, $this->public, 'http://localhost:8090/media', $s3, 'wave-private', 'http://localhost:8090/upload');
 
         $em->method('find')->willReturnCallback(fn (string $class, mixed $id): ?object => $this->entities[$class.'#'.(string) $id] ?? null);
         $em->method('wrapInTransaction')->willReturnCallback(fn (callable $fn): mixed => $fn($em));

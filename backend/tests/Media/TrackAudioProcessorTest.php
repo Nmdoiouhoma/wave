@@ -93,6 +93,8 @@ final class TrackAudioProcessorTest extends TestCase
         yield 'text' => ['.mp3', str_repeat("hello world\n", 200)];
         yield 'empty' => ['.mp3', ''];
         yield 'hls playlist disguised as mp3' => ['.mp3', "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nfile:/etc/passwd\n#EXT-X-ENDLIST\n"];
+        yield 'hls playlist disguised as mp4' => ['.mp4', "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttp://minio:9000/wave-private/audio/x.m4a\n#EXT-X-ENDLIST\n"];
+        yield 'ffconcat disguised as mp4' => ['.mp4', "ffconcat version 1.0\nfile '/etc/passwd'\n"];
     }
 
     #[DataProvider('invalidFiles')]
@@ -110,16 +112,66 @@ final class TrackAudioProcessorTest extends TestCase
         $this->assertRejected(FailureReason::InvalidMedia, $renamed);
     }
 
-    public function testVideoIsInvalidMedia(): void
+    /**
+     * @return iterable<string, array{string, bool}>
+     */
+    public static function mp4Inputs(): iterable
     {
-        $video = $this->fx->path('.mp4');
-        new \Symfony\Component\Process\Process([
-            MediaFixtures::ffmpegBin(), '-v', 'error', '-y',
-            '-f', 'lavfi', '-i', 'testsrc2=s=320x240:d=3', '-f', 'lavfi', '-i', 'sine=d=3',
-            '-c:v', 'libx264', '-c:a', 'aac', '-shortest', $video,
-        ])->mustRun();
+        yield 'mp4 video + audio' => ['mp4', true];
+        yield 'mp4 audio only' => ['mp4', false];
+        yield 'mov video + audio' => ['mov', true];
+    }
 
-        $this->assertRejected(FailureReason::InvalidMedia, $video);
+    /** FB-04: MP4/MOV accepted with or without video; output is audio only. */
+    #[DataProvider('mp4Inputs')]
+    public function testMp4KeepsOnlyTheAudio(string $format, bool $video): void
+    {
+        $source = $this->fx->mp4(15.0, video: $video, format: $format);
+        $target = $this->fx->path('.m4a');
+
+        self::assertEqualsWithDelta(15_000, $this->processor->process($source, $target), 150);
+
+        $streams = $this->fx->probe($target)['streams'] ?? null;
+        self::assertIsArray($streams);
+        self::assertCount(1, $streams, 'no video stream in the output');
+        self::assertIsArray($streams[0]);
+        self::assertSame('audio', $streams[0]['codec_type']);
+        self::assertSame('aac', $streams[0]['codec_name']);
+        self::assertEqualsWithDelta(-14.0, $this->fx->integratedLoudness($target), 1.0);
+    }
+
+    public function testVideoOnlyMp4IsInvalidMedia(): void
+    {
+        $this->assertRejected(FailureReason::InvalidMedia, $this->fx->mp4(3.0, audio: false));
+    }
+
+    public function testElevenMinuteMp4IsTooLong(): void
+    {
+        $source = $this->fx->mp4(660.0, size: '64x48', fps: 1);
+
+        $this->assertRejected(FailureReason::TooLong, $source);
+    }
+
+    public function testFortyMegabyteMp3RenamedMp4IsTooLarge(): void
+    {
+        // Real MP3 content padded to 40 MB, named .mp4: the 200 MB MP4 limit
+        // must not apply, the sniffed container (mp3) keeps the 30 MB limit.
+        $mp3 = $this->fx->mp3(10.0);
+        $renamed = $this->fx->path('.mp4');
+        copy($mp3, $renamed);
+        $h = fopen($renamed, 'r+');
+        self::assertNotFalse($h);
+        ftruncate($h, 40 * 1024 * 1024);
+        fclose($h);
+
+        $this->assertRejected(FailureReason::TooLarge, $renamed);
+    }
+
+    public function testTooManyStreamsIsInvalidMedia(): void
+    {
+        $source = $this->fx->mp4(2.0, video: false, audioCopies: TrackAudioProcessor::MAX_STREAMS + 1);
+
+        $this->assertRejected(FailureReason::InvalidMedia, $source);
     }
 
     public function testOtherCodecInAcceptedContainerIsUnsupported(): void
@@ -143,7 +195,7 @@ final class TrackAudioProcessorTest extends TestCase
         $source = $this->fx->path('.mp3');
         $h = fopen($source, 'w');
         self::assertNotFalse($h);
-        ftruncate($h, TrackAudioProcessor::MAX_SIZE_BYTES + 1);
+        ftruncate($h, TrackAudioProcessor::MAX_MP4_SIZE_BYTES + 1);
         fclose($h);
 
         $this->assertRejected(FailureReason::TooLarge, $source);

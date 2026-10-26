@@ -79,6 +79,30 @@ final class MediaHandlersTest extends TestCase
         self::assertSame($before, $this->kit->private->lastModified($audioKey));
     }
 
+    public function testProcessTrackAcceptsMp4WithVideo(): void
+    {
+        MediaFixtures::skipUnlessFfmpeg($this);
+        $track = $this->kit->track($this->fx->mp4(8.0));
+
+        ($this->trackHandler())(new ProcessTrack($track->getId()->toRfc4122()));
+
+        self::assertSame(MediaStatus::Ready, $track->getStatus());
+        self::assertEqualsWithDelta(8_000, (int) $track->getDurationMs(), 150);
+    }
+
+    public function testProcessTrackMarksVideoOnlyMp4Failed(): void
+    {
+        MediaFixtures::skipUnlessFfmpeg($this);
+        $track = $this->kit->track($this->fx->mp4(3.0, audio: false));
+
+        try {
+            ($this->trackHandler())(new ProcessTrack($track->getId()->toRfc4122()));
+            self::fail('expected UnrecoverableMessageHandlingException');
+        } catch (UnrecoverableMessageHandlingException) {
+        }
+        self::assertSame(FailureReason::InvalidMedia, $track->getFailureReason());
+    }
+
     public function testProcessTrackMarksRenamedPngFailed(): void
     {
         MediaFixtures::skipUnlessFfmpeg($this);
