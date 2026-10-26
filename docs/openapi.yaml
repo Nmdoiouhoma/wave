@@ -679,27 +679,56 @@ paths:
                 items: { $ref: '#/components/schemas/Genre' }
 
   # ───────────────────────────── tracks ─────────────────────────────
-  /tracks:
+  /tracks/uploads:
     post:
       tags: [tracks]
-      operationId: uploadTrack
+      operationId: createTrackUpload
       x-requires-verified-email: true
-      summary: Upload track
+      summary: Open a direct-to-storage upload for an audio file
       description: |
-        Multipart upload of the audio file (MP3 or AAC/M4A, ≤ 30 MB). Returns 202 with `status: processing`.
-        The worker validates with ffprobe (duration ≤ 10 min, real audio codec) then sets `ready` or `failed` + `failureReason`; clients poll `GET /tracks/{id}` (every 3 s, stop after 2 min).
-        Artist resolution: `artistId` given → must be owned (else 404); omitted and user owns 0 artists → one is auto-created from `displayName`; omitted and exactly 1 → that one; omitted and several → 422 `artist_required`.
-        Size check is synchronous (413). Declared extension/MIME outside the allowed list → 415 (pre-filter only; the worker never trusts it).
-        Cover is uploaded separately (`POST /tracks/{id}/cover`) to stay under `post_max_size`.
-      x-rate-limit: 10 per hour and 30 per day per user (bucket `track_upload`)
-      x-body-limit: 32M (nginx)
+        Step 1 of the only track upload flow (ADR 009). Declares the file; returns a **presigned S3 POST** (form policy) valid 15 min, bound to the caller, writing to `quarantine/uploads/{userId}/{uploadId}`.
+        The policy enforces `content-length-range` [1, `maxBytes`] and the exact key; the browser sends `multipart/form-data` with every `fields` entry first and the file last (field `file`) to `url`. Storage answers 204.
+        Limits by declared extension: `.mp4` → 200 MB (209715200 bytes); `.mp3`, `.m4a`, `.aac` → 30 MB (31457280 bytes). `declaredSize` above the limit → 413; other extension/MIME → 415.
+        Declared values are a pre-filter only: the worker re-checks container, codec, size and duration with ffprobe.
+        At most 10 pending uploads per user (409 `too_many_pending_uploads`).
+      x-rate-limit: 30 per hour and 100 per day per user (bucket `track_upload`)
       requestBody:
         required: true
         content:
-          multipart/form-data:
-            schema: { $ref: '#/components/schemas/TrackUpload' }
-            encoding:
-              file: { contentType: 'audio/mpeg, audio/mp4, audio/aac, audio/x-m4a' }
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTrackUploadRequest' }
+      responses:
+        '201':
+          description: Upload slot created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrackUploadSlot' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /tracks:
+    post:
+      tags: [tracks]
+      operationId: createTrack
+      x-requires-verified-email: true
+      summary: Create a track from a completed upload
+      description: |
+        Step 2 (ADR 009). JSON body with the `uploadId` of step 1 and the metadata. Returns 202 with `status: processing`.
+        Upload checks: not the caller's or unknown → 404; already used → 409 `upload_already_used`; older than 2 h → 409 `upload_expired`; object absent in storage → 409 `upload_incomplete`. The upload is consumed atomically (single use).
+        The worker validates with ffprobe (audio stream present, MP3/AAC codec, ≤ 10 min, non-MP4 containers ≤ 30 MB, MP4 ≤ 200 MB; any video stream is discarded) then sets `ready` or `failed` + `failureReason`; clients poll `GET /tracks/{id}` (every 3 s, stop after 10 min).
+        Artist resolution: `artistId` given → must be owned (else 404); omitted and user owns 0 artists → one is auto-created from `displayName`; omitted and exactly 1 → that one; omitted and several → 422 `artist_required`.
+        Several files = several upload/create pairs in parallel (no batch endpoint). Cover is uploaded separately (`POST /tracks/{id}/cover`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTrackRequest' }
       responses:
         '202':
           description: Accepted, processing.
@@ -713,10 +742,8 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '413': { $ref: '#/components/responses/PayloadTooLarge' }
-        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
-        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /tracks/{trackId}:
     parameters:
@@ -1697,6 +1724,10 @@ components:
         - playlist_full              # 409
         - playlist_order_mismatch    # 409
         - already_reported           # 409
+        - too_many_pending_uploads   # 409
+        - upload_already_used        # 409
+        - upload_expired             # 409
+        - upload_incomplete          # 409
         - email_already_verified     # 409
         - stream_token_expired       # 410
         - payload_too_large          # 413
@@ -1950,14 +1981,33 @@ components:
         isOwner: { type: boolean }
         canClip: { type: boolean, description: Caller may create a post from this track now (D5). }
         createdAt: { $ref: '#/components/schemas/DateTime' }
-    TrackUpload:
+    CreateTrackUploadRequest:
       type: object
-      required: [file, title, genreId]
+      required: [filename, size, contentType]
+      additionalProperties: false
       properties:
-        file:
-          type: string
-          contentMediaType: application/octet-stream
-          description: MP3 or AAC/M4A, ≤ 30 MB (31457280 bytes), ≤ 10 min (checked by worker).
+        filename: { type: string, minLength: 1, maxLength: 255, description: 'Original name; only its extension is used (`mp3`, `m4a`, `aac`, `mp4`).' }
+        size: { type: integer, minimum: 1, maximum: 209715200, description: Declared bytes. }
+        contentType: { type: string, enum: [audio/mpeg, audio/mp4, audio/aac, audio/x-m4a, video/mp4] }
+    TrackUploadSlot:
+      type: object
+      required: [uploadId, method, url, fields, maxBytes, expiresAt]
+      properties:
+        uploadId: { $ref: '#/components/schemas/Id' }
+        method: { type: string, const: POST }
+        url: { type: string, format: uri, description: 'Dev: `http://localhost:8090/upload/wave-private`; prod: the S3 bucket endpoint.' }
+        fields:
+          type: object
+          description: Form fields to send verbatim before `file` (key, policy, x-amz-algorithm, x-amz-credential, x-amz-date, x-amz-signature…).
+          additionalProperties: { type: string }
+        maxBytes: { type: integer }
+        expiresAt: { $ref: '#/components/schemas/DateTime' }
+    CreateTrackRequest:
+      type: object
+      required: [uploadId, title, genreId]
+      additionalProperties: false
+      properties:
+        uploadId: { type: string, format: uuid }
         title: { type: string, minLength: 1, maxLength: 120 }
         genreId: { type: string }
         artistId: { type: string, format: uuid }

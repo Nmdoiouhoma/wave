@@ -18,4 +18,4 @@ Official MinIO images are no longer pullable. **Dev** uses `pgsty/minio` pinned 
 
 ## Consequences
 + Swap MinIO → S3/R2 by env vars only. Media code is testable without network.
-− Upload goes through PHP (no presigned direct upload); fine at ≤ 30 MB, revisit for larger files (presigned PUT to quarantine + `POST /tracks/{id}/complete`).
+− Images still go through PHP (≤ 15 MB). Audio moved to direct presigned POST in ADR 009 (FB-04).

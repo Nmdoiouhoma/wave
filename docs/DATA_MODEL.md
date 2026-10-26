@@ -125,10 +125,10 @@ Seeded **by migration** (not fixtures), fixed list: `pop, rock, hip-hop, rnb, el
 | genre_id | varchar(32) FK → genre | no | ON DELETE RESTRICT |
 | title | varchar(120) | no | 1–120 |
 | cover_key | varchar(255) | yes | public area |
-| raw_key | varchar(255) | yes | private `quarantine/…`; nulled after successful processing |
+| raw_key | varchar(255) | yes | private quarantine key copied from the consumed `track_upload`; nulled after successful processing |
 | audio_key | varchar(255) | yes | private `audio/…`; set when ready |
 | duration_ms | int | yes | set by worker (ffprobe), ≤ 600 000 |
-| size_bytes | int | no | uploaded file size, ≤ 31 457 280 |
+| size_bytes | int | no | real object size read from storage at creation; ≤ 209 715 200 (MP4) / 31 457 280 (other), enforced again by the worker |
 | status | varchar(16) | no | `MediaStatus`, default processing |
 | failure_reason | varchar(32) | yes | `FailureReason`, only when failed |
 | visibility | varchar(16) | no | default public |
@@ -144,6 +144,25 @@ Seeded **by migration** (not fixtures), fixed list: `pop, rock, hip-hop, rnb, el
 Indexes: (artist_id, created_at DESC, id DESC), (owner_id, created_at DESC, id DESC), (genre_id), partial (trending_score DESC, id DESC) WHERE status='ready' AND visibility='public' AND moderation='visible', GIN(search_vector), GIN trgm on `wave_unaccent(lower(title))`.
 
 **Track is "public-visible"** ⇔ status=ready ∧ visibility=public ∧ moderation=visible. Anyone else sees only public-visible tracks; anything else → 404. The owner always sees own tracks (with `status`, `failureReason`, `moderation`). Moderators see everything.
+
+## 6b. TrackUpload — `track_upload` (ADR 009)
+
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| id | uuid PK | no | = uploadId |
+| user_id | uuid FK → app_user | no | CASCADE; upload usable only by this user (else 404) |
+| quarantine_key | varchar(255) | no | UNIQUE, `quarantine/uploads/{userId}/{uploadId}` |
+| declared_filename | varchar(255) | no | |
+| declared_size | int | no | |
+| declared_type | varchar(32) | no | declared MIME |
+| max_bytes | int | no | 209 715 200 if extension `.mp4`, else 31 457 280; written into the POST policy |
+| status | varchar(16) | no | `pending` → `consumed` \| `expired` |
+| expires_at | timestamptz | no | presigned policy expiry = created + 15 min |
+| consumed_at | timestamptz | yes | |
+| track_id | uuid FK → track | yes | SET NULL; set on consume |
+| created_at | timestamptz | no | |
+
+Indexes: (user_id, status), (status, created_at). Consume = `UPDATE track_upload SET status='consumed', consumed_at=now(), track_id=:t WHERE id=:id AND user_id=:u AND status='pending' AND created_at > now() - interval '2 hours' RETURNING …` in the track-creation transaction (single use, race-free). Max 10 `pending` per user. `CleanupQuarantine` marks `pending` rows older than 2 h `expired` and deletes their object; rows older than 7 days are deleted.
 
 ## 7. Playlist — `playlist`, `playlist_item`
 
@@ -309,7 +328,7 @@ Two areas behind `ObjectStorage` (CONVENTIONS §7): **private** bucket `wave-pri
 
 | Entity | Quarantine (private) | Processed | Output spec |
 |---|---|---|---|
-| Track audio | `quarantine/tracks/{trackId}/source` | private `audio/tracks/{trackId}.m4a` | AAC-LC 160 kb/s, 44.1 kHz stereo, loudnorm I=-14 LUFS TP=-1.5 LRA=11, `-movflags +faststart` |
+| Track audio | `quarantine/uploads/{userId}/{uploadId}` (written by the browser via presigned POST) | private `audio/tracks/{trackId}.m4a` | first audio stream only (`-map 0:a:0 -vn`, video discarded), AAC-LC 160 kb/s, 44.1 kHz stereo, loudnorm I=-14 LUFS TP=-1.5 LRA=11, `-movflags +faststart` |
 | Track cover | `quarantine/covers/{trackId}/{uuid}` | public `images/covers/{trackId}/{uuid}.webp` | 800×800 center-crop, WebP q80 |
 | User avatar | `quarantine/avatars/users/{userId}/{uuid}` | public `images/avatars/users/{userId}/{uuid}.webp` | 400×400 center-crop, WebP q80 |
 | Artist avatar | `quarantine/avatars/artists/{artistId}/{uuid}` | public `images/avatars/artists/{artistId}/{uuid}.webp` | 400×400 |

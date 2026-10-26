@@ -94,6 +94,39 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - `tests/Security`: password-reset anti-enumeration (body and status identical, rate limit per email and IP), account-token reuse/expiry/brute force, verified-email gate bypass attempts, login/register/refresh rate limits, refresh reuse, cookie flags, JWT `alg` confusion / expired token, private track 404 (not 403), `/_protected/` direct access 404, oversize/forged uploads.
 - `docs/SECURITY.md` threat model v1; findings filed to owners.
 
+## Feedback batch (before phase 2) — FB-02..FB-05 (`docs/FEEDBACK.md`)
+
+**W-60 · backend · W-09, W-07** Presigned audio upload (FB-04, ADR 009)
+- `track_upload` table + `POST /tracks/uploads` (201 slot with POST policy: exact key, `content-length-range`, 15 min) and JSON `POST /tracks` consuming `uploadId`; multipart `POST /tracks` removed.
+- `.mp4` declared 200 MB → 201; `.mp3` declared 31 MB → 413; `.wav` → 415; 11th pending → 409 `too_many_pending_uploads`.
+- Another user's uploadId → 404; second consume → 409 `upload_already_used`; object missing → 409 `upload_incomplete`; > 2 h → 409 `upload_expired`; two concurrent consumes → exactly one 202.
+- `ObjectStorage::presignedPost` implemented on `S3_PRESIGN_ENDPOINT`; functional test uploads through the returned form against MinIO.
+
+**W-61 · media-infra · W-60** Upload path and MP4 processing (FB-04)
+- nginx `location = /upload/wave-private` POST-only, 201m, no request buffering; GET/HEAD/other paths under `/upload/` → 404 (test that a known private audio key is **not** readable there).
+- `ProcessTrack` accepts MP4/MOV with or without video: output audio-only m4a (ffprobe shows no video stream); MP4 without audio → failed `invalid_media`; 40 MB MP3 renamed `.mp4` → failed `too_large`; 11-min MP4 → failed `too_long`.
+- Worker temp on a disk volume (`MEDIA_TMP_DIR`), 200 MB file processed within the 1G memory limit; `CleanupQuarantine` expires pending uploads > 2 h and deletes their objects.
+- `.env.example` gains `S3_PRESIGN_ENDPOINT`, `MEDIA_TMP_DIR`, `VITE_MAILPIT_URL`; nginx `POST /api/v1/tracks` body limit back to 1m.
+
+**W-62 · frontend · W-60** Upload flow v2 (FB-04)
+- File picker accepts `.mp3,.m4a,.aac,.mp4` (`audio/*,video/mp4`); client limits 200 MB for MP4, 30 MB otherwise, clear message before any request.
+- Flow slot → form POST to `url` with `fields` then `file` (XHR progress, cancel) → `POST /tracks`; handles 409 codes (retry by requesting a new slot) and polling up to 10 min.
+- MSW handlers for both steps (mock storage endpoint).
+
+**W-63 · frontend · W-62** Add tracks to an artist (FB-05) — contract already sufficient (`POST /artists`, then upload with `artistId`)
+- Artist creation wizard: step 1 artist form, step 2 multi-file drop zone (optional, skippable) uploading N files with max 3 in parallel, each with its own title (default = filename without extension), genre and progress row.
+- Artist page (owner only): "Ajouter des morceaux" opens the same multi-file uploader with that artist preselected; per-file failure does not cancel the others.
+- 429 from `track_upload` shown with retry time; unverified email → gated as elsewhere.
+
+**W-64 · frontend · W-13** Mailpit hint in dev (FB-02)
+- When `VITE_MAILPIT_URL` is set (dev only), the "verify your email" banner and the forgot-password confirmation show a link to it; production build contains no Mailpit reference (grep the bundle).
+
+**W-65 · backend · W-17, W-18** French transactional emails (FB-03)
+- Subjects and bodies (HTML + text) of verify, reset and account-deleted emails in French via `translations/emails.fr.yaml`; snapshot test per template; links unchanged.
+
+**W-66 · qa-security · W-60, W-61** Feedback batch review
+- Presigned policy cannot be reused for another key, exceeded in size, or used after expiry; `/upload/` exposes no read path; uploadId IDOR and replay tests; MP4 with malicious metadata/huge stream count does not crash or hang the worker (timeout).
+
 ## Phase 2 — Playlists, follow, likes, listens
 
 **W-20 · backend · W-09** Playlists
@@ -200,6 +233,8 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 
 **W-53 · media-infra · W-01, W-02** Prod profile
 - `compose.prod.yaml`: TLS-ready nginx, `REFRESH_COOKIE_SECURE=1`, no dev ports, restart policies, healthchecks, Postgres + MinIO backups script.
+- Real email delivery (FB-01): transactional provider (Brevo/Mailgun/Postmark or SMTP relay) configured through `MAILER_DSN`; SPF, DKIM and DMARC published for the sending domain and verified (mail-tester score ≥ 9/10); Mailpit absent from prod.
+- Prod object storage: bucket CORS restricted to `POST` from `FRONT_PUBLIC_URL` (ADR 009); private-bucket read path settled (ADR 003 amendment).
 - `README.md` (French): install, `make` targets, architecture, prod checklist (secrets rotation, versions, audit).
 
 **W-55 · backend · W-33, W-40** Account deletion (GDPR)

@@ -116,6 +116,13 @@ interface ObjectStorage
     public function publicUrl(string $key): string;
     /** Private area only: nginx internal path for X-Accel-Redirect, e.g. /_protected/private/audio/tracks/{id}.m4a */
     public function internalRedirectPath(string $key): string;
+    /** Private area only: browser-facing presigned S3 POST (ADR 009), URL built on S3_PRESIGN_ENDPOINT. */
+    public function presignedPost(string $key, int $maxBytes, \DateTimeImmutable $expiresAt): PresignedPost;
+}
+final readonly class PresignedPost
+{
+    /** @param array<string,string> $fields */
+    public function __construct(public string $url, public array $fields) {}
 }
 
 namespace App\Feed;
@@ -158,7 +165,7 @@ Messages are `final readonly` in `App\Message`, scalar payloads only (ids as RFC
 
 | Message | Payload | Transport | Dispatched by | Handler owner | Effect |
 |---|---|---|---|---|---|
-| `ProcessTrack` | `trackId` | media | backend (upload processor) | media-infra | ffprobe validate (audio stream, codec mp3/aac, ≤ 600 s, size) → loudnorm 2-pass → `audio/tracks/{id}.m4a` → `Track::markReady(audioKey, durationMs)` or `markFailed(FailureReason)`; delete quarantine on success |
+| `ProcessTrack` | `trackId` | media | backend (upload processor) | media-infra | ffprobe validate (≥ 1 audio stream, codec mp3/aac, ≤ 600 s; size ≤ 200 MB if container is mp4/mov, else ≤ 30 MB; video streams ignored) → transcode from `downloadToTemp` file in `MEDIA_TMP_DIR` (disk, not tmpfs) → loudnorm 2-pass → `audio/tracks/{id}.m4a` → `Track::markReady(audioKey, durationMs)` or `markFailed(FailureReason)`; delete quarantine on success |
 | `ProcessImage` | `target` (`user_avatar`\|`artist_avatar`\|`track_cover`), `targetId`, `quarantineKey` | media | backend (avatar/cover processors) | media-infra | validate + resize to WebP (DATA_MODEL §14), set key on entity via `setAvatarKey/setCoverKey`, dispatch `PurgeObjects` for the old key; invalid → drop silently, log |
 | `GenerateClip` | `postId` | media | backend (post processor) | media-infra | cut processed track audio → `audio/clips/{postId}.m4a` → `Post::setClipKey`, then ready-transition SQL (DATA_MODEL §9) |
 | `ProcessPostVisual` | `postId` | media | backend (post processor, only if visual) | media-infra | validate image/video (ffprobe; video ≤ 60 s, strip audio) → public keys → `Post::setVisual(key, posterKey)`, then ready-transition SQL |
@@ -172,7 +179,7 @@ Messages are `final readonly` in `App\Message`, scalar payloads only (ids as RFC
 | `RecomputeAffinityAll` | — (scheduled daily 04:00 UTC) | async | Scheduler | backend | dispatch `RecomputeAffinity` for users active in last 30 days |
 | `RecomputeTrending` | — (scheduled every 15 min) | async | Scheduler | backend | recompute `track.trending_score`, `post.trending_score` (ADR 005) |
 
-Email: Symfony Mailer called **synchronously inside these handlers** (do not also route `SendEmailMessage` to a transport); Twig templates `templates/email/<name>.html.twig` + `.txt.twig`, English, links built from `FRONT_PUBLIC_URL` (`/verify-email?token=…`, `/reset-password?token=…`). Front pages read the token, `history.replaceState` it out of the URL, then POST it; they set `Referrer-Policy: no-referrer`.
+Email: Symfony Mailer called **synchronously inside these handlers** (do not also route `SendEmailMessage` to a transport); Twig templates `templates/email/<name>.html.twig` + `.txt.twig`, **French** (subjects and bodies; FB-03; i18n keys in `translations/emails.fr.yaml`), links built from `FRONT_PUBLIC_URL` (`/verify-email?token=…`, `/reset-password?token=…`). Front pages read the token, `history.replaceState` it out of the URL, then POST it; they set `Referrer-Policy: no-referrer`.
 
 Entity mutators used by media handlers are part of the contract (backend implements, media-infra calls): `Track::markReady(string $audioKey, int $durationMs)`, `Track::markFailed(FailureReason)`, `Track::setCoverKey(?string)`, `User::setAvatarKey(?string)`, `Artist::setAvatarKey(?string)`, `Post::setClipKey(string)`, `Post::setVisual(string $key, ?string $posterKey)`, `Post::markFailed(FailureReason)`, and `PostRepository::tryMarkReady(Uuid): bool` (the ready-transition SQL). `markReady` also triggers `ArtistRepository::recountTracks(artistId)`.
 Handlers must be idempotent (re-delivery): skip if the entity is gone or no longer `processing`. Validation failures throw `UnrecoverableMessageHandlingException` after marking failed.
@@ -197,6 +204,9 @@ Dev host port: nginx on **8090** (front, `/api`, `/media` same origin). Mailpit 
 | `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_USE_PATH_STYLE` | `http://minio:9000`, `us-east-1`, …, `1` | php, worker |
 | `S3_BUCKET_PRIVATE`, `S3_BUCKET_PUBLIC` | `wave-private`, `wave-public` | php, worker, nginx |
 | `FFMPEG_BIN`, `FFPROBE_BIN` | `/usr/bin/ffmpeg`, `/usr/bin/ffprobe` | worker |
+| `MEDIA_TMP_DIR` | `/var/tmp/wave-media` (disk-backed volume, ≥ 2 GB) | worker |
+| `S3_PRESIGN_ENDPOINT` | `http://localhost:8090/upload` (dev, via nginx); prod = public S3 endpoint | php |
+| `VITE_MAILPIT_URL` | `http://localhost:8027` (dev only; unset in prod builds) | front |
 | `FRONT_PUBLIC_URL` | `http://localhost:8090` | worker (links in emails) |
 | `MAILER_DSN` | `smtp://mailpit:1025` (dev; Mailpit UI on host port **8027**), real SMTP in prod | worker-async |
 | `MAILER_FROM` | `Wave <no-reply@wave.local>` | worker |

@@ -19,7 +19,7 @@ PHP2Shell (CVE-2026-109618/109619) is fixed in PHP 8.4.27; CVE-2026-48489 (Symfo
 **Containers / nginx**
 - Non-root users, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, read-only root FS where possible (tmpfs `/tmp`), memory limits: php 512M, worker 1G (×2), worker-async 512M, nginx 128M, postgres 1G, minio 512M, front 256M.
 - Only nginx publishes a port. postgres, minio, php, worker on an internal network.
-- nginx `client_max_body_size 32m` on `POST /api/v1/tracks` and `POST /api/v1/posts`, `6m` on avatar/cover routes, `1m` elsewhere; `server_tokens off`; security headers (CSP, `X-Content-Type-Options: nosniff`, `Referrer-Policy`).
+- nginx `client_max_body_size 32m` on `POST /api/v1/posts` (track audio no longer transits PHP, ADR 009; `/upload/` = 201m, POST only), `6m` on avatar/cover routes, `1m` elsewhere; `server_tokens off`; security headers (CSP, `X-Content-Type-Options: nosniff`, `Referrer-Policy`).
 
 **Production**
 - TLS termination is mandatory (at nginx or the load balancer) with HSTS (`Strict-Transport-Security: max-age=31536000; includeSubDomains`); plain HTTP only redirects.
