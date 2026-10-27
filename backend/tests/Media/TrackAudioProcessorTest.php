@@ -140,9 +140,10 @@ final class TrackAudioProcessorTest extends TestCase
         self::assertEqualsWithDelta(-14.0, $this->fx->integratedLoudness($target), 1.0);
     }
 
-    public function testVideoOnlyMp4IsInvalidMedia(): void
+    public function testVideoOnlyMp4IsNoAudio(): void
     {
-        $this->assertRejected(FailureReason::InvalidMedia, $this->fx->mp4(3.0, audio: false));
+        // FB-10: readable but silent (e.g. a 19 s screen recording).
+        $this->assertRejected(FailureReason::NoAudio, $this->fx->mp4(3.0, audio: false));
     }
 
     public function testElevenMinuteMp4IsTooLong(): void

@@ -75,7 +75,9 @@ final class TrackAudioProcessor
             throw new MediaRejected(FailureReason::InvalidMedia, \sprintf('%d streams', $probe->streamCount));
         }
         if ([] === $probe->audioStreams) {
-            throw new MediaRejected(FailureReason::InvalidMedia, 'no audio stream');
+            // FB-10: readable media without sound (e.g. a silent video) gets its own,
+            // user-facing reason; invalid_media stays for unreadable/disguised files.
+            throw new MediaRejected(FailureReason::NoAudio, 'no audio stream');
         }
         // Video is accepted only in MP4/MOV (discarded); in MP3/ADTS a video
         // stream can only be embedded cover art.

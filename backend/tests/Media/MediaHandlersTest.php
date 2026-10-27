@@ -25,11 +25,21 @@ use App\Tests\Media\Support\MediaFixtures;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Container\ContainerInterface;
 use Psr\Log\NullLogger;
 use Symfony\Component\Clock\MockClock;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
-use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Messenger\EventListener\SendFailedMessageForRetryListener;
+use Symfony\Component\Messenger\EventListener\SendFailedMessageToFailureTransportListener;
+use Symfony\Component\Messenger\EventListener\StopWorkerOnMessageLimitListener;
+use Symfony\Component\Messenger\Handler\HandlersLocator;
+use Symfony\Component\Messenger\MessageBus;
+use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
+use Symfony\Component\Messenger\Retry\MultiplierRetryStrategy;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
+use Symfony\Component\Messenger\Worker;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -90,17 +100,24 @@ final class MediaHandlersTest extends TestCase
         self::assertEqualsWithDelta(8_000, (int) $track->getDurationMs(), 150);
     }
 
-    public function testProcessTrackMarksVideoOnlyMp4Failed(): void
+    /**
+     * FB-10: a silent video is a business rejection (`no_audio`): the track is
+     * failed, the message is acknowledged like any success, nothing is retried
+     * and nothing reaches the `failed` transport.
+     */
+    public function testVideoOnlyMp4IsNoAudioAndAcknowledgedThroughARealWorker(): void
     {
         MediaFixtures::skipUnlessFfmpeg($this);
         $track = $this->kit->track($this->fx->mp4(3.0, audio: false));
 
-        try {
-            ($this->trackHandler())(new ProcessTrack($track->getId()->toRfc4122()));
-            self::fail('expected UnrecoverableMessageHandlingException');
-        } catch (UnrecoverableMessageHandlingException) {
-        }
-        self::assertSame(FailureReason::InvalidMedia, $track->getFailureReason());
+        [$media, $failed] = $this->consumeOnce(new ProcessTrack($track->getId()->toRfc4122()));
+
+        self::assertSame(MediaStatus::Failed, $track->getStatus());
+        self::assertSame(FailureReason::NoAudio, $track->getFailureReason());
+        self::assertCount(1, $media->getAcknowledged(), 'acknowledged');
+        self::assertCount(0, $media->getRejected(), 'not rejected');
+        self::assertCount(1, $media->getSent(), 'only the original send, no retry re-send');
+        self::assertCount(0, $failed->getSent(), 'nothing in the failed transport');
     }
 
     public function testProcessTrackMarksRenamedPngFailed(): void
@@ -109,11 +126,7 @@ final class MediaHandlersTest extends TestCase
         $png = $this->fx->png();
         $track = $this->kit->track($png);
 
-        try {
-            ($this->trackHandler())(new ProcessTrack($track->getId()->toRfc4122()));
-            self::fail('expected UnrecoverableMessageHandlingException');
-        } catch (UnrecoverableMessageHandlingException) {
-        }
+        ($this->trackHandler())(new ProcessTrack($track->getId()->toRfc4122()));
 
         self::assertSame(MediaStatus::Failed, $track->getStatus());
         self::assertSame(FailureReason::InvalidMedia, $track->getFailureReason());
@@ -123,11 +136,53 @@ final class MediaHandlersTest extends TestCase
 
     public function testProcessTrackIgnoresDeletedTrackAndBadIds(): void
     {
-        $handler = $this->trackHandler();
-        $handler(new ProcessTrack(Uuid::v7()->toRfc4122()));
+        [$media, $failed] = $this->consumeOnce(new ProcessTrack(Uuid::v7()->toRfc4122()));
+        self::assertCount(1, $media->getAcknowledged());
 
-        $this->expectException(UnrecoverableMessageHandlingException::class);
-        $handler(new ProcessTrack('not-a-uuid'));
+        [$media, $failed] = $this->consumeOnce(new ProcessTrack('not-a-uuid'));
+        self::assertCount(1, $media->getAcknowledged());
+        self::assertCount(0, $failed->getSent());
+    }
+
+    /**
+     * Runs one message through a real Messenger Worker wired like prod (retry
+     * strategy 2 retries, failure transport), on in-memory transports.
+     *
+     * @return array{InMemoryTransport, InMemoryTransport}
+     */
+    private function consumeOnce(object $message): array
+    {
+        $media = new InMemoryTransport();
+        $failed = new InMemoryTransport();
+        $media->send(new Envelope($message));
+
+        $bus = new MessageBus([new HandleMessageMiddleware(new HandlersLocator([ProcessTrack::class => [$this->trackHandler()]]))]);
+        $dispatcher = new EventDispatcher();
+        $map = static fn (array $services): ContainerInterface => new class($services) implements ContainerInterface {
+            /** @param array<string, object> $s */
+            public function __construct(private readonly array $s)
+            {
+            }
+
+            public function get(string $id): object
+            {
+                return $this->s[$id];
+            }
+
+            public function has(string $id): bool
+            {
+                return isset($this->s[$id]);
+            }
+        };
+        // Retries are re-sent to the receiver's own transport; final failures go
+        // to the failure transport configured for that receiver (as in prod).
+        $dispatcher->addSubscriber(new SendFailedMessageForRetryListener($map(['media' => $media]), $map(['media' => new MultiplierRetryStrategy(2, 0)])));
+        $dispatcher->addSubscriber(new SendFailedMessageToFailureTransportListener($map(['media' => $failed])));
+        $dispatcher->addSubscriber(new StopWorkerOnMessageLimitListener(1));
+
+        new Worker(['media' => $media], $bus, $dispatcher)->run(['sleep' => 0]);
+
+        return [$media, $failed];
     }
 
     public function testFinalFailureMarksProcessingTrackAsProcessingError(): void

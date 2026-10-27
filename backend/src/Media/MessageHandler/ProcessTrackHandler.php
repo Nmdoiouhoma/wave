@@ -18,7 +18,6 @@ use App\Storage\StorageArea;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
-use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -26,9 +25,10 @@ use Symfony\Component\Uid\Uuid;
  * (CONVENTIONS §8, DATA_MODEL §14).
  *
  * Idempotent: a redelivered message for a track that is gone or no longer
- * `processing` is a no-op. Rejected uploads mark the track failed and are not
- * retried; transient failures are retried, and the final failure marks the
- * track `processing_error` (MarkMediaFailedOnFinalFailure).
+ * `processing` is a no-op. Rejected uploads mark the track failed and the
+ * message is acknowledged (FB-10: never an error, never in `failed`);
+ * infrastructure failures are retried, and the final one marks the track
+ * `processing_error` (MarkMediaFailedOnFinalFailure).
  */
 #[AsMessageHandler]
 final class ProcessTrackHandler
@@ -44,7 +44,10 @@ final class ProcessTrackHandler
     public function __invoke(ProcessTrack $message): void
     {
         if (!Uuid::isValid($message->trackId)) {
-            throw new UnrecoverableMessageHandlingException('ProcessTrack: invalid track id');
+            // Malformed message: nothing to retry, nothing to mark. Acknowledge.
+            $this->logger->error('ProcessTrack: invalid track id, dropped', ['trackId' => $message->trackId]);
+
+            return;
         }
         $trackId = Uuid::fromString($message->trackId);
         $context = ['trackId' => $trackId->toRfc4122()];
@@ -59,9 +62,13 @@ final class ProcessTrackHandler
         $rawKey = $track->getRawKey();
         if (null === $rawKey || !$this->storage->exists(StorageArea::Private, $rawKey)) {
             $this->fail($trackId, FailureReason::ProcessingError, 'quarantine object missing', $context);
+
+            return;
         }
         if ($this->storage->size(StorageArea::Private, $rawKey) > TrackAudioProcessor::MAX_MP4_SIZE_BYTES) {
             $this->fail($trackId, FailureReason::TooLarge, 'quarantine object too large', $context);
+
+            return;
         }
 
         $audioKey = MediaKeys::trackAudio($trackId->toRfc4122());
@@ -74,6 +81,8 @@ final class ProcessTrackHandler
                 $durationMs = $this->audio->process($source, $target);
             } catch (MediaRejected $e) {
                 $this->fail($trackId, $e->reason, $e->getMessage(), $context);
+
+                return; // temp files cleaned by the finally below
             }
 
             $stream = fopen($target, 'r');
@@ -123,9 +132,14 @@ final class ProcessTrackHandler
     }
 
     /**
+     * Final rejection = business outcome (FB-10): mark the track failed and
+     * let the handler return, so the message is acknowledged normally (no
+     * retry, nothing in the `failed` transport, no CRITICAL log). Only
+     * infrastructure errors (storage, DB) propagate and get retried.
+     *
      * @param array<string, mixed> $context
      */
-    private function fail(Uuid $trackId, FailureReason $reason, string $detail, array $context): never
+    private function fail(Uuid $trackId, FailureReason $reason, string $detail, array $context): void
     {
         $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($trackId, $reason): void {
             $track = LockedFind::find($em, Track::class, $trackId);
@@ -133,8 +147,6 @@ final class ProcessTrackHandler
                 $track->markFailed($reason);
             }
         });
-        $this->logger->notice('ProcessTrack: failed', $context + ['reason' => $reason->value, 'detail' => $detail]);
-
-        throw new UnrecoverableMessageHandlingException(\sprintf('ProcessTrack %s: %s', $context['trackId'] ?? '', $detail));
+        $this->logger->notice('ProcessTrack: rejected', $context + ['reason' => $reason->value, 'detail' => $detail]);
     }
 }
