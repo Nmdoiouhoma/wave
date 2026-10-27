@@ -135,19 +135,25 @@ export function Toggle({
   disabled?: boolean;
 }) {
   const id = useId();
+  const descId = description ? `${id}-desc` : undefined;
   return (
     <div className="bg-surface-2 ring-line flex items-center justify-between gap-4 rounded-xl px-4 py-3 ring-1">
       <div>
         <label htmlFor={id} className="text-sm font-medium">
           {label}
         </label>
-        {description && <p className="text-faint text-xs">{description}</p>}
+        {description && (
+          <p id={descId} className="text-faint mt-0.5 text-xs">
+            {description}
+          </p>
+        )}
       </div>
       <button
         id={id}
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-describedby={descId}
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cx(

@@ -12,7 +12,8 @@ import { useUserArtists } from '@/api/queries/users';
 import type { Track, UpdateTrackRequest, Visibility } from '@/api/types';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
-import { SelectField, TextField, Toggle } from '@/components/ui/Field';
+import { SelectField, TextField } from '@/components/ui/Field';
+import { AllowClipsField } from '@/features/tracks/AllowClipsField';
 import { EditIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/ui/icons';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Avatar, Cover } from '@/components/ui/Media';
@@ -215,8 +216,8 @@ function OwnerPanel({ track, refetch }: { track: Track; refetch: () => unknown }
           <option value="public">Public</option>
           <option value="private">Privé</option>
         </SelectField>
-        <Toggle
-          label="Autoriser les extraits"
+        <AllowClipsField
+          visibility={form.visibility}
           checked={form.allowClips}
           onChange={(v) => setForm({ ...form, allowClips: v })}
         />

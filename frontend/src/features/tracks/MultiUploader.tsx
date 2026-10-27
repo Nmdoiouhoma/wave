@@ -9,7 +9,8 @@ import { useUserArtists } from '@/api/queries/users';
 import type { Genre, Track, Visibility } from '@/api/types';
 import { Alert } from '@/components/ui/Alert';
 import { Button, IconButton } from '@/components/ui/Button';
-import { SelectField, Toggle } from '@/components/ui/Field';
+import { SelectField } from '@/components/ui/Field';
+import { AllowClipsField } from '@/features/tracks/AllowClipsField';
 import { cx } from '@/components/ui/cx';
 import { CheckIcon, CloseIcon, MusicIcon, PlayIcon, UploadIcon } from '@/components/ui/icons';
 import { ProgressBar } from '@/components/ui/ProgressBar';
@@ -212,9 +213,8 @@ export function MultiUploader({ artist, initialArtistId, onProgressChange }: Mul
                 </label>
               ))}
             </div>
-            <Toggle
-              label="Autoriser les extraits"
-              description="D’autres membres pourront utiliser ces titres dans leurs posts."
+            <AllowClipsField
+              visibility={visibility}
               checked={allowClips}
               onChange={setAllowClips}
             />
