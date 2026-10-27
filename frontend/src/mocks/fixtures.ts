@@ -47,7 +47,7 @@ export interface MockTrack {
   coverUrl: string | null;
   durationMs: number | null;
   status: MediaStatus;
-  failureReason: FailureReason;
+  failureReason: FailureReason | 'no_audio';
   visibility: Visibility;
   allowClips: boolean;
   moderation: 'visible' | 'hidden';
@@ -58,7 +58,8 @@ export interface MockTrack {
   /** Epoch ms when the fake worker finishes; only while `processing`. */
   processAt?: number;
   /** Outcome applied at `processAt`. */
-  processOutcome?: FailureReason;
+  /** Includes FB-10 `no_audio` (not yet in the contract enum). */
+  processOutcome?: FailureReason | 'no_audio';
 }
 
 export const GENRES = [

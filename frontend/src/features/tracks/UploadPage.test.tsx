@@ -142,7 +142,28 @@ describe('upload page (W-62/W-63)', () => {
     ).toBeInTheDocument();
     await act(() => vi.advanceTimersByTimeAsync(3_100));
     expect(
-      await screen.findByText('Échec : Le fichier n’est pas un audio valide.'),
+      await screen.findByText(
+        'Échec : Ce fichier est illisible ou n’est pas un format audio/vidéo pris en charge (MP3, M4A, AAC, MP4).',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('silent video: explains there is no sound (FB-10)', async () => {
+    mockConfig.trackProcessingMs = 0;
+    await loginAs('lea@wave.local');
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderRoute(<UploadPage />, { url: '/?artist=lea-martin' });
+    await user.upload(await waitFor(picker), audioFile('silent-clip.mp4', 'video/mp4'));
+    await waitForGenres();
+    await user.selectOptions(screen.getByLabelText('Genre pour tous les fichiers'), 'ambient');
+    await user.click(screen.getByRole('button', { name: 'Envoyer le morceau' }));
+    await screen.findByText('Fichier reçu, traitement de l’audio en cours…');
+    await act(() => vi.advanceTimersByTimeAsync(3_100));
+    expect(
+      await screen.findByText(
+        'Échec : Cette vidéo ne contient pas de son : il n’y a rien à importer.',
+      ),
     ).toBeInTheDocument();
   });
 });

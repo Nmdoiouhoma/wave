@@ -720,13 +720,15 @@ export const handlers = [
       audio: pickAudio(upload.filename + Date.now()),
       processAt: Date.now() + mockConfig.trackProcessingMs,
       // Fake worker outcomes driven by the file name (demo/testing).
-      processOutcome: name.includes('fail')
-        ? 'invalid_media'
-        : name.includes('long')
-          ? 'too_long'
-          : name.includes('codec')
-            ? 'unsupported_codec'
-            : null,
+      processOutcome: name.includes('silent')
+        ? 'no_audio'
+        : name.includes('fail')
+          ? 'invalid_media'
+          : name.includes('long')
+            ? 'too_long'
+            : name.includes('codec')
+              ? 'unsupported_codec'
+              : null,
     };
     db.state.tracks.push(track);
     persist();

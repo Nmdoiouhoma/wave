@@ -56,14 +56,34 @@ export function errorMessage(error: unknown): string {
   return MESSAGES[error.code] ?? MESSAGES.internal_error!;
 }
 
-const FAILURES: Record<NonNullable<FailureReason>, string> = {
-  invalid_media: 'Le fichier n’est pas un audio valide.',
+/**
+ * FB-10 `no_audio` is not in openapi.yaml's FailureReason enum yet: handled as a string fallback
+ * until the architect adds it (then it is simply part of the generated union).
+ */
+export type KnownFailureReason = NonNullable<FailureReason> | 'no_audio';
+
+const FAILURES: Record<KnownFailureReason, string | ((video: boolean) => string)> = {
+  invalid_media:
+    'Ce fichier est illisible ou n’est pas un format audio/vidéo pris en charge (MP3, M4A, AAC, MP4).',
+  no_audio: (video) =>
+    video
+      ? 'Cette vidéo ne contient pas de son : il n’y a rien à importer.'
+      : 'Ce fichier ne contient pas de son.',
   unsupported_codec: 'Codec non pris en charge : utilise MP3 ou AAC.',
-  too_long: 'Le titre dépasse la durée maximale de 10 minutes.',
-  too_large: 'Le fichier dépasse la taille maximale de 30 Mo.',
+  too_long: 'Le morceau dépasse la durée maximale de 10 minutes.',
+  too_large: (video) =>
+    video
+      ? 'Le fichier dépasse la taille maximale de 200 Mo pour un MP4.'
+      : 'Le fichier dépasse la taille maximale (30 Mo, 200 Mo pour un MP4).',
   processing_error: 'Le traitement a échoué. Relance l’import.',
 };
 
-export function failureMessage(reason: FailureReason): string {
-  return reason ? FAILURES[reason] : 'Le traitement a échoué.';
+/**
+ * `video`: whether the source was a video (known client-side from the picked file's extension);
+ * unknown (e.g. track page) → the neutral wording.
+ */
+export function failureMessage(reason: FailureReason | string, { video = false } = {}): string {
+  const entry = reason ? FAILURES[reason as KnownFailureReason] : undefined;
+  if (!entry) return 'Le traitement a échoué.';
+  return typeof entry === 'function' ? entry(video) : entry;
 }

@@ -16,7 +16,7 @@ import { CheckIcon, CloseIcon, MusicIcon, PlayIcon, UploadIcon } from '@/compone
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { useVerifiedGate } from '@/features/auth/useVerifiedGate';
 import { failureMessage } from '@/lib/errorMessages';
-import { TRACK_ACCEPT } from '@/lib/files';
+import { fileExtension, TRACK_ACCEPT } from '@/lib/files';
 import { formatBytes, formatDuration } from '@/lib/format';
 import { playerStore } from '@/stores/player';
 import { isActive, useUploadQueue, type UploadItem } from './useUploadQueue';
@@ -364,14 +364,16 @@ function UploadRow({
             </Button>
           </div>
         )}
-        {item.status === 'uploaded' && item.track && <ProcessingLine track={item.track} />}
+        {item.status === 'uploaded' && item.track && (
+          <ProcessingLine track={item.track} video={fileExtension(item.file.name) === 'mp4'} />
+        )}
       </div>
     </li>
   );
 }
 
 /** After the 202: follows processing (poll 3 s, up to 10 min). */
-function ProcessingLine({ track: initial }: { track: Track }) {
+function ProcessingLine({ track: initial, video }: { track: Track; video: boolean }) {
   const { data: track = initial } = useTrack(initial.id, { initialData: initial });
   const [timedOut, setTimedOut] = useState(false);
   useEffect(() => {
@@ -402,7 +404,11 @@ function ProcessingLine({ track: initial }: { track: Track }) {
     );
   }
   if (track.status === 'failed') {
-    return <p className="text-danger text-xs">Échec : {failureMessage(track.failureReason)}</p>;
+    return (
+      <p className="text-danger text-xs">
+        Échec : {failureMessage(track.failureReason, { video })}
+      </p>
+    );
   }
   return (
     <div className="flex flex-col gap-1.5">

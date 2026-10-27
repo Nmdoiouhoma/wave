@@ -225,7 +225,7 @@ export function tick(now = Date.now()): void {
   let changed = false;
   for (const tr of db.state.tracks) {
     if (tr.status === 'processing' && tr.processAt !== undefined && tr.processAt <= now) {
-      const outcome: FailureReason = tr.processOutcome ?? null;
+      const outcome = tr.processOutcome ?? null;
       if (outcome) {
         tr.status = 'failed';
         tr.failureReason = outcome;
@@ -341,7 +341,8 @@ export function toTrack(tr: MockTrack, viewer: MockUser | null): Track {
     coverUrl: tr.coverUrl,
     durationMs: tr.durationMs,
     status: tr.status,
-    failureReason: tr.failureReason,
+    // Contract enum lags FB-10 `no_audio`: the payload is what the backend will send.
+    failureReason: tr.failureReason as FailureReason,
     visibility: tr.visibility,
     allowClips: tr.allowClips,
     moderation: tr.moderation,

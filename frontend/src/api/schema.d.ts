@@ -544,7 +544,7 @@ export interface paths {
     };
     /**
      * List genres
-     * @description Fixed list, ordered by `position`, not paginated. Cacheable (`Cache-Control: public, max-age=86400`).
+     * @description Fixed list of 45 genres (French names), ordered by `position`, not paginated. Cacheable (`Cache-Control: public, max-age=86400`).
      */
     get: operations['listGenres'];
     put?: never;
@@ -1322,9 +1322,18 @@ export interface components {
     MediaUrl: string | null;
     /** @enum {string} */
     MediaStatus: 'processing' | 'ready' | 'failed';
-    /** @enum {string|null} */
+    /**
+     * @description `invalid_media` = unreadable or disguised file; `no_audio` = readable file without any audio stream (e.g. a silent video); `processing_error` = internal failure after retries.
+     * @enum {string|null}
+     */
     FailureReason:
-      'invalid_media' | 'unsupported_codec' | 'too_long' | 'too_large' | 'processing_error' | null;
+      | 'invalid_media'
+      | 'no_audio'
+      | 'unsupported_codec'
+      | 'too_long'
+      | 'too_large'
+      | 'processing_error'
+      | null;
     /** @enum {string} */
     Visibility: 'public' | 'private';
     /** @enum {string} */
@@ -1443,9 +1452,15 @@ export interface components {
       bio?: string | null;
     };
     Genre: {
-      /** @example hip-hop */
+      /**
+       * @description Stable slug.
+       * @example rap-fr
+       */
       id: string;
-      /** @example Hip-Hop */
+      /**
+       * @description French display name.
+       * @example Rap français
+       */
       name: string;
     };
     Track: {
