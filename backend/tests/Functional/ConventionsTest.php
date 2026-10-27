@@ -48,9 +48,11 @@ final class ConventionsTest extends WaveApiTestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertStringStartsWith('application/json', $response->getHeaders()['content-type'][0]);
         $genres = $this->json($response);
-        self::assertCount(25, $genres);
-        self::assertSame(['id' => 'pop', 'name' => 'Pop'], $genres[0]);
-        self::assertSame(['id' => 'other', 'name' => 'Other'], $genres[24]);
+        self::assertCount(45, $genres);
+        self::assertSame(['rap', 'rap-fr', 'hip-hop', 'pop', 'afro', 'rnb'], \array_slice(array_column($genres, 'id'), 0, 6), 'FB-08 order');
+        self::assertSame(['id' => 'other', 'name' => 'Autre'], $genres[44]);
+        self::assertContains(['id' => 'electronic', 'name' => 'Électro'], $genres);
+        self::assertContains(['id' => 'beats', 'name' => 'Beats / Prods'], $genres);
         $cacheControl = $response->getHeaders()['cache-control'][0];
         self::assertStringContainsString('public', $cacheControl);
         self::assertStringContainsString('max-age=86400', $cacheControl);

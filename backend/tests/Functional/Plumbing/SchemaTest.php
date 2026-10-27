@@ -48,6 +48,6 @@ final class SchemaTest extends WaveApiTestCase
                 $db->executeStatement('ROLLBACK TO SAVEPOINT chk');
             }
         }
-        self::assertSame(25, (int) $db->fetchOne('SELECT count(*) FROM genre'));
+        self::assertSame(45, (int) $db->fetchOne('SELECT count(*) FROM genre'));
     }
 }
