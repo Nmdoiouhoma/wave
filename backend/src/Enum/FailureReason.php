@@ -11,4 +11,5 @@ enum FailureReason: string
     case TooLong = 'too_long';
     case TooLarge = 'too_large';
     case ProcessingError = 'processing_error';
+    case NoAudio = 'no_audio';
 }

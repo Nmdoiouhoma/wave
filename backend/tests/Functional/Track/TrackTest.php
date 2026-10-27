@@ -147,6 +147,18 @@ final class TrackTest extends WaveApiTestCase
         self::assertCount(0, $this->queued('media'));
     }
 
+    public function testNoAudioFailureIsExposed(): void
+    {
+        $alice = $this->createUser('alice');
+        $track = $this->createTrack($this->createArtist($alice), ready: false);
+        $track = $this->reload($track);
+        $track->markFailed(\App\Enum\FailureReason::NoAudio);
+        $this->em()->flush();
+
+        $body = $this->json($this->api('GET', '/api/v1/tracks/'.$track->getId(), $alice));
+        self::assertSame(['failed', 'no_audio'], [$body['status'], $body['failureReason']]);
+    }
+
     public function testMarkReadyFromMediaHandlerRecountsArtist(): void
     {
         $alice = $this->createUser('alice');
