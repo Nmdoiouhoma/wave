@@ -110,10 +110,12 @@ Auto-creation: on track upload with no `artistId` and the user owns 0 artists �
 | Column | Type | Null | Rules |
 |---|---|---|---|
 | id | varchar(32) PK | no | slug, e.g. `hip-hop` |
-| name | varchar(50) | no | display name (English) |
-| position | smallint | no | display order |
+| name | varchar(50) | no | display name, **French** (FB-08), e.g. `Rap français`, `Électro` |
+| position | smallint | no | display order (0 first); `GET /genres` sorts by it |
 
-Seeded **by migration** (not fixtures), fixed list: `pop, rock, hip-hop, rnb, electronic, house, techno, drum-and-bass, jazz, blues, classical, folk, country, metal, punk, reggae, latin, afrobeats, soul, funk, lofi, ambient, soundtrack, world, other`.
+Seeded **by migration** (not fixtures): 25 genres in `Version20261024000100`, 20 added + French names + reorder in `Version20261027000600` (FB-08). Slugs never change (tracks keep their genre); a removed genre must remap its tracks (FK RESTRICT).
+45 genres, in `position` order: `rap, rap-fr, hip-hop, pop, afro, rnb, afrobeats, trap, drill, amapiano, dancehall, reggaeton, zouk, kompa, coupe-decale, rai, variete-fr, chanson, electronic, house, techno, edm, drum-and-bass, lofi, beats, instrumental, rock, indie, metal, punk, jazz, blues, soul, funk, gospel, reggae, latin, k-pop, classical, folk, country, ambient, soundtrack, world, other`.
+The migration is the source of truth for display names.
 
 ## 6. Track — `track`
 

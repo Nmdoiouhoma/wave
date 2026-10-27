@@ -667,7 +667,7 @@ paths:
       tags: [genres]
       operationId: listGenres
       summary: List genres
-      description: 'Fixed list, ordered by `position`, not paginated. Cacheable (`Cache-Control: public, max-age=86400`).'
+      description: 'Fixed list of 45 genres (French names), ordered by `position`, not paginated. Cacheable (`Cache-Control: public, max-age=86400`).'
       security: []
       responses:
         '200':
@@ -1955,8 +1955,8 @@ components:
       type: object
       required: [id, name]
       properties:
-        id: { type: string, example: hip-hop }
-        name: { type: string, example: Hip-Hop }
+        id: { type: string, example: rap-fr, description: Stable slug. }
+        name: { type: string, example: 'Rap français', description: French display name. }
 
     # ── tracks ──
     Track:
