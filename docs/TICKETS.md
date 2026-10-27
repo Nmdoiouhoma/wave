@@ -104,7 +104,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 
 **W-61 · media-infra · W-60** Upload path and MP4 processing (FB-04)
 - nginx `location = /upload/wave-private` POST-only, 201m, no request buffering; GET/HEAD/other paths under `/upload/` → 404 (test that a known private audio key is **not** readable there).
-- `ProcessTrack` accepts MP4/MOV with or without video: output audio-only m4a (ffprobe shows no video stream); MP4 without audio → failed `invalid_media`; 40 MB MP3 renamed `.mp4` → failed `too_large`; 11-min MP4 → failed `too_long`.
+- `ProcessTrack` accepts MP4/MOV with or without video: output audio-only m4a (ffprobe shows no video stream); MP4 without audio → failed `no_audio`; 40 MB MP3 renamed `.mp4` → failed `too_large`; 11-min MP4 → failed `too_long`.
 - Worker temp on a disk volume (`MEDIA_TMP_DIR`), 200 MB file processed within the 1G memory limit; `CleanupQuarantine` expires pending uploads > 2 h and deletes their objects.
 - `.env.example` gains `S3_PRESIGN_ENDPOINT`, `MEDIA_TMP_DIR`, `VITE_MAILPIT_URL`; nginx `POST /api/v1/tracks` body limit back to 1m.
 

@@ -26,7 +26,7 @@ Source of truth for the PostgreSQL 16 schema. API shapes live in `openapi.yaml`;
 | `MediaStatus` | `processing`, `ready`, `failed` |
 | `Visibility` | `public`, `private` |
 | `Moderation` | `visible`, `hidden` |
-| `FailureReason` | `invalid_media`, `unsupported_codec`, `too_long`, `too_large`, `processing_error` |
+| `FailureReason` | `invalid_media` (unreadable/disguised), `no_audio` (no audio stream, e.g. silent video), `unsupported_codec`, `too_long`, `too_large`, `processing_error` |
 | `VisualType` | `image`, `video` |
 | `ListenSource` | `player`, `feed` |
 | `AffinityKind` | `genre`, `artist` |

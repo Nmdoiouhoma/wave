@@ -1779,7 +1779,8 @@ components:
       enum: [processing, ready, failed]
     FailureReason:
       type: [string, 'null']
-      enum: [invalid_media, unsupported_codec, too_long, too_large, processing_error, null]
+      enum: [invalid_media, no_audio, unsupported_codec, too_long, too_large, processing_error, null]
+      description: '`invalid_media` = unreadable or disguised file; `no_audio` = readable file without any audio stream (e.g. a silent video); `processing_error` = internal failure after retries.'
     Visibility:
       type: string
       enum: [public, private]
