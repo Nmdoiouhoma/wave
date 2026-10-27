@@ -33,7 +33,7 @@ export function HomePage() {
         <h1 className="text-3xl font-bold tracking-tight">
           {greeting()}, <span className="text-wave">{firstName}</span>
         </h1>
-        <p className="text-muted mt-1">Votre musique, vos artistes, au même endroit.</p>
+        <p className="text-muted mt-1">Ta musique, tes artistes, au même endroit.</p>
         <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
           {shortcuts.map(({ to, label, icon: Icon }) => (
             <Link
@@ -53,7 +53,7 @@ export function HomePage() {
       {!!artists.data?.length && (
         <section aria-labelledby="home-artists">
           <h2 id="home-artists" className="mb-3 text-lg font-semibold">
-            Vos artistes
+            Tes artistes
           </h2>
           <ul className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-2 md:mx-0 md:px-0">
             {artists.data.map((a) => (
@@ -74,7 +74,7 @@ export function HomePage() {
       <section aria-labelledby="home-tracks">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 id="home-tracks" className="text-lg font-semibold">
-            Vos titres
+            Tes morceaux
           </h2>
           {items.length > 0 && <PlayAllButton tracks={items} />}
         </div>
@@ -84,15 +84,15 @@ export function HomePage() {
           <ErrorState error={tracks.error} onRetry={() => void tracks.refetch()} />
         ) : items.length ? (
           <TrackList
-            label="Vos titres"
+            label="Tes morceaux"
             tracks={items}
             hasMore={tracks.hasNextPage}
             loadingMore={tracks.isFetchingNextPage}
             onLoadMore={() => void tracks.fetchNextPage()}
           />
         ) : (
-          <EmptyState icon={<MusicIcon size={28} />} title="Votre bibliothèque est vide">
-            <p>Importez votre premier titre pour l’écouter partout.</p>
+          <EmptyState icon={<MusicIcon size={28} />} title="Ta bibliothèque est vide">
+            <p>Importe ton premier morceau pour l’écouter partout.</p>
             <ButtonLink to="/upload" size="sm" className="mt-3">
               <UploadIcon size={16} /> Importer
             </ButtonLink>

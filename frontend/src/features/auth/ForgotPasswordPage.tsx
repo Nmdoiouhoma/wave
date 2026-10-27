@@ -30,7 +30,7 @@ export function ForgotPasswordPage() {
   return (
     <AuthLayout
       title="Mot de passe oublié"
-      subtitle="Indiquez votre adresse e-mail, nous vous enverrons un lien."
+      subtitle="Indique ton adresse e-mail, nous t’enverrons un lien."
       footer={
         <Link to="/login" className="text-fg font-semibold hover:underline">
           Retour à la connexion

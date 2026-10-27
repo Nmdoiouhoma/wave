@@ -53,7 +53,7 @@ export function VerifyEmailPage() {
         )}
         {verify.isSuccess && (
           <Alert tone="success">
-            Adresse e-mail confirmée. Vous pouvez maintenant importer des titres et gérer vos
+            Adresse e-mail confirmée. Tu peux maintenant importer des morceaux et gérer tes
             artistes.
           </Alert>
         )}
@@ -61,7 +61,7 @@ export function VerifyEmailPage() {
           <Alert tone="error">
             {errorMessage(verify.error)}
             {authenticated &&
-              ' Vous pouvez demander un nouveau lien depuis le bandeau en haut de l’application.'}
+              ' Tu peux demander un nouveau lien depuis le bandeau en haut de l’application.'}
           </Alert>
         )}
         {!verify.isPending && cta}

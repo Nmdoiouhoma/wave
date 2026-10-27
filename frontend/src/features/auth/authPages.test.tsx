@@ -107,7 +107,7 @@ describe('forgot password', () => {
     );
     const limited = await submit('lea@wave.local');
     expect(new Set([known, unknown, limited]).size).toBe(1);
-    expect(db.state.outbox.filter((m) => m.subject.includes('Réinitialisez'))).toHaveLength(1);
+    expect(db.state.outbox.filter((m) => m.subject.includes('Réinitialise'))).toHaveLength(1);
   });
 });
 
@@ -167,9 +167,7 @@ describe('emailed-token pages', () => {
     await user.type(screen.getByLabelText('Nouveau mot de passe'), 'nouveaumotdepasse');
     await user.type(screen.getByLabelText('Confirmer le mot de passe'), 'nouveaumotdepasse');
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
-    expect(
-      await screen.findByText(/Votre nouveau mot de passe est enregistré/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Ton nouveau mot de passe est enregistré/)).toBeInTheDocument();
     expect(db.state.users.find((u) => u.username === 'kenji')?.password).toBe('nouveaumotdepasse');
   });
 

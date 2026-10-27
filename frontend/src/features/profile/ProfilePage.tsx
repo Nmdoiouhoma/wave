@@ -109,7 +109,7 @@ function UserTracks({ username, isMe }: { username: string; isMe: boolean }) {
     return (
       <EmptyState
         icon={<MusicIcon size={28} />}
-        title={isMe ? 'Vous n’avez encore rien importé' : 'Aucun titre public'}
+        title={isMe ? 'Tu n’as encore rien importé' : 'Aucun titre public'}
       >
         {isMe && (
           <ButtonLink to="/upload" size="sm" className="mt-2">

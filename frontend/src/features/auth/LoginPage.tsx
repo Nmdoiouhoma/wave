@@ -31,7 +31,7 @@ export function LoginPage() {
   return (
     <AuthLayout
       title="Bon retour"
-      subtitle="Connectez-vous pour retrouver votre musique."
+      subtitle="Connecte-toi pour retrouver ta musique."
       footer={
         <>
           Pas encore de compte ?{' '}

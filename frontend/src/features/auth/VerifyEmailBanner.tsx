@@ -29,12 +29,12 @@ export function VerifyEmailBanner() {
       <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-3 gap-y-1">
         <MailIcon size={18} className="text-warning shrink-0" />
         <p className="text-fg/90 min-w-0 flex-1">
-          Confirmez votre adresse <strong className="font-semibold">{me.email}</strong> pour
-          importer des titres et gérer vos artistes.
+          Confirme ton adresse <strong className="font-semibold">{me.email}</strong> pour importer
+          des morceaux et gérer tes artistes.
         </p>
         <div aria-live="polite" className="flex items-center gap-2">
           {resend.isSuccess ? (
-            <span className="text-success">E-mail envoyé, vérifiez votre boîte de réception.</span>
+            <span className="text-success">E-mail envoyé, vérifie ta boîte de réception.</span>
           ) : resend.isError ? (
             <span className="text-danger">{errorMessage(resend.error)}</span>
           ) : null}

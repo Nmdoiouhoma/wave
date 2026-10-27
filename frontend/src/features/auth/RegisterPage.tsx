@@ -15,7 +15,7 @@ function validate(v: Record<FieldName, string>): Partial<Record<FieldName, strin
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email.trim())) out.email = 'Adresse e-mail invalide.';
   if (!/^[a-z0-9_.]{3,30}$/.test(v.username))
     out.username = '3 à 30 caractères : minuscules, chiffres, « _ » ou « . ».';
-  if (!v.displayName.trim()) out.displayName = 'Indiquez le nom affiché sur votre profil.';
+  if (!v.displayName.trim()) out.displayName = 'Indique le nom affiché sur ton profil.';
   else if (v.displayName.length > 50) out.displayName = '50 caractères maximum.';
   if (v.password.length < 10) out.password = 'Au moins 10 caractères.';
   else if (v.password.length > 128) out.password = '128 caractères maximum.';
@@ -59,7 +59,7 @@ export function RegisterPage() {
   return (
     <AuthLayout
       title="Créer un compte"
-      subtitle="Importez vos titres, suivez vos artistes préférés."
+      subtitle="Importe tes morceaux, suis tes artistes préférés."
       footer={
         <>
           Déjà inscrit·e ?{' '}
@@ -90,7 +90,7 @@ export function RegisterPage() {
           error={errorOf('username')}
           hint={
             values.username
-              ? `Votre profil : /u/${values.username}`
+              ? `Ton profil : /u/${values.username}`
               : 'Minuscules, chiffres, « _ » et « . ».'
           }
         />

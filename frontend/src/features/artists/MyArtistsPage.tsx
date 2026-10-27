@@ -45,7 +45,7 @@ export function MyArtistsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Mes artistes</h1>
           <p className="text-muted mt-1 text-sm">
-            {list.length}/{MAX_ARTISTS} · chaque titre est publié sous l’un de vos artistes.
+            {list.length}/{MAX_ARTISTS} · chaque morceau est publié sous l’un de tes artistes.
           </p>
         </div>
         {gate || full ? (
@@ -65,7 +65,7 @@ export function MyArtistsPage() {
       )}
       {full && (
         <p className="text-faint mt-2 text-xs">
-          Vous avez atteint la limite de {MAX_ARTISTS} artistes.
+          Tu as atteint la limite de {MAX_ARTISTS} artistes.
         </p>
       )}
 

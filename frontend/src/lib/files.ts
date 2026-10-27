@@ -51,7 +51,7 @@ export function trackMaxBytes(file: File): number {
 /** Returns a French error message, or null when the file passes the pre-checks. */
 export function checkTrackFile(file: File): string | null {
   if (!trackContentType(file)) {
-    return 'Format non pris en charge : choisissez un fichier MP3, AAC/M4A ou MP4.';
+    return 'Format non pris en charge : choisis un fichier MP3, AAC/M4A ou MP4.';
   }
   if (file.size === 0) return 'Ce fichier est vide.';
   if (file.size > trackMaxBytes(file)) {

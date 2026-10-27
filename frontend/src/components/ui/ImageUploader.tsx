@@ -136,7 +136,7 @@ export function ImageUploader({
         {done && <Alert tone="success">Image mise à jour.</Alert>}
         {timedOut && !done && (
           <Alert tone="warning">
-            L’image n’a pas pu être traitée. Essayez avec un autre fichier.
+            L’image n’a pas pu être traitée. Essaie avec un autre fichier.
           </Alert>
         )}
         {error && <Alert tone="error">{error}</Alert>}

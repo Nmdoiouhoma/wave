@@ -7,5 +7,5 @@ import { useMe } from '@/api/queries/me';
 export function useVerifiedGate(action = 'faire cela'): string | null {
   const { data: me } = useMe();
   if (!me || me.emailVerified) return null;
-  return `Confirmez votre adresse e-mail pour ${action}.`;
+  return `Confirme ton adresse e-mail pour ${action}.`;
 }

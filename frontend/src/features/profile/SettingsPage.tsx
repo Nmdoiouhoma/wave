@@ -30,7 +30,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function SettingsPage() {
   const me = useCurrentUser();
   const meQuery = useMe();
-  const avatarGate = useVerifiedGate('changer votre avatar');
+  const avatarGate = useVerifiedGate('changer ton avatar');
   const uploadAvatar = useUploadMyAvatar();
   const deleteAvatar = useDeleteMyAvatar();
   const logout = useLogout();
@@ -162,7 +162,7 @@ function PasswordForm() {
       {message && <Alert tone="error">{message}</Alert>}
       {done && (
         <Alert tone="success">
-          Mot de passe modifié. Vos autres appareils devront se reconnecter.
+          Mot de passe modifié. Tes autres appareils devront se reconnecter.
         </Alert>
       )}
       <TextField

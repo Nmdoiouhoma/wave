@@ -35,7 +35,7 @@ export function ResetPasswordPage() {
       <AuthLayout title="Mot de passe modifié">
         <div className="flex flex-col gap-4">
           <Alert tone="success">
-            Votre nouveau mot de passe est enregistré. Par sécurité, toutes vos sessions ont été
+            Ton nouveau mot de passe est enregistré. Par sécurité, toutes tes sessions ont été
             fermées.
           </Alert>
           <ButtonLink to="/login" size="lg">
@@ -64,7 +64,7 @@ export function ResetPasswordPage() {
   return (
     <AuthLayout
       title="Nouveau mot de passe"
-      subtitle="Choisissez un mot de passe d’au moins 10 caractères."
+      subtitle="Choisis un mot de passe d’au moins 10 caractères."
       footer={
         <Link to="/login" className="text-fg font-semibold hover:underline">
           Retour à la connexion

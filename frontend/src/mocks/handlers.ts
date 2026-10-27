@@ -291,7 +291,7 @@ export const handlers = [
     db.state.users.push(user);
     sendMail(
       user.email,
-      'Confirmez votre adresse e-mail',
+      'Confirme ton adresse e-mail',
       `/verify-email?token=${issueAccountToken(user, 'verify_email')}`,
     );
     return openSession(user, 201);
@@ -358,7 +358,7 @@ export const handlers = [
     if (user && !user.suspended) {
       sendMail(
         user.email,
-        'Réinitialisez votre mot de passe',
+        'Réinitialise ton mot de passe',
         `/reset-password?token=${issueAccountToken(user, 'password_reset')}`,
       );
       persist();
@@ -410,7 +410,7 @@ export const handlers = [
     if (user.emailVerified) return problem(409, 'email_already_verified');
     sendMail(
       user.email,
-      'Confirmez votre adresse e-mail',
+      'Confirme ton adresse e-mail',
       `/verify-email?token=${issueAccountToken(user, 'verify_email')}`,
     );
     persist();

@@ -28,7 +28,7 @@ describe('upload page (W-62/W-63)', () => {
     await loginAs('nour@wave.local');
     renderRoute(<UploadPage />);
     expect(
-      await screen.findByText('Confirmez votre adresse e-mail pour importer des morceaux.'),
+      await screen.findByText('Confirme ton adresse e-mail pour importer des morceaux.'),
     ).toBeInTheDocument();
     expect(picker()).toBeDisabled();
   });
@@ -60,7 +60,7 @@ describe('upload page (W-62/W-63)', () => {
     ).toBeInTheDocument();
     expect(
       within(rows[3]!).getByText(
-        /Format non pris en charge : choisissez un fichier MP3, AAC\/M4A ou MP4/,
+        /Format non pris en charge : choisis un fichier MP3, AAC\/M4A ou MP4/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Envoyer le morceau' })).toBeInTheDocument();
@@ -119,7 +119,7 @@ describe('upload page (W-62/W-63)', () => {
     );
     expect(stats.max).toBeLessThanOrEqual(3);
     expect(stats.max).toBeGreaterThan(1);
-    const failed = screen.getByText(/Réessayez dans 2 min/).closest('li')!;
+    const failed = screen.getByText(/Réessaie dans 2 min/).closest('li')!;
     expect(within(failed).getByText('b.mp3', { exact: false })).toBeInTheDocument();
     expect(within(failed).getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
   });
