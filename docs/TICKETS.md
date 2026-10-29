@@ -154,8 +154,18 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - Follow button with optimistic count; followers/following lists with infinite scroll.
 - Like buttons on tracks/playlists, optimistic with rollback.
 
-**W-26 · qa-security · W-20..W-23** Phase 2 review
+**W-27 · backend · W-04, W-21** User search (FB-07)
+- `GET /search?type=users&q=` per contract: `beyonce` finds display name `Beyoncé`, `JEAN` finds `jean.dupont`, `jeam` finds `jean` (trigram), `q` of 1 char → 422, other/missing `type` → 422 until phase 4.
+- Ranking order asserted on a fixture (exact username > prefix > similarity > followersCount); suspended users and the caller never returned; `isFollowedByMe` correct without N+1.
+- Implemented behind `SearchProvider` (`PostgresSearchProvider`, users only) with offset cursor capped at 200; uses the trigram indexes of DATA_MODEL §2 (EXPLAIN in PR shows index use).
+
+**W-28 · frontend · W-27, W-25** User search screen
+- "Rechercher" entry in the nav (bottom bar on mobile) → search page; input debounced 300 ms, no request below 2 chars, previous request cancelled.
+- Results with avatar, names, follower count and follow/unfollow button (optimistic, shared cache with profile); infinite scroll; empty, error and 429 states.
+
+**W-26 · qa-security · W-20..W-23, W-27** Phase 2 review
 - IDOR tests: mutate another user's playlist (403), read private playlist (404), add someone's private track (404).
+- User search: no email or suspended account ever returned; `search` rate limits (60/min, 1000/day) enforced; cursor beyond 200 results rejected; tsquery/LIKE metacharacters (`%`, `_`, `:*`, `&`, `'`) do not error or widen matches.
 - Counter race test: 20 concurrent likes on one track → `likeCount` = 20.
 
 ## Phase 3 — Posts, vertical feed, comments, reports

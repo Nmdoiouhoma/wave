@@ -342,6 +342,7 @@ paths:
       tags: [me]
       operationId: listMyLikedPlaylists
       summary: List my liked playlists
+      description: Ordered by like date desc. Playlists no longer visible to me (made private, hidden) are omitted.
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -893,6 +894,7 @@ paths:
       description: |
         Sent once per play session (one session = one start of the track in the queue) when it ends: track end, skip, queue change, or page hide (`fetch(..., {keepalive: true})`; `sendBeacon` cannot carry the bearer header).
         The server decides whether it counts (rules in DATA_MODEL §11) and answers 200 either way.
+        Track not visible → 404; visible but not ready → 409 `track_not_ready`. Phase 2 implements `source=player`; `source=feed` lands with posts in phase 3.
       x-rate-limit: 120 per minute per user (bucket `listen`)
       requestBody:
         required: true
@@ -908,6 +910,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
@@ -1390,10 +1393,12 @@ paths:
       summary: Search
       description: |
         `SearchProvider` v1 = PostgreSQL FTS (`simple` + unaccent, prefix match on every token) + pg_trgm similarity.
-        Without `type`: every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
+        **Phase 2 (W-27, FB-07)**: only `type=users` is implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
+        **Users**: matches `username` and `displayName`, case- and accent-insensitive (`wave_unaccent(lower(...))`), a user matches if either field starts with `q` (prefix, also per word of displayName) or trigram similarity ≥ 0.3. Ranking: exact username match first, then prefix match, then `greatest(similarity(username), similarity(displayName))` desc, then `followersCount` desc, then id. Suspended users and the caller are excluded. Items carry `isFollowedByMe` for inline follow buttons.
+        Without `type` (phase 4): every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
         With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable).
         Only content visible to the caller is returned.
-      x-rate-limit: 60 per minute per user (bucket `search`)
+      x-rate-limit: 60 per minute and 1000 per day per user (bucket `search`; anti-scraping)
       parameters:
         - name: q
           in: query
@@ -1873,6 +1878,16 @@ components:
         username: { type: string }
         displayName: { type: string }
         avatarUrl: { $ref: '#/components/schemas/MediaUrl' }
+    UserListItem:
+      description: Used by followers/following lists and user search; enough for an inline follow button.
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          required: [followersCount, isMe, isFollowedByMe]
+          properties:
+            followersCount: { type: integer }
+            isMe: { type: boolean }
+            isFollowedByMe: { type: boolean }
     UserProfile:
       allOf:
         - $ref: '#/components/schemas/UserSummary'
@@ -2030,7 +2045,7 @@ components:
       properties:
         listenedMs: { type: integer, minimum: 0, maximum: 3600000, description: 'Actual audio time played (not wall clock, seeks excluded).' }
         source: { type: string, enum: [player, feed] }
-        postId: { type: string, format: uuid, description: Required when source=feed. }
+        postId: { type: string, format: uuid, description: 'Required when source=feed (phase 3); must be a playable post of this track, else 422. Forbidden with source=player.' }
     ListenResult:
       type: object
       required: [counted, playCount]
@@ -2289,7 +2304,7 @@ components:
       type: object
       required: [items, nextCursor]
       properties:
-        items: { type: array, items: { $ref: '#/components/schemas/UserSummary' } }
+        items: { type: array, items: { $ref: '#/components/schemas/UserListItem' } }
         nextCursor: { type: [string, 'null'] }
     ArtistPage:
       type: object
