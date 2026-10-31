@@ -1,0 +1,86 @@
+# Wave on one small ARM host: AWS t4g.small (2 vCPU Graviton, 2 GB RAM,
+# Ubuntu 24.04 arm64) with a 2 GB swapfile. Override of the prod-shaped base:
+#   docker compose -f compose.yaml -f compose.small.yaml up -d
+# (infra/deploy/README-deploy.md). Never merged with compose.override.yaml.
+#
+# Memory budget (limits; RSS in normal use is well below):
+#   postgres 320M + php 320M + worker 640M + worker-async 160M
+#   + minio 256M + nginx 64M = 1.76 GB, OS + dockerd ~0.3 GB; swap absorbs
+#   the rare moment where everything peaks together.
+# One media worker, concurrency 1: a 10-min / 200 MB MP4 takes ~2 min.
+# ffmpeg keeps its prlimits (768 MB address space = virtual, not RSS; its
+# measured RSS on a 720p 200 MB MP4 is < 200 MB).
+
+services:
+  php:
+    volumes:
+      - ./infra/php/fpm/zzz-wave-small.conf:/usr/local/etc/php-fpm.d/zzz-wave-small.conf:ro
+      # JWT keypair generated once on the host (README step 6), read-only here.
+      - ${WAVE_JWT_DIR:-/srv/wave/jwt}:/app/config/jwt:ro
+    deploy:
+      resources:
+        limits: { memory: 320M }
+
+  worker:
+    deploy:
+      replicas: 1
+      resources:
+        # 1.5 of the 2 vCPU: the API stays responsive during a transcode.
+        limits: { memory: 640M, cpus: "1.5" }
+
+  worker-async:
+    # Real SMTP (FB-01) needs egress: `edge` is the only network with a route out.
+    networks: [internal, edge]
+    environment:
+      WORKER_MEMORY_LIMIT: 96M
+    deploy:
+      resources:
+        limits: { memory: 160M }
+
+  nginx:
+    ports: !override
+      - "${WAVE_PUBLIC_HTTP_PORT:-80}:8080"
+      - "${WAVE_PUBLIC_HTTPS_PORT:-443}:8443"
+    volumes:
+      - ./infra/nginx/tls/wave.conf:/etc/nginx/conf.d/wave.conf:ro
+      # ACME webroot (certbot --webroot) and cert copies (certbot-deploy-hook.sh).
+      - ${WAVE_ACME_DIR:-/var/www/certbot}:/var/www/certbot:ro
+      - ${WAVE_TLS_DIR:-/etc/wave/tls}:/etc/wave/tls:ro
+    deploy:
+      resources:
+        limits: { memory: 64M }
+
+  postgres:
+    # ~256 MB working set for a demo-sized database.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=256MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=30
+      - -c
+      - wal_buffers=4MB
+      - -c
+      - max_wal_size=512MB
+      - -c
+      - random_page_cost=1.1
+    shm_size: 64m
+    deploy:
+      resources:
+        limits: { memory: 320M }
+
+  # Demo: MinIO stays on the host (same-origin uploads through nginx /upload,
+  # no CORS/IAM setup). Switching to S3 = S3_* + S3_PRESIGN_ENDPOINT env only.
+  minio:
+    environment:
+      # Go runtime soft limit, below the cgroup limit.
+      GOMEMLIMIT: 200MiB
+    deploy:
+      resources:
+        limits: { memory: 256M }
