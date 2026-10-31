@@ -15,3 +15,8 @@ argument-hint: "[reprise]"
 4. Réponse : une ligne avec le commit.
 
 Interdits : aucun secret (mots de passe, clés, jetons) ni contenu du `.env` dans l'état.
+
+## Apprendre (à chaque usage)
+- **Avant** : lire `.claude/skills/wave-etat/lessons.md` (court) et appliquer ses règles.
+- **Après** : erreur rencontrée, contournement trouvé, correction ou préférence de l'utilisateur, étape inutile → ajouter **une** ligne en haut de `lessons.md` (`AAAA-MM-JJ · symptôme → cause → règle`). Rien de neuf → ne rien écrire.
+- Une leçon vue 2 fois ou qui touche une commande → l'intégrer ici ou dans le script, la retirer de `lessons.md`, et le dire en une ligne à l'utilisateur.

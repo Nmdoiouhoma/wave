@@ -12,3 +12,8 @@ argument-hint: "<description du retour>"
 4. **Consigner** : nouvelle ligne dans le tableau de `docs/FEEDBACK.md` — `FB-<n+1>`, date du jour (AAAA-MM-JJ), retour reformulé en anglais avec la décision prise, propriétaire(s), cible (lot de retours en cours, phase N, avant prod).
 5. **Router** : bug bloquant pour ses tests → lot de retours immédiat (skill `wave-lot`) ; le reste rejoint la phase cible. Contrat touché → `wave-architect` d'abord.
 6. **Réponse** : 5 lignes max — cause, ce qui sera fait, quand.
+
+## Apprendre (à chaque usage)
+- **Avant** : lire `.claude/skills/wave-retour/lessons.md` (court) et appliquer ses règles.
+- **Après** : erreur rencontrée, contournement trouvé, correction ou préférence de l'utilisateur, étape inutile → ajouter **une** ligne en haut de `lessons.md` (`AAAA-MM-JJ · symptôme → cause → règle`). Rien de neuf → ne rien écrire.
+- Une leçon vue 2 fois ou qui touche une commande → l'intégrer ici ou dans le script, la retirer de `lessons.md`, et le dire en une ligne à l'utilisateur.

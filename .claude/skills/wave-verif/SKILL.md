@@ -13,3 +13,8 @@ argument-hint: "[front|back|all]"
 3. `INFO migrations` : afficher le SQL (`--dry-run`) et le relire — pas de `DROP` inattendu, index sur les clés étrangères.
 4. Périmètres : chaque fichier de `git status --short` appartient au propriétaire attendu (`docs/BRIEF.md`).
 5. Rendu : les lignes OK/FAIL telles quelles. Seuls ces chiffres mesurés se relaient, jamais ceux d'un rapport d'agent.
+
+## Apprendre (à chaque usage)
+- **Avant** : lire `.claude/skills/wave-verif/lessons.md` (court) et appliquer ses règles.
+- **Après** : erreur rencontrée, contournement trouvé, correction ou préférence de l'utilisateur, étape inutile → ajouter **une** ligne en haut de `lessons.md` (`AAAA-MM-JJ · symptôme → cause → règle`). Rien de neuf → ne rien écrire.
+- Une leçon vue 2 fois ou qui touche une commande → l'intégrer ici ou dans le script, la retirer de `lessons.md`, et le dire en une ligne à l'utilisateur.

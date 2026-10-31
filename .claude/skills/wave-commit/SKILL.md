@@ -17,3 +17,8 @@ Prérequis : `wave-verif` passé **dans cette session** sur l'état actuel de l'
 7. **Rendu** : la liste `git log --oneline` des commits créés, puis mettre à jour l'état (skill `wave-etat`).
 
 Ne jamais commiter : `.env`, clés `*.pem`, `backend/var/`, fichiers de mocks audio générés hors de leur dossier prévu.
+
+## Apprendre (à chaque usage)
+- **Avant** : lire `.claude/skills/wave-commit/lessons.md` (court) et appliquer ses règles.
+- **Après** : erreur rencontrée, contournement trouvé, correction ou préférence de l'utilisateur, étape inutile → ajouter **une** ligne en haut de `lessons.md` (`AAAA-MM-JJ · symptôme → cause → règle`). Rien de neuf → ne rien écrire.
+- Une leçon vue 2 fois ou qui touche une commande → l'intégrer ici ou dans le script, la retirer de `lessons.md`, et le dire en une ligne à l'utilisateur.

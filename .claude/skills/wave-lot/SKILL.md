@@ -18,6 +18,11 @@ Je suis le lead : les agents ne se parlent pas, je relaie tout et je suis seul �
 4. **Pendant le lot** : chaque retour qui signale une question de contrat part chez `wave-architect`, jamais tranché par l'agent demandeur. Agent coupé par la limite d'usage → le relancer avec SendMessage (« reprends où tu t'es arrêté, relis ton handoff et `git status` »), pas un nouvel agent.
 5. **Vérifier puis commiter** : skill `wave-verif`, puis `wave-commit`. Ne jamais relayer un chiffre d'agent sans l'avoir mesuré.
 6. **Revue** : `wave-qa-security` sur le lot commité (Opus si auth, autorisations, upload, FFmpeg ; sinon `model: sonnet`). Findings critique/élevé/moyen → correctifs par les propriétaires, re-vérif, re-revue ciblée. Bas niveau → noté pour la phase 5.
-7. **Fin de lot ou de phase** : skill `wave-etat`, puis résumé à l'utilisateur — ce qui marche, comment tester (URL, compte, parcours en 3-5 étapes), ce qui reste. Notification push seulement si j'ai besoin de lui (test navigateur, décision).
+7. **Fin de lot ou de phase** : skill `wave-ameliorer` (fin de phase seulement), skill `wave-etat`, puis résumé à l'utilisateur — ce qui marche, comment tester (URL, compte, parcours en 3-5 étapes), ce qui reste. Notification push seulement si j'ai besoin de lui (test navigateur, décision).
 
 Mode `reprise` : `git status --short`, `ls docs/handoff/`, dernière section « En cours » de `docs/etat-projet.md`, puis reprendre à l'étape où le lot s'est arrêté.
+
+## Apprendre (à chaque usage)
+- **Avant** : lire `.claude/skills/wave-lot/lessons.md` (court) et appliquer ses règles.
+- **Après** : erreur rencontrée, contournement trouvé, correction ou préférence de l'utilisateur, étape inutile → ajouter **une** ligne en haut de `lessons.md` (`AAAA-MM-JJ · symptôme → cause → règle`). Rien de neuf → ne rien écrire.
+- Une leçon vue 2 fois ou qui touche une commande → l'intégrer ici ou dans le script, la retirer de `lessons.md`, et le dire en une ligne à l'utilisateur.
