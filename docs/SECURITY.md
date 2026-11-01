@@ -1,7 +1,7 @@
-# Wave — security threat model v1 (phase 1)
+# Wave — security threat model v1 (phases 1-2)
 
-Owner: qa-security · 2026-10-24 · Scope: auth, accounts, artists, tracks, uploads, streaming, infra (W-16).
-Tests: `backend/tests/Security/` (php container; `MediaSecurityTest` in the worker image, `NginxEdgeTest` needs the stack).
+Owner: qa-security · 2026-10-24 · Scope: auth, accounts, artists, tracks, uploads, streaming, infra (W-16); playlists, follows, likes, listens, user search (W-26, 2026-11-01).
+Tests: `backend/tests/Security/` (php container; `MediaSecurityTest` in the worker image, `NginxEdgeTest` needs the stack; `ConcurrencySecurityTest` commits its own rows and forks real requests, ~10-20 PHP processes against the 512 MiB php container).
 
 ## Assets
 | Asset | Why it matters |
@@ -37,10 +37,16 @@ Anonymous internet client · registered **unverified** user · verified user · 
 | T13 | PHP runtime (PHP2Shell, firewall CVE) | PHP 8.4.27 pinned by digest, Symfony 7.4.21, FPM `disable_functions`, upload_progress off, non-root, cap_drop ALL | OK; **`conflict` block of ADR 006 missing (F7)** |
 | T14 | Secrets in git | Only dev placeholders in `backend/.env`; root `.env` and `*.pem` ignored; history clean | OK; **no prod guard against dev defaults (F6)** |
 | T15 | XSS / open redirect / token leakage (front) | React only, no `dangerouslySetInnerHTML`; access JWT in memory; `safeNext` same-app paths; token pages strip `?token=` + `no-referrer` (meta and nginx) | OK. Prod CSP allows inline styles (low) |
+| T17 | Social IDOR (playlists, likes, follows, listens) | `PlaylistVoter` + `PlaylistLookup`: invisible playlist → identical 404 on all 9 routes, other's public → 403 on mutations; others' private/processing/hidden tracks → 404 on add/like/listen | OK (tested). Unlike/unfollow of a target that became invisible → 404, count stays (F14, low) |
+| T18 | Counter / position integrity under concurrency | `ON CONFLICT DO NOTHING` + bump, playlist `FOR UPDATE`, deferred unique position, advisory lock on listens | OK for likes, follows, appends, listens (tested, real processes). **Open: track deletion vs append leaves a position gap (F11)** |
+| T19 | Search enumeration / injection | Params bound, `%`/`_` escaped, q 2-100, cursor bound to q, offset < 200, 60/min + 1000/day, suspended excluded, no email in results | **Open: fullwidth `％`/`＿` become wildcards after `wave_unaccent` (F10)** |
+| T20 | `play_count` inflation | 120 listens/min/user, one count per (user, track) per window `max(30 s, duration/2)`, client-declared `listenedMs` | **Partial: ~40 counts/h per account and track, not tied to a stream URL (F13, contract)** |
+| T21 | Hostile encodings (NUL, invalid UTF-8) | none | **Open: NUL truncated/500, invalid UTF-8 in `q` → 500 (F12)** |
 | T16 | Supply chain | PHP digest-pinned; others tag-pinned; `make audit` | **MinIO = community fork `pgsty/minio`, tag-only (F8)** |
 
 ## Findings (see W-16 report for file:line and fixes)
 F1 X-Forwarded-For trusted from `172.16.0.0/12` (medium/high depending on deployment) · F2 refresh reuse not detected (medium, contract) · F3 rate-limiter rows never pruned (low) · F4 `REFRESH_COOKIE_SECURE` not tied to prod, no TLS/HSTS in the prod-shaped stack (medium) · F5 anonymous private-bucket read from every internal container (medium) · F6 dev-default secrets accepted at boot (low) · F7 ADR 006 Composer `conflict` missing (low) · F8 MinIO image provenance (medium) · F9 access JWT survives password reset ≤ 15 min (low, accepted).
+Phase 2 (W-26, `docs/handoff/phase2-qa.md`): F10 fullwidth wildcards widen user search (medium) · F11 track deletion races playlist append, position gap then 500 on next append (medium) · F12 NUL bytes / invalid UTF-8 reach Postgres (medium) · F13 `play_count` inflatable by replaying listens (medium, contract) · F14 unlike/unfollow impossible on a now-invisible target (low) · F15 no rate limit on playlist creation / item add (low) · F16 suspended accounts listed in followers/following and reachable by profile/follow (low, decision).
 
 ## Out of scope v1 / next
-Phase 2+ (playlists, likes, posts, comments, reports, moderation endpoints), account deletion, mobile client storage, DoS beyond rate limits, TLS termination design.
+Phase 3+ (posts, comments, reports, moderation endpoints), account deletion, mobile client storage, DoS beyond rate limits, TLS termination design.

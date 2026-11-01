@@ -1,4 +1,4 @@
-# État du projet Wave — 30/10/2026
+# État du projet Wave — 01/11/2026
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
@@ -33,21 +33,23 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **Phase 0** : architecture (`DATA_MODEL`, `openapi.yaml`, `CONVENTIONS`, ADR 001-009, `TICKETS`).
 - **Phase 1** : Docker, comptes, profils, artistes, upload, traitement FFmpeg, streaming, lecteur global. Revue qa-security : aucun problème ouvert.
 - **Lot de retours FB-01 à FB-10** (`docs/FEEDBACK.md`) : tous traités sauf FB-01 (vrais e-mails, prévu avant la mise en prod).
-- **Dernière vérification** : 276 tests backend (dont plus de 100 de sécurité), 55 tests audio, 59 tests frontend ; audits Composer et npm propres.
+- **Phase 2** (W-20 à W-25, W-27, W-28) : playlists avec glisser-déposer, abonnements, likes, écoutes, recherche d'utilisateurs. Commits `38af9ba`..`4f92612`, poussés. Symfony 7.4.22 (CVE-2026-45070).
+- **Skills projet** (`.claude/skills/wave-*`) : stack, verif, commit, lot, retour, etat, ameliorer ; chacun apprend via son `lessons.md`.
+- **Dernière vérification** (`verif.sh`, 01/11) : 299 tests backend, 55 tests audio, 75 tests frontend, PHPStan propre, audit propre.
 
 ## En cours (non commité)
 
-- **Phase 2, backend** (W-20 à W-23, W-27) : playlists, suivi, likes, écoutes, recherche d'utilisateurs. Agent interrompu par la limite d'usage pendant l'écriture des tests, à relancer.
-- **Phase 2, frontend** (W-24, W-25, W-28) : bibliothèque, profil social, écran de recherche. Agent interrompu, à relancer.
-- **Déploiement, media-infra (terminé, à vérifier puis commiter)** :
-  - `compose.small.yaml` : configuration allégée pour 2 Go ; un MP4 de 200 Mo a été traité en local avec ces limites.
-  - `infra/deploy/` : scripts d'installation et d'envoi des images, certificat HTTPS, `README-deploy.md`.
-  - Pas encore testé sur un vrai serveur Ubuntu.
+- **Revue de sécurité phase 2 (W-26) faite**, `docs/handoff/phase2-qa.md` : aucun finding critique ou élevé.
+  - Moyens, backend : F10 recherche élargie par `％`/`＿` ; F11 trou de positions si suppression et ajout concurrents ; F12 caractère NUL ou UTF-8 invalide → troncature ou 500.
+  - Moyen, architect : F13 `play_count` gonflable (règle d'écoute à lier à une stream-url).
+  - Bas : F14 unlike/unfollow d'une cible devenue invisible ; F15 pas de limite de playlists, `trackId` invisible exposé ; F16 comptes suspendus dans les listes d'abonnés (décision architect).
+- Tests de sécurité `backend/tests/Security/{Social,Concurrency}SecurityTest.php` non commités : 3 échecs voulus (F10-F12) jusqu'aux correctifs.
+- Front, points ouverts : feuille d'ajout limitée à 20 playlists, pas de bouton Suivre sur le créateur d'une playlist, glisser-déposer à tester sur mobile.
 
 ## Prochaines étapes
 
-1. Relancer backend et frontend, vérifier leur travail, puis commiter la phase 2.
-2. Revue de sécurité de la phase 2 (W-26), puis test par l'utilisateur.
+1. Correctifs W-26 : architect (F13, F16), puis backend (F10-F12, F14, F15) ; re-vérif et commit des tests de sécurité.
+2. Test de la phase 2 par l'utilisateur.
 3. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
 4. Phase 3 : posts courts, feed vertical, commentaires, signalement.
 5. Phase 4 : recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
