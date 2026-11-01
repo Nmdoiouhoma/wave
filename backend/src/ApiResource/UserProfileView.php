@@ -7,6 +7,7 @@ namespace App\ApiResource;
 use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
+use App\State\Provider\FollowListProvider;
 use App\State\Provider\UserProfileProvider;
 
 /** `UserProfile` schema. */
@@ -14,6 +15,8 @@ use App\State\Provider\UserProfileProvider;
     shortName: 'UserProfile',
     operations: [
         new Get(uriTemplate: '/users/{username}', uriVariables: ['username'], name: 'getUserProfile', provider: UserProfileProvider::class),
+        new Get(uriTemplate: '/users/{username}/followers', uriVariables: ['username'], name: 'listFollowers', output: UserPage::class, provider: FollowListProvider::class),
+        new Get(uriTemplate: '/users/{username}/following', uriVariables: ['username'], name: 'listFollowing', output: UserPage::class, provider: FollowListProvider::class),
     ],
 )]
 final readonly class UserProfileView
