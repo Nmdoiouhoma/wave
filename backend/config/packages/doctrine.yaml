@@ -2,6 +2,8 @@ doctrine:
     dbal:
         url: '%env(resolve:DATABASE_URL)%'
         server_version: '16'
+        # Owned by Symfony Lock (DoctrineDbalStore), not by the ORM mapping.
+        schema_filter: ~^(?!lock_keys$)~
         profiling_collect_backtrace: '%kernel.debug%'
         types:
             citext: App\Doctrine\Type\CitextType
