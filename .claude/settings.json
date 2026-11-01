@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./backend/vendor/**)",
+      "Read(./frontend/node_modules/**)",
+      "Read(./backend/var/cache/**)",
+      "Read(./**/composer.lock)",
+      "Read(./**/package-lock.json)"
+    ]
+  }
+}
