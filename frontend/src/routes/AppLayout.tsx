@@ -2,7 +2,17 @@ import { useCallback, useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router';
 import { useCurrentUser } from '@/api/queries/me';
 import { cx } from '@/components/ui/cx';
-import { HomeIcon, MicIcon, UploadIcon, UserIcon, WaveLogo } from '@/components/ui/icons';
+import {
+  HomeIcon,
+  LibraryIcon,
+  MicIcon,
+  SearchIcon,
+  UploadIcon,
+  UserIcon,
+  WaveLogo,
+} from '@/components/ui/icons';
+import { Toaster } from '@/components/ui/Toaster';
+import { TrackSheets } from '@/features/playlists/TrackSheets';
 import { Avatar } from '@/components/ui/Media';
 import { VerifyEmailBanner } from '@/features/auth/VerifyEmailBanner';
 import { FullPlayer } from '@/features/player/FullPlayer';
@@ -14,8 +24,9 @@ function useNavItems() {
   const me = useCurrentUser();
   return [
     { to: '/', label: 'Accueil', icon: HomeIcon, end: true },
+    { to: '/search', label: 'Rechercher', icon: SearchIcon },
+    { to: '/library', label: 'Bibliothèque', icon: LibraryIcon },
     { to: '/upload', label: 'Importer', icon: UploadIcon },
-    { to: '/me/artists', label: 'Artistes', icon: MicIcon },
     { to: `/u/${me.username}`, label: 'Profil', icon: UserIcon },
   ];
 }
@@ -56,6 +67,18 @@ function Sidebar() {
             {label}
           </NavLink>
         ))}
+        <NavLink
+          to="/me/artists"
+          className={({ isActive }) =>
+            cx(
+              'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
+              isActive ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg',
+            )
+          }
+        >
+          <MicIcon size={20} />
+          Mes artistes
+        </NavLink>
       </nav>
       <div className="mt-auto flex flex-col gap-2">
         {MOCKS_ENABLED && (
@@ -112,7 +135,7 @@ function BottomNav() {
   return (
     <nav
       aria-label="Navigation principale"
-      className="pb-safe border-line bg-bg/95 grid grid-cols-4 border-t backdrop-blur md:hidden"
+      className="pb-safe border-line bg-bg/95 grid grid-cols-5 border-t backdrop-blur md:hidden"
     >
       {items.map(({ to, label, icon: Icon, end }) => (
         <NavLink
@@ -155,6 +178,8 @@ export function AppLayout() {
         <BottomNav />
       </div>
       <FullPlayer open={fullOpen} onClose={close} />
+      <TrackSheets />
+      <Toaster />
     </div>
   );
 }

@@ -186,3 +186,54 @@ export function WaveLogo(p: IconProps) {
     </svg>
   );
 }
+export function HeartIcon(p: IconProps & { filled?: boolean }) {
+  const { filled, ...rest } = p;
+  return (
+    <svg {...base(rest)} fill={filled ? 'currentColor' : 'none'}>
+      <path d="M12 20.5s-7.5-4.6-9.3-9.2C1.5 8.2 3.4 5 6.6 5c2 0 3.3 1.1 4.1 2.3h2.6C14.1 6.1 15.4 5 17.4 5c3.2 0 5.1 3.2 3.9 6.3-1.8 4.6-9.3 9.2-9.3 9.2Z" />
+    </svg>
+  );
+}
+export function MoreIcon(p: IconProps) {
+  return (
+    <svg {...base(p)} fill="currentColor" stroke="none">
+      <circle cx="5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="19" cy="12" r="1.8" />
+    </svg>
+  );
+}
+export function SearchIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+export function LibraryIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M4 4v16M9 4v16M14 4l6 16" />
+    </svg>
+  );
+}
+export function GripIcon(p: IconProps) {
+  return (
+    <svg {...base(p)} fill="currentColor" stroke="none">
+      {[6, 12, 18].map((y) => (
+        <g key={y}>
+          <circle cx="9" cy={y} r="1.5" />
+          <circle cx="15" cy={y} r="1.5" />
+        </g>
+      ))}
+    </svg>
+  );
+}
+export function ListPlusIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M3 6h12M3 12h12M3 18h7M18 15v6M15 18h6" />
+    </svg>
+  );
+}

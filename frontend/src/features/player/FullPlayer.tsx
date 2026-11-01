@@ -2,8 +2,16 @@ import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import { IconButton } from '@/components/ui/Button';
 import { cx } from '@/components/ui/cx';
-import { ChevronDownIcon, CloseIcon, NextIcon, PrevIcon } from '@/components/ui/icons';
+import {
+  ListPlusIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  NextIcon,
+  PrevIcon,
+} from '@/components/ui/icons';
 import { Cover } from '@/components/ui/Media';
+import { LikeButton } from '@/features/social/LikeButton';
+import { uiStore } from '@/stores/ui';
 import { formatDuration } from '@/lib/format';
 import { currentTrack, usePlayer } from '@/stores/player';
 import { PlayPauseButton } from './PlayPauseButton';
@@ -28,7 +36,13 @@ export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => vo
     const previouslyFocused = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      // A sheet opened over the player handles its own Escape.
+      if (
+        e.key === 'Escape' &&
+        !uiStore.getState().addToPlaylist &&
+        !uiStore.getState().trackActions
+      )
+        onClose();
       if (e.key !== 'Tab' || !dialogRef.current) return;
       // Simple focus trap.
       const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
@@ -93,21 +107,35 @@ export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => vo
           />
         </div>
 
-        <div className="mt-8 min-w-0">
-          <Link
-            to={`/t/${track.id}`}
-            onClick={onClose}
-            className="block truncate text-2xl font-bold hover:underline"
+        <div className="mt-8 flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <Link
+              to={`/t/${track.id}`}
+              onClick={onClose}
+              className="block truncate text-2xl font-bold hover:underline"
+            >
+              {track.title}
+            </Link>
+            <Link
+              to={`/a/${track.artist.slug}`}
+              onClick={onClose}
+              className="text-muted hover:text-fg mt-1 block truncate"
+            >
+              {track.artist.name}
+            </Link>
+          </div>
+          <LikeButton
+            kind="track"
+            id={track.id}
+            title={track.title}
+            server={{ liked: track.likedByMe, likeCount: track.likeCount }}
+          />
+          <IconButton
+            label={`Ajouter ${track.title} à une playlist`}
+            onClick={() => uiStore.getState().openAddToPlaylist(track)}
           >
-            {track.title}
-          </Link>
-          <Link
-            to={`/a/${track.artist.slug}`}
-            onClick={onClose}
-            className="text-muted hover:text-fg mt-1 block truncate"
-          >
-            {track.artist.name}
-          </Link>
+            <ListPlusIcon size={20} />
+          </IconButton>
         </div>
 
         <div className="mt-6">

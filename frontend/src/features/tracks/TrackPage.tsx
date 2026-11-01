@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { AllowClipsField } from '@/features/tracks/AllowClipsField';
-import { EditIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/ui/icons';
+import { ListPlusIcon, EditIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/ui/icons';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Avatar, Cover } from '@/components/ui/Media';
 import { PageSpinner } from '@/components/ui/Spinner';
@@ -24,6 +24,8 @@ import { useVerifiedGate } from '@/features/auth/useVerifiedGate';
 import { errorMessage, failureMessage } from '@/lib/errorMessages';
 import { formatCount, formatDate, formatDuration } from '@/lib/format';
 import { currentTrack, playerStore, usePlayer } from '@/stores/player';
+import { LikeButton } from '@/features/social/LikeButton';
+import { uiStore } from '@/stores/ui';
 import { TrackStatusBadge } from './TrackStatusBadge';
 
 export function TrackPage() {
@@ -99,6 +101,26 @@ function TrackView({ track, refetch }: { track: Track; refetch: () => unknown })
             >
               {playing ? 'Pause' : 'Écouter'}
             </Button>
+            {track.status === 'ready' && (
+              <>
+                <LikeButton
+                  kind="track"
+                  id={track.id}
+                  title={track.title}
+                  server={{ liked: track.likedByMe, likeCount: track.likeCount }}
+                  showCount
+                  className="h-12"
+                />
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  icon={<ListPlusIcon size={18} />}
+                  onClick={() => uiStore.getState().openAddToPlaylist(track)}
+                >
+                  Ajouter à une playlist
+                </Button>
+              </>
+            )}
             {track.isOwner && (
               <Button
                 size="lg"

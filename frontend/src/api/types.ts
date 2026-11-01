@@ -37,3 +37,15 @@ export type CreateTrackRequest = S['CreateTrackRequest'];
 export type TrackMetadata = Omit<CreateTrackRequest, 'uploadId'>;
 
 export type CursorParams = NonNullable<operations['listUserTracks']['parameters']['query']>;
+
+export type Playlist = S['Playlist'];
+export type PlaylistPage = S['PlaylistPage'];
+export type PlaylistItem = S['PlaylistItem'];
+export type PlaylistItemPage = S['PlaylistItemPage'];
+export type CreatePlaylistRequest = S['CreatePlaylistRequest'];
+export type UpdatePlaylistRequest = S['UpdatePlaylistRequest'];
+export type UserPage = S['UserPage'];
+export type LikeState = S['LikeState'];
+export type FollowState = S['FollowState'];
+export type UserListItem = S['UserListItem'];
+export type SearchResults = S['SearchResults'];

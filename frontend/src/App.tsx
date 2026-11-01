@@ -8,6 +8,7 @@ import { PlayerHost } from '@/features/player/PlayerHost';
 import { createAppRouter } from '@/routes/router';
 import { playerStore } from '@/stores/player';
 import { sessionStore } from '@/stores/session';
+import { socialStore } from '@/stores/social';
 
 /** Session restore: the httpOnly refresh cookie is the only thing that survives a reload. */
 function useSessionRestore(queryClient: ReturnType<typeof createQueryClient>) {
@@ -27,6 +28,7 @@ function useSessionRestore(queryClient: ReturnType<typeof createQueryClient>) {
         }
         if (prev.status === 'authenticated' && state.status === 'anonymous') {
           playerStore.getState().stop();
+          socialStore.getState().reset();
           queryClient.clear();
         }
       }),

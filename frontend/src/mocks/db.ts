@@ -1,6 +1,15 @@
 // In-memory mock backend state. Persisted to localStorage in the browser so a reload keeps
 // the session (the fake refresh "cookie") and created content.
-import type { Artist, FailureReason, Me, Track, UserProfile, UserSummary } from '@/api/types';
+import type {
+  Artist,
+  FailureReason,
+  Me,
+  Playlist,
+  Track,
+  UserListItem,
+  UserProfile,
+  UserSummary,
+} from '@/api/types';
 import {
   GENRES,
   MOCK_AUDIO_DURATION_MS,
@@ -12,6 +21,16 @@ import {
   seedTracks,
   seedUsers,
 } from './fixtures';
+import {
+  seedFans,
+  seedFollows,
+  seedLikes,
+  seedPlaylists,
+  type MockFollow,
+  type MockLike,
+  type MockPlaylist,
+  type MockPlaylistItem,
+} from './socialFixtures';
 
 export interface AccountToken {
   userId: string;
@@ -69,6 +88,12 @@ export interface MockState {
   uploads: Record<string, MockUpload>;
   /** Objects written to the mock storage by presigned POSTs, by key. */
   storedObjects: Record<string, { size: number; name: string }>;
+  playlists: MockPlaylist[];
+  /** Ordered items by playlist id. */
+  playlistItems: Record<string, MockPlaylistItem[]>;
+  trackLikes: MockLike[];
+  playlistLikes: MockLike[];
+  follows: MockFollow[];
 }
 
 export const mockConfig = {
@@ -85,11 +110,19 @@ export const mockConfig = {
   persist: typeof window !== 'undefined' && typeof localStorage !== 'undefined',
 };
 
-const STORAGE_KEY = 'wave-mock-db-v1';
+// v2: phase 2 entities (playlists, likes, follows).
+const STORAGE_KEY = 'wave-mock-db-v2';
 
 function seed(): MockState {
+  const { playlists, items } = seedPlaylists();
+  const likes = seedLikes();
   return {
-    users: seedUsers(),
+    playlists,
+    playlistItems: items,
+    trackLikes: likes.tracks,
+    playlistLikes: likes.playlists,
+    follows: seedFollows(),
+    users: [...seedUsers(), ...seedFans()],
     artists: seedArtists(),
     tracks: seedTracks(),
     refreshTokens: {},
@@ -284,15 +317,58 @@ export function toSummary(u: MockUser): UserSummary {
   return { id: u.id, username: u.username, displayName: u.displayName, avatarUrl: u.avatarUrl };
 }
 
+export const followersCount = (userId: string) =>
+  db.state.follows.filter((f) => f.followeeId === userId).length;
+export const isFollowing = (followerId: string | undefined, followeeId: string) =>
+  !!followerId &&
+  db.state.follows.some((f) => f.followerId === followerId && f.followeeId === followeeId);
+
 export function toProfile(u: MockUser, viewer: MockUser | null): UserProfile {
   return {
     ...toSummary(u),
     bio: u.bio,
-    followersCount: u.followersCount,
-    followingCount: u.followingCount,
+    followersCount: followersCount(u.id),
+    followingCount: db.state.follows.filter((f) => f.followerId === u.id).length,
     createdAt: u.createdAt,
     isMe: viewer?.id === u.id,
-    isFollowedByMe: false,
+    isFollowedByMe: isFollowing(viewer?.id, u.id),
+  };
+}
+
+export function toUserListItem(u: MockUser, viewer: MockUser | null): UserListItem {
+  return {
+    ...toSummary(u),
+    followersCount: followersCount(u.id),
+    isMe: viewer?.id === u.id,
+    isFollowedByMe: isFollowing(viewer?.id, u.id),
+  };
+}
+
+export function playlistVisibleTo(p: MockPlaylist, viewer: MockUser | null): boolean {
+  if (viewer && p.ownerId === viewer.id) return true;
+  return p.isPublic && p.moderation === 'visible';
+}
+
+export function toPlaylist(p: MockPlaylist, viewer: MockUser | null): Playlist {
+  const items = db.state.playlistItems[p.id] ?? [];
+  const firstCover = items
+    .map((i) => findTrack(i.trackId))
+    .find((t) => t && t.coverUrl && trackVisibleTo(t, viewer))?.coverUrl;
+  const likes = db.state.playlistLikes.filter((l) => l.targetId === p.id);
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    isPublic: p.isPublic,
+    owner: toSummary(findUserById(p.ownerId)!),
+    coverUrl: firstCover ?? null,
+    itemCount: items.length,
+    likeCount: likes.length,
+    likedByMe: !!viewer && likes.some((l) => l.userId === viewer.id),
+    moderation: p.moderation,
+    isOwner: viewer?.id === p.ownerId,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
   };
 }
 
@@ -347,8 +423,9 @@ export function toTrack(tr: MockTrack, viewer: MockUser | null): Track {
     allowClips: tr.allowClips,
     moderation: tr.moderation,
     playCount: tr.playCount,
-    likeCount: tr.likeCount,
-    likedByMe: false,
+    likeCount: tr.likeCount + db.state.trackLikes.filter((l) => l.targetId === tr.id).length,
+    likedByMe:
+      !!viewer && db.state.trackLikes.some((l) => l.targetId === tr.id && l.userId === viewer.id),
     isOwner,
     canClip:
       tr.status === 'ready' &&

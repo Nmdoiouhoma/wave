@@ -1,11 +1,13 @@
 import { Link } from 'react-router';
 import type { Track } from '@/api/types';
-import { Button } from '@/components/ui/Button';
+import { Button, IconButton } from '@/components/ui/Button';
 import { cx } from '@/components/ui/cx';
-import { PauseIcon, PlayIcon } from '@/components/ui/icons';
+import { MoreIcon, PauseIcon, PlayIcon } from '@/components/ui/icons';
 import { Cover } from '@/components/ui/Media';
 import { formatCount, formatDuration } from '@/lib/format';
 import { currentTrack, usePlayer, isPlayable, playerStore } from '@/stores/player';
+import { LikeButton } from '@/features/social/LikeButton';
+import { uiStore } from '@/stores/ui';
 import { TrackStatusBadge } from './TrackStatusBadge';
 
 function Equalizer() {
@@ -111,9 +113,24 @@ function TrackRow({
       >
         {track.status === 'ready' ? formatCount(track.playCount) : ''}
       </div>
-      <div className="text-muted w-12 text-right text-sm tabular-nums">
+      <div className="text-muted hidden w-12 text-right text-sm tabular-nums min-[400px]:block">
         {formatDuration(track.durationMs)}
       </div>
+      {track.status === 'ready' && (
+        <LikeButton
+          kind="track"
+          id={track.id}
+          title={track.title}
+          server={{ liked: track.likedByMe, likeCount: track.likeCount }}
+        />
+      )}
+      <IconButton
+        label={`Plus d’actions pour ${track.title}`}
+        onClick={() => uiStore.getState().openTrackActions(track)}
+        className="-ml-1"
+      >
+        <MoreIcon size={20} />
+      </IconButton>
     </li>
   );
 }

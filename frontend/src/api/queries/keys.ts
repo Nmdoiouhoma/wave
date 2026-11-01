@@ -8,4 +8,12 @@ export const keys = {
   artistTracks: (slug: string) => ['artist', slug, 'tracks'] as const,
   track: (id: string) => ['track', id] as const,
   genres: () => ['genres'] as const,
+  userPlaylists: (username: string) => ['user', username, 'playlists'] as const,
+  userFollows: (username: string, which: 'followers' | 'following') =>
+    ['user', username, which] as const,
+  playlist: (id: string) => ['playlist', id] as const,
+  playlistItems: (id: string) => ['playlist', id, 'items'] as const,
+  likedTracks: () => ['me', 'likes', 'tracks'] as const,
+  likedPlaylists: () => ['me', 'likes', 'playlists'] as const,
+  searchUsers: (q: string) => ['search', 'users', q] as const,
 };

@@ -7,7 +7,10 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
+import { LibraryPage } from '@/features/playlists/LibraryPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
+import { SearchPage } from '@/features/search/SearchPage';
+import { FollowListPage } from '@/features/social/FollowListPage';
 import { SettingsPage } from '@/features/profile/SettingsPage';
 import { TrackPage } from '@/features/tracks/TrackPage';
 import { UploadPage } from '@/features/tracks/UploadPage';
@@ -23,6 +26,15 @@ const appChildren: RouteObject[] = [
   { path: 'me/artists/new', element: <CreateArtistPage /> },
   { path: 'settings', element: <SettingsPage /> },
   { path: 'u/:username', element: <ProfilePage /> },
+  { path: 'u/:username/followers', element: <FollowListPage which="followers" /> },
+  { path: 'u/:username/following', element: <FollowListPage which="following" /> },
+  { path: 'library', element: <LibraryPage /> },
+  // dnd-kit only loads with the playlist page.
+  {
+    path: 'p/:id',
+    lazy: async () => ({ Component: (await import('@/features/playlists/PlaylistPage')).PlaylistPage }),
+  },
+  { path: 'search', element: <SearchPage /> },
   { path: 'a/:slug', element: <ArtistPage /> },
   { path: 't/:id', element: <TrackPage /> },
   { path: '*', element: <NotFoundPage /> },

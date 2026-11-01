@@ -259,7 +259,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List my liked playlists */
+    /**
+     * List my liked playlists
+     * @description Ordered by like date desc. Playlists no longer visible to me (made private, hidden) are omitted.
+     */
     get: operations['listMyLikedPlaylists'];
     put?: never;
     post?: never;
@@ -716,6 +719,7 @@ export interface paths {
      * Report listen
      * @description Sent once per play session (one session = one start of the track in the queue) when it ends: track end, skip, queue change, or page hide (`fetch(..., {keepalive: true})`; `sendBeacon` cannot carry the bearer header).
      *     The server decides whether it counts (rules in DATA_MODEL §11) and answers 200 either way.
+     *     Track not visible → 404; visible but not ready → 409 `track_not_ready`. Phase 2 implements `source=player`; `source=feed` lands with posts in phase 3.
      */
     post: operations['reportListen'];
     delete?: never;
@@ -1094,7 +1098,9 @@ export interface paths {
     /**
      * Search
      * @description `SearchProvider` v1 = PostgreSQL FTS (`simple` + unaccent, prefix match on every token) + pg_trgm similarity.
-     *     Without `type`: every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
+     *     **Phase 2 (W-27, FB-07)**: only `type=users` is implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
+     *     **Users**: matches `username` and `displayName`, case- and accent-insensitive (`wave_unaccent(lower(...))`), a user matches if either field starts with `q` (prefix, also per word of displayName) or trigram similarity ≥ 0.3. Ranking: exact username match first, then prefix match, then `greatest(similarity(username), similarity(displayName))` desc, then `followersCount` desc, then id. Suspended users and the caller are excluded. Items carry `isFollowedByMe` for inline follow buttons.
+     *     Without `type` (phase 4): every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
      *     With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable).
      *     Only content visible to the caller is returned.
      */
@@ -1402,6 +1408,12 @@ export interface components {
       displayName: string;
       avatarUrl: components['schemas']['MediaUrl'];
     };
+    /** @description Used by followers/following lists and user search; enough for an inline follow button. */
+    UserListItem: components['schemas']['UserSummary'] & {
+      followersCount: number;
+      isMe: boolean;
+      isFollowedByMe: boolean;
+    };
     UserProfile: components['schemas']['UserSummary'] & {
       bio: string | null;
       followersCount: number;
@@ -1535,7 +1547,7 @@ export interface components {
       source: 'player' | 'feed';
       /**
        * Format: uuid
-       * @description Required when source=feed.
+       * @description Required when source=feed (phase 3); must be a playable post of this track, else 422. Forbidden with source=player.
        */
       postId?: string;
     };
@@ -1730,7 +1742,7 @@ export interface components {
       note?: string | null;
     };
     UserPage: {
-      items: components['schemas']['UserSummary'][];
+      items: components['schemas']['UserListItem'][];
       nextCursor: string | null;
     };
     ArtistPage: {
@@ -3039,6 +3051,7 @@ export interface operations {
       400: components['responses']['BadRequest'];
       401: components['responses']['Unauthorized'];
       404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
       422: components['responses']['Unprocessable'];
       429: components['responses']['TooManyRequests'];
     };

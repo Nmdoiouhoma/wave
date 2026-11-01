@@ -1,11 +1,10 @@
 // MSW handlers for every phase-1 operation of docs/openapi.yaml.
 // `/stream/{token}` is not mocked: mock stream URLs point at static files in public/mock-audio.
-import { delay, http, HttpResponse, type JsonBodyType } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import type {
   AuthSession,
   ListenRequest,
   ListenResult,
-  ProblemCode,
   TrackUploadSlot,
   StreamUrl,
   TrackPage,
@@ -23,7 +22,6 @@ import {
   isoNow,
   issueAccessToken,
   mockConfig,
-  parseAccessToken,
   persist,
   pickAudio,
   randomToken,
@@ -39,88 +37,24 @@ import {
   trackVisibleTo,
   uuid7,
 } from './db';
+import { socialHandlers } from './socialHandlers';
+
+import {
+  problem,
+  violation,
+  invalid,
+  json,
+  noContent,
+  accepted,
+  currentSid,
+  requireUser,
+  requireVerified,
+  readJson,
+  paginate,
+} from './handlerUtils';
 
 const API = '*/api/v1';
 
-const TITLES: Partial<Record<ProblemCode, string>> = {
-  validation_failed: 'Validation failed',
-  not_found: 'Not found',
-  unauthenticated: 'Unauthenticated',
-  token_expired: 'Token expired',
-};
-
-function problem(
-  status: number,
-  code: ProblemCode,
-  extra: { detail?: string; violations?: Violation[]; headers?: Record<string, string> } = {},
-) {
-  return HttpResponse.json(
-    {
-      type: `urn:wave:problem:${code}`,
-      title: TITLES[code] ?? code.replace(/_/g, ' '),
-      status,
-      code,
-      ...(extra.detail ? { detail: extra.detail } : {}),
-      ...(extra.violations ? { violations: extra.violations } : {}),
-    },
-    { status, headers: { 'Content-Type': 'application/problem+json', ...extra.headers } },
-  );
-}
-
-const violation = (propertyPath: string, message: string): Violation => ({
-  propertyPath,
-  message,
-  code: null,
-});
-
-function invalid(violations: Violation[]) {
-  return problem(422, 'validation_failed', { violations });
-}
-
-function json(body: JsonBodyType, status = 200) {
-  return HttpResponse.json(body, { status });
-}
-
-const noContent = () => new HttpResponse(null, { status: 204 });
-const accepted = () => new HttpResponse(null, { status: 202 });
-
-/** Resolves the bearer; throws the 401 response otherwise (MSW supports thrown responses). */
-function viewerOf(request: Request): MockUser | null {
-  const header = request.headers.get('Authorization');
-  if (!header?.startsWith('Bearer ')) return null;
-  const parsed = parseAccessToken(header.slice(7));
-  if (!parsed) throw problem(401, 'unauthenticated');
-  if (parsed.exp <= Date.now()) throw problem(401, 'token_expired');
-  const user = findUserById(parsed.userId);
-  if (!user) throw problem(401, 'unauthenticated');
-  return user;
-}
-
-function currentSid(request: Request): string | null {
-  const header = request.headers.get('Authorization');
-  return header?.startsWith('Bearer ') ? (parseAccessToken(header.slice(7))?.sid ?? null) : null;
-}
-
-function requireUser(request: Request): MockUser {
-  tick();
-  const user = viewerOf(request);
-  if (!user) throw problem(401, 'unauthenticated');
-  return user;
-}
-
-function requireVerified(user: MockUser): void {
-  if (!user.emailVerified) throw problem(403, 'email_not_verified');
-}
-
-async function readJson<T>(request: Request): Promise<T> {
-  try {
-    return (await request.json()) as T;
-  } catch {
-    throw problem(400, 'malformed_request');
-  }
-}
-
-/** Issues a refresh token (new family on login/register, same family on rotation). */
 function openSession(user: MockUser, status = 200, familyId: string = uuid7()) {
   const refresh = randomToken();
   db.state.refreshTokens[refresh] = { userId: user.id, familyId, rotated: false };
@@ -133,25 +67,6 @@ function openSession(user: MockUser, status = 200, familyId: string = uuid7()) {
     user: toMe(user),
   };
   return json(body, status);
-}
-
-function paginate<T>(items: T[], request: Request): { items: T[]; nextCursor: string | null } {
-  const url = new URL(request.url);
-  const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit') ?? 20) || 20));
-  const cursor = url.searchParams.get('cursor');
-  let offset = 0;
-  if (cursor) {
-    try {
-      const parsed = JSON.parse(atob(cursor)) as { o: number };
-      offset = parsed.o;
-      if (!Number.isInteger(offset) || offset < 0) throw new Error('bad');
-    } catch {
-      throw problem(400, 'invalid_cursor');
-    }
-  }
-  const page = items.slice(offset, offset + limit);
-  const next = offset + limit < items.length ? btoa(JSON.stringify({ o: offset + limit })) : null;
-  return { items: page, nextCursor: next };
 }
 
 const newestFirst = (a: { createdAt: string }, b: { createdAt: string }) =>
@@ -255,6 +170,7 @@ function checkLength(
 }
 
 export const handlers = [
+  ...socialHandlers,
   // ───────────── auth ─────────────
   http.post(`${API}/auth/register`, async ({ request }) => {
     tick();
