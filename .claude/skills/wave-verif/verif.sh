@@ -31,6 +31,14 @@ step() { # name, command...
 }
 docker info >/dev/null 2>&1 || { echo "FAIL  docker     Docker Desktop arrêté : open -a Docker, puis make up && make init"; exit 1; }
 if has back backend/ || has back infra/; then
+  # Shared test DB: wait for any other PHPUnit run (an agent finishing its lot) to end.
+  for i in $(seq 1 60); do
+    # No pgrep in the image: scan /proc (skipping this shell); media suites run in worker-run containers.
+    docker compose exec -T php sh -c 'for p in /proc/[0-9]*; do [ "$p" = "/proc/$$" ] && continue; grep -qs phpunit "$p/cmdline" && exit 0; done; exit 1' \
+      || [ -n "$(docker ps -q --filter name=wave-worker-run)" ] || break
+    [ "$i" = 1 ] && echo "WAIT  phpunit    une autre suite tourne (agent ?), attente…"
+    sleep 5
+  done
   step phpstan  docker compose exec -T php php vendor/bin/phpstan analyse --memory-limit=1G --no-progress
   step cs-fixer docker compose exec -T php php vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no
   step phpunit  make -s test c=--no-progress
