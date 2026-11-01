@@ -7,12 +7,10 @@ namespace App\Mapper;
 use App\ApiResource\TrackView;
 use App\Entity\Track;
 use App\Entity\User;
+use App\Repository\LikeRepository;
 use App\Storage\ObjectStorage;
 
-/**
- * Track → `Track` schema. `likedByMe` is false until the like graph lands (W-22), which
- * will batch-load it here for a whole page (no N+1).
- */
+/** Track → `Track` schema. `likedByMe` is batch-loaded for a whole page (one query, W-22). */
 final readonly class TrackMapper
 {
     public function __construct(
@@ -20,10 +18,28 @@ final readonly class TrackMapper
         private UserMapper $users,
         private ArtistMapper $artists,
         private GenreMapper $genres,
+        private LikeRepository $likes,
     ) {
     }
 
     public function toView(Track $track, ?User $viewer): TrackView
+    {
+        return $this->toViews([$track], $viewer)[0];
+    }
+
+    /**
+     * @param list<Track> $tracks
+     *
+     * @return list<TrackView>
+     */
+    public function toViews(array $tracks, ?User $viewer): array
+    {
+        $liked = $this->likes->likedAmong('track', $viewer, array_map(static fn (Track $t): \Symfony\Component\Uid\Uuid => $t->getId(), $tracks));
+
+        return array_map(fn (Track $t): TrackView => $this->build($t, $viewer, isset($liked[$t->getId()->toRfc4122()])), $tracks);
+    }
+
+    private function build(Track $track, ?User $viewer, bool $likedByMe): TrackView
     {
         $cover = $track->getCoverKey();
 
@@ -42,20 +58,10 @@ final readonly class TrackMapper
             $track->getModeration()->value,
             $track->getPlayCount(),
             $track->getLikeCount(),
-            false,
+            $likedByMe,
             $track->isOwnedBy($viewer),
             $track->canBeClippedBy($viewer),
             DateFormat::format($track->getCreatedAt()),
         );
-    }
-
-    /**
-     * @param list<Track> $tracks
-     *
-     * @return list<TrackView>
-     */
-    public function toViews(array $tracks, ?User $viewer): array
-    {
-        return array_map(fn (Track $t): TrackView => $this->toView($t, $viewer), $tracks);
     }
 }

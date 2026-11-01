@@ -13,6 +13,7 @@ use App\Mapper\TrackMapper;
 use App\Pagination\CursorCodec;
 use App\Pagination\Keyset;
 use App\Pagination\PageRequest;
+use App\Repository\LikeRepository;
 use App\Repository\TrackRepository;
 use App\Security\CurrentUser;
 use Symfony\Component\HttpFoundation\Request;
@@ -32,6 +33,7 @@ final readonly class TrackListProvider implements ProviderInterface
         private CurrentUser $currentUser,
         private TrackMapper $mapper,
         private CursorCodec $codec,
+        private LikeRepository $likes,
     ) {
     }
 
@@ -40,6 +42,21 @@ final readonly class TrackListProvider implements ProviderInterface
         $viewer = $this->currentUser->get();
         $request = $context['request'] ?? null;
         $page = PageRequest::fromRequest($request instanceof Request ? $request : null, $this->codec);
+
+        if ('listMyLikedTracks' === $operation->getName()) {
+            $me = $this->currentUser->require();
+            $liked = $this->likes->likedTracksPage($me, $page->after, $page->limit);
+            $next = null;
+            if (\count($liked) > $page->limit) {
+                $liked = \array_slice($liked, 0, $page->limit);
+                $last = $liked[\count($liked) - 1];
+                $next = $this->codec->encode(Keyset::fromTimestampAndId(new \DateTimeImmutable($last['at']), \Symfony\Component\Uid\Uuid::fromString($last['id'])));
+            }
+            $byId = $this->tracks->findByIdsWithRelations(array_column($liked, 'id'));
+            $ordered = array_values(array_filter(array_map(static fn (array $r): ?Track => $byId[$r['id']] ?? null, $liked)));
+
+            return new TrackPage($this->mapper->toViews($ordered, $me), $next);
+        }
 
         if ('listArtistTracks' === $operation->getName()) {
             $artist = $this->artists->visible($uriVariables['slug'] ?? null);

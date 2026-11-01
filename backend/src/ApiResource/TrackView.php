@@ -48,6 +48,7 @@ use App\State\Provider\TrackProvider;
         ),
         new Delete(uriTemplate: '/tracks/{trackId}/cover', uriVariables: ['trackId'], name: 'deleteTrackCover', read: false, deserialize: false, output: false, processor: TrackCoverProcessor::class),
         new Get(uriTemplate: '/users/{username}/tracks', uriVariables: ['username'], name: 'listUserTracks', output: TrackPage::class, provider: TrackListProvider::class),
+        new Get(uriTemplate: '/me/likes/tracks', name: 'listMyLikedTracks', output: TrackPage::class, provider: TrackListProvider::class),
         new Get(uriTemplate: '/artists/{slug}/tracks', uriVariables: ['slug'], name: 'listArtistTracks', output: TrackPage::class, provider: TrackListProvider::class),
     ],
 )]
