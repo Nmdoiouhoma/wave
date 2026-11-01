@@ -21,13 +21,13 @@ final readonly class PageRequest
     ) {
     }
 
-    public static function fromRequest(?Request $request, CursorCodec $codec): self
+    public static function fromRequest(?Request $request, CursorCodec $codec, int $defaultLimit = self::DEFAULT_LIMIT, int $maxLimit = self::MAX_LIMIT): self
     {
         $limitRaw = $request?->query->getString('limit') ?? '';
-        $limit = self::DEFAULT_LIMIT;
+        $limit = $defaultLimit;
         if ('' !== $limitRaw) {
-            if (1 !== preg_match('/^[0-9]{1,3}$/', $limitRaw) || (int) $limitRaw < 1 || (int) $limitRaw > self::MAX_LIMIT) {
-                throw new ApiProblemException(ProblemCode::MalformedRequest, 'limit must be an integer between 1 and '.self::MAX_LIMIT.'.');
+            if (1 !== preg_match('/^[0-9]{1,3}$/', $limitRaw) || (int) $limitRaw < 1 || (int) $limitRaw > $maxLimit) {
+                throw new ApiProblemException(ProblemCode::MalformedRequest, 'limit must be an integer between 1 and '.$maxLimit.'.');
             }
             $limit = (int) $limitRaw;
         }

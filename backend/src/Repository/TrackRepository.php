@@ -32,6 +32,30 @@ final class TrackRepository extends ServiceEntityRepository
             ->getQuery()->getOneOrNullResult();
     }
 
+    /**
+     * @param list<string> $ids
+     *
+     * @return array<string, Track> by id, relations fetch-joined (one query)
+     */
+    public function findByIdsWithRelations(array $ids): array
+    {
+        if ([] === $ids) {
+            return [];
+        }
+        /** @var list<Track> $rows */
+        $rows = $this->createQueryBuilder('t')
+            ->addSelect('a', 'o', 'g')
+            ->join('t.artist', 'a')->join('t.owner', 'o')->join('t.genre', 'g')
+            ->andWhere('t.id IN (:ids)')->setParameter('ids', $ids)
+            ->getQuery()->getResult();
+        $byId = [];
+        foreach ($rows as $row) {
+            $byId[$row->getId()->toRfc4122()] = $row;
+        }
+
+        return $byId;
+    }
+
     public function countByArtist(Artist $artist): int
     {
         return $this->count(['artist' => $artist]);

@@ -15,4 +15,8 @@ framework:
         image_upload_user: { policy: sliding_window, limit: 30, interval: '1 hour', cache_pool: cache.rate_limiter }
         track_upload_hour_user: { policy: sliding_window, limit: 30, interval: '1 hour', cache_pool: cache.rate_limiter }
         track_upload_day_user: { policy: sliding_window, limit: 100, interval: '1 day', cache_pool: cache.rate_limiter }
+        social_write_user: { policy: sliding_window, limit: 200, interval: '1 hour', cache_pool: cache.rate_limiter }
+        listen_user: { policy: sliding_window, limit: 120, interval: '1 minute', cache_pool: cache.rate_limiter }
+        search_minute_user: { policy: sliding_window, limit: 60, interval: '1 minute', cache_pool: cache.rate_limiter }
+        search_day_user: { policy: sliding_window, limit: 1000, interval: '1 day', cache_pool: cache.rate_limiter }
         stream_url_user: { policy: sliding_window, limit: 120, interval: '1 minute', cache_pool: cache.rate_limiter }

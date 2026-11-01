@@ -17,6 +17,7 @@ use App\Message\PurgeObjects;
 use App\Problem\ApiProblemException;
 use App\Repository\ArtistRepository;
 use App\Repository\GenreRepository;
+use App\Repository\PlaylistRepository;
 use App\Security\CurrentUser;
 use App\State\Provider\TrackLookup;
 use App\Storage\StorageArea;
@@ -41,6 +42,7 @@ final readonly class TrackProcessor implements ProcessorInterface
         private EntityManagerInterface $em,
         private MessageBusInterface $bus,
         private TrackMapper $mapper,
+        private PlaylistRepository $playlists,
     ) {
     }
 
@@ -91,7 +93,7 @@ final readonly class TrackProcessor implements ProcessorInterface
     /**
      * DATA_MODEL §0 deletion order: fix counters the cascade would leave stale, collect
      * keys and purge them asynchronously, delete polymorphic reports, then delete.
-     * Phase 1 has no likes/playlists/posts/reports yet: W-20/W-22/W-30/W-33 extend this.
+     * Posts and reports join this with W-30/W-33.
      */
     private function delete(Track $track): void
     {
@@ -99,6 +101,9 @@ final readonly class TrackProcessor implements ProcessorInterface
         $public = null === $track->getCoverKey() ? [] : [$track->getCoverKey()];
 
         $this->em->wrapInTransaction(function () use ($track, $private, $public): void {
+            // Playlists keep exact item_count and contiguous positions (DATA_MODEL §7);
+            // like_count dies with the track, listens/likes go by cascade.
+            $this->playlists->detachTrackEverywhere($track->getId());
             $this->em->remove($track);
             $this->em->flush();
             foreach ([StorageArea::Private->value => $private, StorageArea::Public->value => $public] as $area => $keys) {

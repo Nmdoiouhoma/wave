@@ -61,8 +61,30 @@ abstract class WaveApiTestCase extends ApiTestCase
         return $user;
     }
 
+    /**
+     * Requests reset the entity manager: entities created earlier in a test are detached.
+     *
+     * @template T of object
+     *
+     * @param T $entity
+     *
+     * @return T
+     */
+    protected function managed(object $entity): object
+    {
+        if ($this->em()->contains($entity)) {
+            return $entity;
+        }
+        $id = $this->em()->getClassMetadata($entity::class)->getIdentifierValues($entity);
+        $fresh = $this->em()->find($entity::class, $id);
+        self::assertNotNull($fresh);
+
+        return $fresh;
+    }
+
     protected function createArtist(User $owner, string $name = 'Some Artist', ?string $slug = null): Artist
     {
+        $owner = $this->managed($owner);
         $artist = new Artist($owner, $slug ?? strtolower((string) preg_replace('/[^a-z0-9]+/i', '-', $name)), $name);
         $this->em()->persist($artist);
         $this->em()->flush();
@@ -72,6 +94,7 @@ abstract class WaveApiTestCase extends ApiTestCase
 
     protected function createTrack(Artist $artist, string $title = 'Song', bool $ready = true, Visibility $visibility = Visibility::Public, bool $allowClips = true): Track
     {
+        $artist = $this->managed($artist);
         $genre = $this->em()->find(Genre::class, 'pop');
         self::assertNotNull($genre);
         $track = new Track($artist, $genre, $title, 1000, $visibility, $allowClips);
@@ -102,6 +125,33 @@ abstract class WaveApiTestCase extends ApiTestCase
         static::getContainer()->get(\App\Storage\ObjectStorage::class)->write(\App\Storage\StorageArea::Private, $body['fields']['key'], $stream, $contentType);
 
         return $body['uploadId'];
+    }
+
+    protected function createPlaylist(User $owner, string $name = 'Mix', bool $public = true): \App\Entity\Playlist
+    {
+        $playlist = new \App\Entity\Playlist($this->managed($owner), $name, null, $public);
+        $this->em()->persist($playlist);
+        $this->em()->flush();
+
+        return $playlist;
+    }
+
+    /**
+     * Statements sent to PostgreSQL by one request (excluding auth/rate-limit noise is the
+     * caller's job: compare two page sizes rather than absolute numbers).
+     *
+     * @param array<string, mixed> $options
+     */
+    protected function countQueries(string $method, string $url, ?User $as = null, array $options = []): int
+    {
+        if (null !== $as) {
+            $options['headers'] = ($options['headers'] ?? []) + ['Authorization' => 'Bearer '.$this->tokenFor($as)];
+        }
+        \App\Tests\Support\QueryCounter::reset();
+        $response = $this->api($method, $url, null, $options);
+        self::assertSame(200, $response->getStatusCode(), $response->getContent(false));
+
+        return \App\Tests\Support\QueryCounter::$count;
     }
 
     protected function tokenFor(User $user): string
