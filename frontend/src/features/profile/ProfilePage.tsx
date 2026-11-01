@@ -3,14 +3,20 @@ import { Link, useParams } from 'react-router';
 import { useUserArtists, useUserProfile, useUserTracks } from '@/api/queries/users';
 import { ButtonLink } from '@/components/ui/Button';
 import { cx } from '@/components/ui/cx';
-import { EditIcon, MicIcon, MusicIcon, UploadIcon } from '@/components/ui/icons';
+import { EditIcon, LibraryIcon, MicIcon, MusicIcon, UploadIcon } from '@/components/ui/icons';
+import { InfiniteSentinel } from '@/components/ui/InfiniteSentinel';
+import { useUserPlaylists } from '@/api/queries/playlists';
+import { useFollowState } from '@/api/queries/social';
+import type { UserProfile } from '@/api/types';
+import { PlaylistGrid } from '@/features/playlists/PlaylistGrid';
+import { FollowButton } from '@/features/social/FollowButton';
 import { Avatar } from '@/components/ui/Media';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
 import { formatCount, formatMonthYear } from '@/lib/format';
 import { PlayAllButton, TrackList } from '@/features/tracks/TrackList';
 
-type Tab = 'tracks' | 'artists';
+type Tab = 'tracks' | 'playlists' | 'artists';
 
 export function ProfilePage() {
   const { username = '' } = useParams();
@@ -34,28 +40,20 @@ export function ProfilePage() {
         <div className="min-w-0 flex-1">
           <h1 className="text-3xl font-bold tracking-tight break-words">{u.displayName}</h1>
           <p className="text-muted">@{u.username}</p>
-          <dl className="mt-3 flex justify-center gap-5 text-sm sm:justify-start">
-            <div>
-              <dt className="sr-only">Abonnés</dt>
-              <dd>
-                <strong className="font-semibold">{formatCount(u.followersCount)}</strong>{' '}
-                <span className="text-muted">abonnés</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="sr-only">Abonnements</dt>
-              <dd>
-                <strong className="font-semibold">{formatCount(u.followingCount)}</strong>{' '}
-                <span className="text-muted">abonnements</span>
-              </dd>
-            </div>
-          </dl>
+          <FollowCounts user={u} />
           <p className="text-faint mt-1 text-xs">Membre depuis {formatMonthYear(u.createdAt)}</p>
         </div>
-        {u.isMe && (
+        {u.isMe ? (
           <ButtonLink to="/settings" variant="secondary" size="sm">
             <EditIcon size={16} /> Modifier le profil
           </ButtonLink>
+        ) : (
+          <FollowButton
+            username={u.username}
+            displayName={u.displayName}
+            server={{ following: u.isFollowedByMe, followersCount: u.followersCount }}
+            size="md"
+          />
         )}
       </header>
       {u.bio && <p className="text-fg/85 mt-4 text-sm whitespace-pre-line">{u.bio}</p>}
@@ -68,6 +66,7 @@ export function ProfilePage() {
         {(
           [
             ['tracks', 'Titres'],
+            ['playlists', 'Playlists'],
             ['artists', 'Artistes'],
           ] as const
         ).map(([value, label]) => (
@@ -92,6 +91,8 @@ export function ProfilePage() {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="mt-4">
         {tab === 'tracks' ? (
           <UserTracks username={u.username} isMe={u.isMe} />
+        ) : tab === 'playlists' ? (
+          <UserPlaylists username={u.username} isMe={u.isMe} />
         ) : (
           <UserArtists username={u.username} isMe={u.isMe} />
         )}
@@ -165,5 +166,55 @@ function UserArtists({ username, isMe }: { username: string; isMe: boolean }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Counts follow the optimistic follow state (shared with search and lists). */
+function FollowCounts({ user }: { user: UserProfile }) {
+  const state = useFollowState(user.username, {
+    following: user.isFollowedByMe,
+    followersCount: user.followersCount,
+  });
+  return (
+    <p className="mt-3 flex justify-center gap-5 text-sm sm:justify-start">
+      <Link to={`/u/${user.username}/followers`} className="hover:underline">
+        <strong className="font-semibold">{formatCount(state.followersCount)}</strong>{' '}
+        <span className="text-muted">abonné{state.followersCount > 1 ? 's' : ''}</span>
+      </Link>
+      <Link to={`/u/${user.username}/following`} className="hover:underline">
+        <strong className="font-semibold">{formatCount(user.followingCount)}</strong>{' '}
+        <span className="text-muted">abonnement{user.followingCount > 1 ? 's' : ''}</span>
+      </Link>
+    </p>
+  );
+}
+
+function UserPlaylists({ username, isMe }: { username: string; isMe: boolean }) {
+  const q = useUserPlaylists(username);
+  if (q.isPending) return <PageSpinner />;
+  if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
+  const items = q.data.pages.flatMap((p) => p.items);
+  if (!items.length)
+    return (
+      <EmptyState
+        icon={<LibraryIcon size={28} />}
+        title={isMe ? 'Tu n’as pas encore de playlist' : 'Aucune playlist publique'}
+      >
+        {isMe && (
+          <Link to="/library" className="text-accent-strong hover:underline">
+            Créer une playlist dans ta bibliothèque
+          </Link>
+        )}
+      </EmptyState>
+    );
+  return (
+    <>
+      <PlaylistGrid playlists={items} label="Playlists" />
+      <InfiniteSentinel
+        hasMore={!!q.hasNextPage}
+        loading={q.isFetchingNextPage}
+        onLoadMore={() => void q.fetchNextPage()}
+      />
+    </>
   );
 }
