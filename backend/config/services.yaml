@@ -34,3 +34,22 @@ services:
                   secret: '%env(S3_SECRET_KEY)%'
 
     App\Storage\ObjectStorage: '@App\Storage\FlysystemObjectStorage'
+
+    App\Search\SearchProvider: '@App\Search\PostgresSearchProvider'
+
+    # DeduplicateStamp keys travel with the message, so the store must be serializable and
+    # shared by php and workers: Doctrine DBAL table `lock_keys` (flock/advisory locks are not).
+    wave.dedup_lock_store:
+        class: Symfony\Component\Lock\Store\DoctrineDbalStore
+        arguments: ['@doctrine.dbal.default_connection']
+    wave.dedup_lock_factory:
+        class: Symfony\Component\Lock\LockFactory
+        arguments: ['@wave.dedup_lock_store']
+    messenger.middleware.deduplicate_middleware:
+        class: Symfony\Component\Messenger\Middleware\DeduplicateMiddleware
+        arguments: ['@wave.dedup_lock_factory']
+
+when@test:
+    services:
+        App\Tests\Support\QueryCounter:
+            tags: ['doctrine.middleware']
