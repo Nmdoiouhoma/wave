@@ -10,10 +10,16 @@ changed=$(git status --porcelain)
 has() { [ "$scope" = all ] || [ "$scope" = "$1" ] || { [ "$scope" = auto ] && grep -q " $2" <<<"$changed"; }; }
 fail=0
 failed=""
+counts=""
 step() { # name, command...
   local name=$1; shift
   if "$@" >"$LOG/$name.log" 2>&1; then
-    printf 'OK    %-10s %s\n' "$name" "$(grep -Eo 'OK \([0-9]+ tests?[^)]*\)|Tests: [0-9].*|Tests +[0-9]+ passed[^\n]*|No errors|make audit: OK|[0-9]+ passed' "$LOG/$name.log" | tail -1 | sed 's/\x1b\[[0-9;]*m//g')"
+    local sum n
+    sum=$(grep -Eo 'OK \([0-9]+ tests?[^)]*\)|Tests: [0-9].*|Tests +[0-9]+ passed[^\n]*|No errors|make audit: OK|[0-9]+ passed' "$LOG/$name.log" | tail -1 | sed 's/\x1b\[[0-9;]*m//g')
+    printf 'OK    %-10s %s\n' "$name" "$sum"
+    # Test counts go to history; a drop since the last run is suspicious (deleted or skipped tests).
+    n=$(grep -Eo '[0-9]+' <<<"$sum" | head -1)
+    case $name in phpunit|media|vitest) [ -n "$n" ] && counts="$counts $name=$n" ;; esac
   else
     fail=1; failed="$failed $name"; printf 'FAIL  %-10s (log: %s)\n' "$name" "$LOG/$name.log"
     if [ "$name" = audit ]; then
@@ -43,7 +49,11 @@ git status --porcelain docs/openapi.yaml | grep -q . && step openapi npx --yes @
 step audit make -s audit
 # History feeds wave-ameliorer: one line per run, flag steps failing repeatedly.
 HIST="$(dirname "$0")/history.tsv"
-printf '%s\t%s\t%s\t%s\n' "$(date +%F' '%H:%M)" "$scope" "$([ $fail -eq 0 ] && echo OK || echo FAIL)" "${failed# }" >>"$HIST"
+for kv in $counts; do
+  prev=$(cut -f5 "$HIST" | grep -Eo "${kv%=*}=[0-9]+" | tail -1 | cut -d= -f2)
+  [ -n "$prev" ] && [ "${kv#*=}" -lt "$prev" ] && echo "WARN  ${kv%=*} : ${kv#*=} tests contre $prev au dernier passage"
+done
+printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%F' '%H:%M)" "$scope" "$([ $fail -eq 0 ] && echo OK || echo FAIL)" "${failed# }" "${counts# }" >>"$HIST"
 for n in $failed; do
   c=$(tail -5 "$HIST" | cut -f4 | grep -cw "$n")
   [ "$c" -ge 3 ] && echo "RECURRENT $n : en échec sur $c des 5 derniers passages → leçon à intégrer (wave-ameliorer)"
