@@ -22,6 +22,7 @@ use App\Repository\PlaylistRepository;
 use App\Security\CurrentUser;
 use App\State\Provider\PlaylistLookup;
 use App\State\Provider\TrackLookup;
+use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Uid\Uuid;
@@ -81,16 +82,24 @@ final readonly class PlaylistItemProcessor implements ProcessorInterface
         if (MediaStatus::Ready !== $track->getStatus()) {
             throw new ApiProblemException(ProblemCode::TrackNotReady, 'Only ready tracks can be added.');
         }
-        $added = $this->em->wrapInTransaction(function () use ($playlist, $track): array {
-            if ($this->playlists->lock($playlist) >= Playlist::MAX_ITEMS) {
-                throw new ApiProblemException(ProblemCode::PlaylistFull, \sprintf('A playlist holds at most %d tracks.', Playlist::MAX_ITEMS));
-            }
-            if ($this->playlists->contains($playlist, $track->getId())) {
-                throw new ApiProblemException(ProblemCode::TrackAlreadyInPlaylist, 'This track is already in the playlist.');
-            }
+        try {
+            $added = $this->em->wrapInTransaction(function () use ($playlist, $track): array {
+                // Track before playlist, the order of a track deletion (F17).
+                if (!$this->playlists->shareTrack($track->getId())) {
+                    throw ApiProblemException::notFound();
+                }
+                if ($this->playlists->lock($playlist) >= Playlist::MAX_ITEMS) {
+                    throw new ApiProblemException(ProblemCode::PlaylistFull, \sprintf('A playlist holds at most %d tracks.', Playlist::MAX_ITEMS));
+                }
+                if ($this->playlists->contains($playlist, $track->getId())) {
+                    throw new ApiProblemException(ProblemCode::TrackAlreadyInPlaylist, 'This track is already in the playlist.');
+                }
 
-            return $this->playlists->append($playlist, $track->getId());
-        });
+                return $this->playlists->append($playlist, $track->getId());
+            });
+        } catch (ForeignKeyConstraintViolationException) {
+            throw ApiProblemException::notFound(); // track deleted meanwhile (F17, residual)
+        }
 
         return new PlaylistItemView(
             $track->getId()->toRfc4122(),

@@ -83,6 +83,15 @@ final class PlaylistRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
+    /**
+     * Before {@see lock()} on an append (F17): holds the track row so that a concurrent deletion,
+     * which locks the track first too, either waits for the append or is seen as gone (false).
+     */
+    public function shareTrack(Uuid $trackId): bool
+    {
+        return false !== $this->db()->fetchOne('SELECT 1 FROM track WHERE id = :t FOR KEY SHARE', ['t' => $trackId->toRfc4122()]);
+    }
+
     /** Serialises item writes on one playlist and returns its current item_count. */
     public function lock(Playlist $playlist): int
     {
@@ -230,12 +239,13 @@ final class PlaylistRepository extends ServiceEntityRepository
      * Track deletion (DATA_MODEL §7): before the cascade removes the items, decrement the
      * item_count of every playlist containing the track and compact positions.
      *
-     * The touched playlists are locked first (by id, like {@see lock()} taken one at a time by
-     * add/remove/reorder) so that the shift sees an append committed meanwhile (F11).
+     * Lock order, as on append: the track row (F17: an append to any playlist waits, or has
+     * committed and is seen below), then the touched playlists by id (F11).
      */
     public function detachTrackEverywhere(Uuid $trackId): void
     {
         $t = $trackId->toRfc4122();
+        $this->db()->fetchOne('SELECT 1 FROM track WHERE id = :t FOR UPDATE', ['t' => $t]);
         $this->db()->fetchFirstColumn(
             'SELECT p.id FROM playlist p
              WHERE p.id IN (SELECT playlist_id FROM playlist_item WHERE track_id = :t)
