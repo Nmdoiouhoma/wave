@@ -9,6 +9,8 @@
 - F16 : `UserLookup::byUsername` → 404 si suspendu, `includingSuspended()` pour l'unfollow ; `FollowRepository::page` joint `app_user.suspended_at IS NULL`.
 - F14 : unlike et unfollow sans contrôle de visibilité (voir écart ci-dessous).
 - Audit : Symfony 7.4.22 → 7.4.23 (35 paquets, `composer update "symfony/*" -W` ; entraîne aussi php-cs-fixer 3.95.29 et ergebnis/agent-detector 2.0.0), corrige CVE-2026-118513 à 118516 ; `conflict` et `ComposerConstraintsTest` passent de `<7.4.13` à `<7.4.23` ; `make audit` → exit=0. Le seuil 7.4.13 reste dans `infra/scripts/check-symfony-security.sh` et dans le Makefile (hors périmètre, à remonter). Le tmpfs /tmp du conteneur php (64 Mo) est plein à 98 % de `wave-test-*` laissés par les tests : PHPStan n'y écrit plus, d'où l'usage de `TMPDIR=/app/var/tmp`.
+- Fuite `/tmp/wave-test-*` : les helpers d'upload `tempnam` de `TrackTest`, `MeTest` (5 Mo pour le 413) et `ArtistTest` ne supprimaient rien → `WaveApiTestCase::uploadTempFile()`, supprimé en tearDown (nom distinct du `tempFile()` de `SecurityTestCase`) ; 0 dossier après une suite complète.
+- F17 : verrou du titre avant ceux des playlists des deux côtés. La suppression fait `FOR UPDATE` sur `track` dans `detachTrackEverywhere`, l'ajout `FOR KEY SHARE` via `PlaylistRepository::shareTrack()` avant `lock()` (titre disparu → 404). La violation de clé étrangère résiduelle devient un 404 dans `PlaylistItemProcessor`. Les 2 tests qa passent sans modification.
 - Tests : nouveau `tests/Functional/Social/SecurityFixesTest.php` (F14, F15 objet/limite/items, F16) ; `ListenTest` (sans grant, écoulé, grant périmé, plafond 20/24 h) ; `ListenRulesTest` ; adaptés au contrat : `PlaylistTest` (item omis), `SocialSecurityTest::testUnlikeStillWorks…` (assertait l'ancien 404), `ConcurrencySecurityTest` listen (grant planté).
 
 ## Décisions prises
@@ -24,7 +26,7 @@
 - qa : mettre à jour SECURITY.md (T17-T21, F10-F16). Front : `playlist_limit_reached`.
 
 ## Commande pour vérifier
-- `make test c=--no-progress` → 323 tests, OK (62 skipped) ; `tests/Security` → 120 OK. PHPStan 0 erreur, CS 0 fichier.
+- `make test c=--no-progress` → 333 tests, OK (62 skipped), dont les 130 de `tests/Security` (F17 compris). PHPStan 0 erreur, CS 0 fichier.
 
 ## Annexe — SQL de Version20261107000100 (up)
 ```sql
