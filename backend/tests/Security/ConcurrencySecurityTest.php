@@ -144,6 +144,70 @@ final class ConcurrencySecurityTest extends SecurityTestCase
         self::assertSame([0, 1], array_map('intval', $this->raw->fetchFirstColumn('SELECT position FROM playlist_item WHERE playlist_id = ? ORDER BY position', [$playlist])));
     }
 
+    /** W-26 F15: 6 concurrent creations at 198 playlists → exactly 200, the rest 409. */
+    public function testConcurrentCreationsStopExactlyAtThePlaylistLimit(): void
+    {
+        $owner = $this->user('owner');
+        $o = $owner->getId()->toRfc4122();
+        $this->raw->executeStatement(
+            "INSERT INTO playlist (id, owner_id, name, created_at, updated_at)
+             SELECT gen_random_uuid(), ?, 'P' || g, now(), now() FROM generate_series(1, 198) g",
+            [$o],
+        );
+        $body = (string) json_encode(['name' => 'Race']);
+
+        $statuses = $this->runConcurrently(array_fill(0, 6, ['POST', '/api/v1/playlists', $owner, $body]));
+        sort($statuses);
+        self::assertSame([201, 201, 409, 409, 409, 409], $statuses);
+        self::assertSame(200, (int) $this->raw->fetchOne('SELECT count(*) FROM playlist WHERE owner_id = ?', [$o]));
+    }
+
+    /**
+     * Variant of F11: the track is appended to a playlist that did NOT contain it yet. The
+     * deletion locks only the playlists it sees, then the cascade removes the appended item
+     * once the append commits. FINDING if it fails: item_count stays one too high.
+     */
+    public function testTrackDeletionRacingAnAppendToAnotherPlaylistKeepsItemCountExact(): void
+    {
+        $owner = $this->user('owner');
+        $playlist = $this->playlist($owner);
+        $track = $this->track($owner, 'Doomed');
+
+        $this->raw->beginTransaction();
+        $this->raw->fetchOne('SELECT item_count FROM playlist WHERE id = ? FOR UPDATE', [$playlist]);
+        $this->raw->executeStatement('INSERT INTO playlist_item (id, playlist_id, track_id, position, added_at) SELECT ?, p.id, ?, p.item_count, clock_timestamp() FROM playlist p WHERE p.id = ?', [Uuid::v7()->toRfc4122(), $track, $playlist]);
+        $this->raw->executeStatement('UPDATE playlist SET item_count = item_count + 1 WHERE id = ?', [$playlist]);
+        $proc = $this->spawn('DELETE', '/api/v1/tracks/'.$track, $owner, '', microtime(true));
+        usleep(1_500_000); // the worker boots, finds no playlist to lock, waits on the track row (FK key share)
+        $this->raw->commit();
+        self::assertSame('204', $this->finish($proc));
+
+        $items = (int) $this->raw->fetchOne('SELECT count(*) FROM playlist_item WHERE playlist_id = ?', [$playlist]);
+        self::assertSame(0, $items);
+        self::assertSame($items, (int) $this->raw->fetchOne('SELECT item_count FROM playlist WHERE id = ?', [$playlist]), 'item_count drifted');
+    }
+
+    /**
+     * Reverse order: the deletion holds the track row, an append of that track arrives. FINDING
+     * if it fails: the FK violation surfaces as a 500 instead of a 404.
+     */
+    public function testAppendRacingATrackDeletionIsNotA500(): void
+    {
+        $owner = $this->user('owner');
+        $playlist = $this->playlist($owner);
+        $track = $this->track($owner, 'Doomed');
+
+        $this->raw->beginTransaction();
+        $this->raw->executeStatement('DELETE FROM track WHERE id = ?', [$track]);
+        $proc = $this->spawn('POST', '/api/v1/playlists/'.$playlist.'/items', $owner, (string) json_encode(['trackId' => $track]), microtime(true));
+        usleep(1_500_000); // the worker sees the track (snapshot), locks the playlist, blocks on the FK
+        $this->raw->commit();
+        $status = $this->finish($proc);
+
+        self::assertContains($status, ['404', '409'], 'append of a track deleted meanwhile → '.$status);
+        self::assertSame(0, (int) $this->raw->fetchOne('SELECT item_count FROM playlist WHERE id = ?', [$playlist]));
+    }
+
     // ------------------------------------------------------------- helpers ---
 
     /**
