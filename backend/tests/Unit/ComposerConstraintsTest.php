@@ -6,7 +6,7 @@ namespace App\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
 
-/** ADR 006 / F7: vulnerable runtimes cannot be installed. */
+/** ADR 006 / F7 (minimum raised to 7.4.23 for CVE-2026-118513..118516): vulnerable runtimes cannot be installed. */
 final class ComposerConstraintsTest extends TestCase
 {
     public function testAdr006Constraints(): void
@@ -18,7 +18,7 @@ final class ComposerConstraintsTest extends TestCase
         self::assertSame('8.4.27', $composer['config']['platform']['php']);
         self::assertSame('7.4.*', $composer['extra']['symfony']['require']);
         foreach (['symfony/security-http', 'symfony/security-bundle', 'symfony/http-kernel'] as $package) {
-            self::assertSame('<7.4.13', $composer['conflict'][$package] ?? null, $package);
+            self::assertSame('<7.4.23', $composer['conflict'][$package] ?? null, $package);
         }
         self::assertGreaterThanOrEqual(80427, \PHP_VERSION_ID);
     }
