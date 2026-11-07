@@ -19,6 +19,7 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   email_taken: 'Cette adresse e-mail est déjà utilisée.',
   username_taken: 'Ce nom d’utilisateur est déjà pris.',
   artist_limit_reached: 'Tu gères déjà 10 artistes, le maximum.',
+  playlist_limit_reached: 'Tu as atteint la limite de 200 playlists.',
   artist_has_tracks: 'Cet artiste a encore des morceaux : supprime-les ou déplace-les d’abord.',
   track_not_ready: 'Ce titre n’est pas encore prêt.',
   email_already_verified: 'Ton adresse e-mail est déjà confirmée.',

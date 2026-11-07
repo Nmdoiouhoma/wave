@@ -279,7 +279,7 @@ function SortableRow({
     transition,
     isDragging,
   } = useSortable({ id: item.trackId });
-  const name = item.track?.title ?? 'Morceau indisponible';
+  const name = item.track?.title ?? 'Titre indisponible';
   return (
     <ItemRow
       item={item}
@@ -343,7 +343,7 @@ function ItemRow({
         type="button"
         disabled={!playable}
         onClick={() => t && playerStore.getState().playTracks(queue, Math.max(0, queue.indexOf(t)))}
-        aria-label={t ? `Lire ${t.title}` : 'Morceau indisponible'}
+        aria-label={t ? `Lire ${t.title}` : 'Titre indisponible'}
         className="disabled:cursor-not-allowed"
       >
         <Cover
@@ -373,7 +373,7 @@ function ItemRow({
           </>
         ) : (
           <>
-            <p className="text-muted truncate font-semibold">Morceau indisponible</p>
+            <p className="text-muted truncate font-semibold">Titre indisponible</p>
             <p className="text-faint truncate text-xs">Supprimé ou rendu privé par son auteur</p>
           </>
         )}

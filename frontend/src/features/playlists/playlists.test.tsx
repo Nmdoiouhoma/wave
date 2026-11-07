@@ -62,6 +62,62 @@ describe('library (W-24)', () => {
   });
 });
 
+describe('W-26 fixes', () => {
+  const problem = (status: number, code: string, headers: Record<string, string> = {}) =>
+    HttpResponse.json(
+      { type: `urn:wave:problem:${code}`, title: 'x', status, code },
+      { status, headers: { 'Content-Type': 'application/problem+json', ...headers } },
+    );
+
+  it('explains playlist_limit_reached on creation', async () => {
+    await loginAs('lea@wave.local');
+    server.use(http.post('*/playlists', () => problem(409, 'playlist_limit_reached')));
+    const user = userEvent.setup();
+    renderRoute(<LibraryPage />, { path: '/library' });
+    await screen.findByRole('list', { name: 'Mes playlists' });
+    await user.click(screen.getByRole('button', { name: 'Nouvelle playlist' }));
+    const dialog = screen.getByRole('dialog', { name: 'Nouvelle playlist' });
+    await user.type(within(dialog).getByLabelText('Nom de la playlist'), 'Encore');
+    await user.click(within(dialog).getByRole('button', { name: 'Créer la playlist' }));
+    expect(
+      await within(dialog).findByText('Tu as atteint la limite de 200 playlists.'),
+    ).toBeVisible();
+  });
+
+  it('explains a 429 on creation with the retry hint', async () => {
+    await loginAs('lea@wave.local');
+    server.use(
+      http.post('*/playlists', () => problem(429, 'rate_limited', { 'Retry-After': '30' })),
+    );
+    const user = userEvent.setup();
+    renderRoute(<LibraryPage />, { path: '/library' });
+    await screen.findByRole('list', { name: 'Mes playlists' });
+    await user.click(screen.getByRole('button', { name: 'Nouvelle playlist' }));
+    const dialog = screen.getByRole('dialog', { name: 'Nouvelle playlist' });
+    await user.type(within(dialog).getByLabelText('Nom de la playlist'), 'Encore');
+    await user.click(within(dialog).getByRole('button', { name: 'Créer la playlist' }));
+    expect(
+      await within(dialog).findByText(/Trop de tentatives\. Réessaie dans 30 s\./),
+    ).toBeVisible();
+  });
+
+  it('owner sees "Titre indisponible" for a null track; non-owner list omits it', async () => {
+    await loginAs('lea@wave.local');
+    renderRoute(<PlaylistPage />, { path: '/p/:id', url: `/p/${PLAYLIST_IDS.brouillons}` });
+    expect(await screen.findByText('Titre indisponible')).toBeInTheDocument();
+  });
+
+  it('non-owner: omitted items leave a playlist without "Titre indisponible"', async () => {
+    await loginAs('kenji@wave.local');
+    server.use(
+      http.get('*/playlists/:id/items', () => HttpResponse.json({ items: [], nextCursor: null })),
+    );
+    renderRoute(<PlaylistPage />, { path: '/p/:id', url: `/p/${PLAYLIST_IDS.matins}` });
+    expect(await screen.findByText('Cette playlist est vide')).toBeInTheDocument();
+    expect(screen.queryByText('Titre indisponible')).toBeNull();
+  });
+});
+
 describe('playlist page (W-24)', () => {
   it('plays the whole playlist in order, skipping unavailable tracks', async () => {
     await loginAs('lea@wave.local');
@@ -81,7 +137,7 @@ describe('playlist page (W-24)', () => {
   it('owner sees drag handles and unavailable items', async () => {
     await loginAs('lea@wave.local');
     renderRoute(<PlaylistPage />, { path: '/p/:id', url: `/p/${PLAYLIST_IDS.brouillons}` });
-    expect(await screen.findByText('Morceau indisponible')).toBeInTheDocument();
+    expect(await screen.findByText('Titre indisponible')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /^Déplacer / })).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Lecture' })).toBeEnabled();
   });

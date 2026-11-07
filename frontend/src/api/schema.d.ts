@@ -277,11 +277,15 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
     };
-    /** Get user profile */
+    /**
+     * Get user profile
+     * @description Suspended user → 404 `not_found`.
+     */
     get: operations['getUserProfile'];
     put?: never;
     post?: never;
@@ -296,13 +300,14 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
     };
     /**
      * List followers
-     * @description Ordered by follow date desc.
+     * @description Ordered by follow date desc. Suspended users are omitted (`followersCount` still includes them). Suspended target → 404.
      */
     get: operations['listFollowers'];
     put?: never;
@@ -318,11 +323,15 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
     };
-    /** List following */
+    /**
+     * List following
+     * @description Ordered by follow date desc. Suspended users are omitted (`followingCount` still includes them). Suspended target → 404.
+     */
     get: operations['listFollowing'];
     put?: never;
     post?: never;
@@ -337,6 +346,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -344,13 +354,13 @@ export interface paths {
     get?: never;
     /**
      * Follow user
-     * @description Idempotent. Following yourself → 422 `cannot_follow_self`.
+     * @description Idempotent. Following yourself → 422 `cannot_follow_self`. Suspended target → 404 `not_found`.
      */
     put: operations['followUser'];
     post?: never;
     /**
      * Unfollow user
-     * @description Idempotent.
+     * @description Idempotent. Works on a suspended target too (removes one's own link, counters decremented); 404 only for an unknown username.
      */
     delete: operations['unfollowUser'];
     options?: never;
@@ -363,6 +373,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -385,6 +396,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -407,6 +419,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -429,6 +442,7 @@ export interface paths {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -667,7 +681,7 @@ export interface paths {
     };
     /**
      * Get track stream url
-     * @description Access check (track visible to caller) then a signed URL valid 5 min (D2, ADR 001). Not ready → 409 `track_not_ready`. Response is `Cache-Control: no-store`.
+     * @description Access check (track visible to caller) then a signed URL valid 5 min (D2, ADR 001). Not ready → 409 `track_not_ready`. Response is `Cache-Control: no-store`. Success also records a listen grant for (caller, track) (DATA_MODEL §11, ADR 010): a listen only counts after a stream URL was issued.
      */
     get: operations['getTrackStreamUrl'];
     put?: never;
@@ -696,7 +710,7 @@ export interface paths {
     post?: never;
     /**
      * Unlike track
-     * @description Idempotent.
+     * @description Idempotent. An existing like by the caller is removed whatever the target's visibility (counter decremented); without a like, a target the caller cannot see → 404 `not_found`, as if it did not exist.
      */
     delete: operations['unlikeTrack'];
     options?: never;
@@ -718,7 +732,7 @@ export interface paths {
     /**
      * Report listen
      * @description Sent once per play session (one session = one start of the track in the queue) when it ends: track end, skip, queue change, or page hide (`fetch(..., {keepalive: true})`; `sendBeacon` cannot carry the bearer header).
-     *     The server decides whether it counts (rules in DATA_MODEL §11) and answers 200 either way.
+     *     The server decides whether it counts (rules in DATA_MODEL §11, ADR 010) and answers 200 either way, `counted: false` included when no fresh listen grant exists (no prior `stream-url`), the declared `listenedMs` exceeds the time elapsed since the grant, the anti-replay window or the daily cap applies. No 4xx for these: they are not distinguishable from a normal non-counted listen.
      *     Track not visible → 404; visible but not ready → 409 `track_not_ready`. Phase 2 implements `source=player`; `source=feed` lands with posts in phase 3.
      */
     post: operations['reportListen'];
@@ -763,7 +777,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Create playlist */
+    /**
+     * Create playlist
+     * @description More than 200 playlists per user → 409 `playlist_limit_reached`.
+     */
     post: operations['createPlaylist'];
     delete?: never;
     options?: never;
@@ -809,7 +826,7 @@ export interface paths {
     };
     /**
      * List playlist items
-     * @description Ordered by `position` asc. `limit` max 100. Items whose track is not visible to the caller have `track: null`.
+     * @description Ordered by `position` asc. `limit` max 100. Owner: items whose track is no longer visible to them are returned with `track: null` (trackId kept, needed for remove/reorder). Non-owner: such items are omitted entirely (no trackId leak), so positions may have gaps and fewer than `itemCount` items are listed.
      */
     get: operations['listPlaylistItems'];
     put?: never;
@@ -859,7 +876,7 @@ export interface paths {
     get?: never;
     /**
      * Reorder playlist
-     * @description Owner only. Full ordered list of every trackId currently in the playlist (including unavailable ones). Set mismatch (missing, extra, duplicate) → 409 `playlist_order_mismatch`.
+     * @description Owner only. Full ordered list of every trackId currently in the playlist (including unavailable ones). Set mismatch (missing, extra, duplicate) → 409 `playlist_order_mismatch`. `trackIds` not a JSON array (e.g. an object), or an element not a uuid string → 422 `validation_failed`.
      */
     put: operations['reorderPlaylist'];
     post?: never;
@@ -882,7 +899,10 @@ export interface paths {
     /** Like playlist */
     put: operations['likePlaylist'];
     post?: never;
-    /** Unlike playlist */
+    /**
+     * Unlike playlist
+     * @description Idempotent. An existing like by the caller is removed whatever the target's visibility (counter decremented); without a like, a target the caller cannot see → 404 `not_found`, as if it did not exist.
+     */
     delete: operations['unlikePlaylist'];
     options?: never;
     head?: never;
@@ -974,7 +994,10 @@ export interface paths {
     /** Like post */
     put: operations['likePost'];
     post?: never;
-    /** Unlike post */
+    /**
+     * Unlike post
+     * @description Idempotent. An existing like by the caller is removed whatever the target's visibility (counter decremented); without a like, a target the caller cannot see → 404 `not_found`, as if it did not exist.
+     */
     delete: operations['unlikePost'];
     options?: never;
     head?: never;
@@ -1271,6 +1294,7 @@ export interface components {
       | 'track_not_ready'
       | 'track_already_in_playlist'
       | 'playlist_full'
+      | 'playlist_limit_reached'
       | 'playlist_order_mismatch'
       | 'already_reported'
       | 'too_many_pending_uploads'
@@ -1585,7 +1609,7 @@ export interface components {
       trackId: components['schemas']['Id'];
       position: number;
       addedAt: components['schemas']['DateTime'];
-      /** @description Null when the track is not visible to the caller. */
+      /** @description Null when the track is no longer visible to the caller (owner only; such items are omitted for non-owners). */
       track: components['schemas']['Track'] | null;
     };
     AddPlaylistItemRequest: {
@@ -1593,6 +1617,7 @@ export interface components {
       trackId: string;
     };
     ReorderPlaylistRequest: {
+      /** @description Must be a JSON array (list); an object → 422 `validation_failed`. */
       trackIds: string[];
     };
     PostVisual: {
@@ -1893,6 +1918,7 @@ export interface components {
     /** @description Opaque value from a previous `nextCursor`. */
     Cursor: string;
     Limit: number;
+    /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
     Username: string;
     ArtistSlug: string;
     TrackId: string;
@@ -2303,6 +2329,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2331,6 +2358,7 @@ export interface operations {
       };
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2360,6 +2388,7 @@ export interface operations {
       };
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2385,6 +2414,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2411,6 +2441,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2439,6 +2470,7 @@ export interface operations {
       };
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2468,6 +2500,7 @@ export interface operations {
       };
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2497,6 +2530,7 @@ export interface operations {
       };
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -2522,6 +2556,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
         username: components['parameters']['Username'];
       };
       cookie?: never;
@@ -3151,7 +3186,9 @@ export interface operations {
       };
       400: components['responses']['BadRequest'];
       401: components['responses']['Unauthorized'];
+      409: components['responses']['Conflict'];
       422: components['responses']['Unprocessable'];
+      429: components['responses']['TooManyRequests'];
     };
   };
   getPlaylist: {
@@ -3291,6 +3328,7 @@ export interface operations {
       404: components['responses']['NotFound'];
       409: components['responses']['Conflict'];
       422: components['responses']['Unprocessable'];
+      429: components['responses']['TooManyRequests'];
     };
   };
   removePlaylistItem: {
@@ -3344,6 +3382,7 @@ export interface operations {
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
       409: components['responses']['Conflict'];
+      422: components['responses']['Unprocessable'];
     };
   };
   likePlaylist: {
