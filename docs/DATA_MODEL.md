@@ -230,9 +230,15 @@ Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING`
 | created_at | timestamptz | no | |
 
 Indexes: (author_id, created_at DESC, id DESC), (track_id), partial (created_at DESC, id DESC) WHERE status='ready' AND moderation='visible', partial (trending_score DESC, id DESC) same predicate.
+**All phase-3 tables** (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view`, `report`) are created by one W-30 migration, so W-32, W-33 and W-39 add behaviour without migrations.
 
 Creation rule (D5): track must be ready, moderation=visible and either `track.owner_id = author_id` or (`visibility = public` ∧ `allow_clips`).
-**Post is "playable"** ⇔ status=ready ∧ post.moderation=visible ∧ track.moderation=visible ∧ (author = track.owner ∨ (track.visibility=public ∧ track.allow_clips)). Non-playable posts are 404 for everyone except the author (who sees them with their status) and moderators; they are excluded from feeds, hashtag pages and profiles.
+Creation errors (W-30, no existence oracle): track unknown or invisible to the caller (others' private/processing/failed/hidden track) → 404 `not_found`, identical to an unknown id; others' public-visible track with `allow_clips = false` → 422 `clips_not_allowed`; own track hidden by moderation → 422 `clips_not_allowed`; own track processing or failed → 409 `track_not_ready`; range → 422 `clip_out_of_range`.
+**Post is "playable"** ⇔ status=ready ∧ post.moderation=visible ∧ track.moderation=visible ∧ author.suspended_at IS NULL ∧ (author = track.owner ∨ (track.visibility=public ∧ track.allow_clips)). Non-playable posts are 404 for everyone except the author (who sees them with their status) and moderators; they are excluded from feeds, hashtag pages and profiles.
+**Post visible to a caller** ⇔ moderator ∨ playable ∨ (caller = author ∧ track visible to the caller, §6). A post whose track the caller cannot see is 404 even for its author (the track's metadata must not leak); the author can still `DELETE` it (removing one's own content works whatever the visibility, as for likes, W-26 F14). A suspended author's own requests are already refused at authentication.
+`Post.clip` is non-null only when status=ready and the post is visible to the caller. Issuing it (embedded in any Post payload or via `GET /posts/{id}/stream-url`) writes the listen grant of (caller, post.track) (§11), one multi-row upsert per response.
+**Post deletion** (author, moderator, or cascade from track/user deletion): in the same transaction `hashtag.post_count − 1` for each of its hashtags, delete `report` rows targeting the post and its comments, dispatch `PurgeObjects` for clip (private) and visual/poster (public) keys. Track deletion (phase 1 processor) now runs this for every post on the track before the cascade.
+Hiding a post (moderation) leaves `hashtag.post_count` unchanged (recount in phase 4 search if needed).
 
 Ready transition (two independent handlers): each handler writes its key then runs
 `UPDATE post SET status='ready' WHERE id=:id AND status='processing' AND clip_key IS NOT NULL AND (visual_type IS NULL OR visual_key IS NOT NULL)`.
@@ -252,7 +258,9 @@ Any handler failure sets `status='failed'` + `failure_reason`.
 | moderation | varchar(16) | no | default visible |
 | created_at | timestamptz | no | |
 
-Flat (no replies). Index (post_id, created_at DESC, id DESC). Delete allowed for comment author, post author, moderator. `post.comment_count`: +1 create, −1 delete of visible comment, −1 on hide, +1 on restore.
+Flat (no replies). Index (post_id, created_at DESC, id DESC). Delete allowed for comment author, post author, moderator. `post.comment_count`: +1 create, −1 delete of visible comment, −1 on hide, +1 on restore. Moderation changes are conditional (`UPDATE comment SET moderation=:m WHERE id=:id AND moderation<>:m`) and adjust the counter only when a row changed, so repeated hide/dismiss never drift.
+**Comment visible to a caller** ⇔ its post is visible to the caller ∧ (moderator ∨ caller = comment author ∨ (moderation=visible ∧ comment author not suspended)). Invisible → 404 `not_found` on every route (delete, report), identical to an unknown id; visible but not deletable by the caller → 403. Comments by suspended authors are left out of lists; `comment_count` keeps counting them until phase 5 moderation (as followers, W-26 F16).
+Create: post must be playable for the caller (else 404); body trimmed, 1–500 chars after trim (whitespace only → 422 `validation_failed`); stored as plain text, never rendered as HTML.
 
 ## 11. Listen and PostView
 
@@ -294,7 +302,8 @@ PK(user_id, track_id). Written on each successful `GET /tracks/{id}/stream-url` 
 | completed | bool | no | watched_ms ≥ 80 % clip duration (sticky) |
 | first_seen_at, last_seen_at | timestamptz | no | |
 
-PK(user_id, post_id); index (post_id). Upsert; first insert → `post.view_count + 1`. Used to exclude seen posts from for-you.
+PK(user_id, post_id); index (post_id); index (user_id, last_seen_at, post_id) (for-you fallback, ADR 011). Upsert `INSERT … ON CONFLICT (user_id, post_id) DO UPDATE SET watched_ms = greatest(…), completed = post_view.completed OR excluded.completed, last_seen_at = now() RETURNING (xmax = 0)`; first insert → `post.view_count + 1` in the same transaction. Reported `watchedMs` is clamped to `clip_duration_ms`; duplicate ids in one batch are merged (max). Views of one's own posts and of posts not visible-and-playable for the caller are ignored silently (no row, no counter). Any row = "seen" for for-you (ADR 011).
+Feed listens (`source=feed`, W-32): same rules as player listens with reference = `post.clip_duration_ms`; `postId` must be a playable post of this track (else 422 `validation_failed`, also for unknown/invisible ids); the grant comes from clip issuance (§9).
 
 ## 12. UserAffinity — `user_affinity`
 
@@ -325,9 +334,12 @@ PK(user_id, kind, key); index (user_id, kind, score DESC). Fully rewritten for o
 | created_at | timestamptz | no | |
 
 UNIQUE(reporter_id, target_type, target_id) → 409 `already_reported`. Indexes: (status, created_at), (target_type, target_id, status).
-A user cannot report their own content (422 `cannot_report_own`) and can only report what they can see.
+A user cannot report their own content (422 `cannot_report_own`) and can only report what they can see. Check order (W-33): body validation (422) → target visible to the caller, with the visibility rule of its type (track §6, playlist §7, post §9, comment §10, artist: moderation=visible or caller is its owner, user: exists and not suspended), else 404 identical to an unknown id → own content (track/artist/playlist owner, post/comment author, user = self) → 422 `cannot_report_own` → duplicate → 409 `already_reported`.
+"Own" for moderators too: a moderator reports like any user and decides through `/admin`.
+Concurrency: the report insert and the auto-hide check run in one transaction holding `pg_advisory_xact_lock(hashtext(target_type || ':' || target_id))`, so the 5th and 6th concurrent reporters hide the target exactly once and counters move once.
 **Auto-hide**: in the report transaction, if `COUNT(DISTINCT reporter_id) WHERE target AND status='open' ≥ 5` and target_type ∈ {track, post, comment, playlist, artist} → target `moderation = hidden` (counters adjusted, e.g. comment_count, artist track_count recount). `user` targets are never auto-hidden: queue only.
 **Moderator decision** (per target, applies to all its open reports): `hide` → moderation=hidden, reports `actioned`; `dismiss` → moderation=visible, reports `dismissed`; `suspend` (user targets only) → `suspended_at = now()`, refresh tokens deleted, reports `actioned`. All set `handled_by_id`, `handled_at`, `decision_note`.
+Allowed actions: content targets `hide`/`dismiss` (`suspend` → 422 `validation_failed`); user targets `suspend`/`dismiss` (`hide` → 422); suspending oneself or an already suspended user → 422. Unknown target → 404 (moderators see everything else, hidden included). Moderation changes use the conditional UPDATE of §10 and adjust counters only on an actual change (comment_count, artist track_count recount). Unsuspend is phase 5 (W-50).
 
 ## 13b. Account deletion (GDPR erasure) — hard delete
 

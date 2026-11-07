@@ -170,48 +170,95 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 
 ## Phase 3 — Posts, vertical feed, comments, reports
 
+Lots (lead order corrected for dependencies, see `docs/handoff/phase3-architect.md`): **1** W-38 ∥ W-30 · **2** W-31 ∥ W-32 ∥ W-39 · **3** W-33 ∥ W-34 ∥ W-35 · **4** W-36 then W-37.
+Phase-3 visibility rules live in DATA_MODEL §9-§13 (post visible/playable, comment visible, report check order); every "invisible → 404" below must be byte-identical (body + headers) to an unknown id (T7, T17).
+
+**W-38 · frontend · —** Navigation shell (FB-11)
+- Mobile first (< 768 px): fixed bottom tab bar, 5 entries in this order — Pour toi (`/`), Découvrir (`/discover`), + (Créer, opens a sheet, not a route), Bibliothèque (`/library`), Profil (`/u/{me}`); height 56 px + `env(safe-area-inset-bottom)`, visible labels, targets ≥ 44 px, `nav aria-label="Navigation principale"`, `aria-current="page"` on the active tab.
+- Desktop (≥ 768 px, `md`): same 5 entries in the left rail (+ = button "Créer" opening the same menu as a popover), no bottom bar; "Paramètres" stays reachable from Profil; the rail's "Mes artistes" link moves to the own profile header.
+- Route map (table-driven Vitest: each path → expected active tab):
+
+  | Path | Screen | Active tab | Filled by |
+  |---|---|---|---|
+  | `/` | Pour toi feed (stub "Le fil arrive bientôt" until W-34) | Pour toi | W-34 |
+  | `/following` | Abonnements feed (stub) | Pour toi | W-34 |
+  | `/posts/:id` | single post viewer (stub) | none | W-34 |
+  | `/discover` | Découvrir: current user search (SearchPage moved) | Découvrir | W-38 (W-43 extends) |
+  | `/search?q=` | redirect to `/discover?q=` (query kept) | Découvrir | W-38 |
+  | `/a/:slug`, `/t/:id`, `/u/:other*` | artist, track, other profile | Découvrir | existing |
+  | `/library`, `/p/:id` | library, playlist | Bibliothèque | existing |
+  | `/u/:me*`, `/settings`, `/me/artists*` | own profile, settings, my artists | Profil | existing |
+  | `/posts/new?trackId=` | post composer (stub) | + | W-35 |
+  | `/upload` | track import | + | existing |
+- The + sheet lists "Publier un extrait" → `/posts/new` and "Importer des morceaux" → `/upload`; Escape/backdrop closes it; focus returns to +.
+- `HomePage` removed (its tracks/artists already show on the own profile); after login and on `/login` while authenticated, redirect to `/` (keeps `safeNext`).
+- Player: the mini player sits directly above the tab bar (mobile) or at the bottom right of the rail (desktop); the full player opens as a sheet that never covers the tab bar (tapping a tab closes it); on `/`, `/following` and `/posts/:id` the mini player is hidden and the page fills the viewport minus the tab bar (the feed owns audio, W-34). Page content gets bottom padding so nothing hides under bar + mini player.
+- Tests: tab order and labels, active-tab table, + sheet links and focus return, `/search?q=ab` → `/discover?q=ab`, full player open → tab bar still in the DOM and clickable, mini player absent on `/`.
+
 **W-30 · backend · W-09** Posts
-- `POST /posts` multipart → 202; D5 rules (others' private or `allowClips=false` → 422 `clips_not_allowed`), range → 422 `clip_out_of_range`, clip 14 s → 422.
-- Hashtags extracted (`#Lo_Fi #lofi` → one `lo_fi`, one `lofi`; max 10), `hashtag.postCount` maintained.
-- `GET/DELETE /posts/{id}`, `/users/{u}/posts`, `Post.clip` signed URL embedded when ready; playable rule enforced (track turned private → others get 404).
+- One migration creates every phase-3 table of DATA_MODEL §9-§13 (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view` with its `(user_id, last_seen_at, post_id)` index, `report`), constraints and indexes; up/down on an empty DB.
+- `POST /posts` multipart → 202 `processing`, dispatches `GenerateClip` (+ `ProcessPostVisual` if visual); verified email required (403 `email_not_verified`); rate limit 30/day → 429 with `Retry-After`; unknown multipart field → 422.
+- Error order of DATA_MODEL §9: others' private / processing / hidden track and unknown id → identical 404; others' public track with `allowClips=false` → 422 `clips_not_allowed`; own processing track → 409 `track_not_ready`; start + duration > track → 422 `clip_out_of_range`; duration 14 999 or 60 001 → 422; image > 5 MB or video > 15 MB → 413, GIF or MP3 as visual → 415 (content sniffed, not extension only); no post row left on 413/415.
+- Hashtags: `#Lo_Fi #lofi #LOFI` → `lo_fi`, `lofi` (NFKC lowercase, deduped), 11 tags → first 10 kept; `hashtag.postCount` exact after create and delete.
+- `GET /posts/{id}`, `/users/{u}/posts`: playable / visible rules of DATA_MODEL §9 (track turned private, `allowClips` turned off, track or post hidden, author suspended → others get 404 and the post leaves lists; the author still sees it unless the track is invisible to them); `isOwner`, `likedByMe`; `clip` non-null only when ready and visible, and its issuance writes the listen grant.
+- `GET /posts/{id}/stream-url` (shared `stream_url` bucket, 409 `track_not_ready` when processing); `/stream/{token}` serves `k=c` tokens from `audio/clips/{postId}.m4a` and re-checks post visibility for `uid` on every request (post hidden after issuance → 404).
+- `DELETE /posts/{id}`: author whatever the visibility, moderator; others: invisible → 404, visible → 403; cleanup of DATA_MODEL §9 (hashtag counts, reports on post and comments, `PurgeObjects` for clip/visual/poster). Track deletion and `DELETE /me` paths run the same cleanup for posts on the track (test: delete a track used by another user's post → that post gone, hashtag counts exact).
 
 **W-31 · media-infra · W-30, W-10** Clip and visual processing
-- `GenerateClip` produces exact duration ± 50 ms with fades; `ProcessPostVisual` image → WebP, video → H.264 ≤ 720p, no audio stream (ffprobe asserts), poster generated.
-- Post becomes `ready` only when both outputs exist, whatever the completion order (test both orders).
-- 70 s video or 20 MB video → failed / 413 respectively.
+- `GenerateClip` produces exact duration ± 50 ms with 300 ms fades, from the processed track audio; `ProcessPostVisual` image → WebP within 1080×1920, video → H.264 ≤ 720×1280 ≤ 30 fps, no audio stream (ffprobe asserts), WebP poster generated.
+- Post becomes `ready` only when both outputs exist, whatever the completion order (test both orders); a failure of either sets `failed` + reason and the other handler then skips; handlers are idempotent on re-delivery and skip a deleted post.
+- 70 s video → `failed`/`too_long`; video without video stream or disguised file → `invalid_media`; 20 MB video → 413 at the API (W-30); hardening of T11/T12 applies to visuals (whitelists, timeouts, 50 Mpx cap); quarantine object deleted on success.
 
-**W-32 · backend · W-30** Post interactions and following feed
-- Post like, comments list/create/delete (author, post author, moderator), `commentCount` exact.
-- `POST /post-views` upsert (max `watchedMs`, sticky `completed`), `viewCount` +1 only on first view.
-- `GET /feed/following` keyset by date, playable posts of followed users only.
+**W-32 · backend · W-30** Post interactions, comments, views, following feed
+- `PUT/DELETE /posts/{id}/like` with the F14 rules (unlike of own like whatever the visibility; without a like, invisible → 404); `likeCount` exact under concurrency (`ON CONFLICT`).
+- Comments: list (newest first, keyset), create (verified email, 10/min + 200/day → 429), delete; visibility, 403/404 and counters of DATA_MODEL §10; whitespace-only body → 422; `canDelete` true for comment author, post author, moderator; comments of suspended authors absent from the list.
+- `POST /post-views`: upsert of DATA_MODEL §11 (max `watchedMs` clamped, sticky `completed` at ≥ 80 %), `viewCount` +1 only on first view; own, unknown and invisible ids ignored with 204; 51 items → 422; 60/min → 429.
+- Feed listens: `POST /tracks/{id}/listens` with `source=feed` + `postId` per DATA_MODEL §11 (playable post of that track, else 422; counted only after the clip URL was issued); `postId` with `source=player` → 422.
+- `GET /feed/following`: keyset by `(createdAt, id)`, playable posts of followed, non-suspended users; follows nobody → `{items: [], nextCursor: null}`; tampered cursor → 400.
+
+**W-39 · backend · W-30** Pour toi v1 (FB-12, ADR 011)
+- `SimpleFeedRanker implements FeedRanker`, bound by DI alias; weights only in `App\Feed\ForYouWeights` (`FOLLOW 0.35`, `GENRE 0.25`, `POPULAR_RECENT 0.25`, `FRESH 0.10`, `JITTER 0.05`, `HALF_LIFE_H 72`, `GENRE_WINDOW_D 90`, `POPULARITY_CAP 1000`); `GET /feed/for-you` provider hydrates ids in ranker order with `Post` payloads (clip embedded).
+- Score, phases, author cap, cursor payload and errors exactly as ADR 011; `limit` default 10, max 20 (21 or 0 → 400 `malformed_request`, as `PageRequest`); cursor with another `r`, tampered or with an unknown phase → 400 `invalid_cursor`.
+- Fixture tests (each a functional test on a fresh DB): followed author's fresh post ranks above an equally fresh, equally liked unfollowed one; a post in the viewer's most-liked genre ranks above a same-age post of another genre; a 100-like post of today ranks above a 0-like post of today; cold-start viewer (no follows, no likes) gets a non-empty page ordered by freshness ± jitter; same seed → same order.
+- Exclusions: own posts, posts with a `post_view` row, non-playable posts (processing, hidden, track private/hidden, `allowClips` off, author suspended) never appear in phase `u`; ≤ 2 posts per author on every page, including a page that crosses from `u` to `s`.
+- Fallback: when every candidate is seen, the first page is non-empty (least recently seen first); within one session no post id appears twice even if views are reported between pages; `nextCursor: null` once both phases are exhausted; only own posts in the DB → empty page, `nextCursor: null`.
+- Performance: 5 000 posts / 200 users fixture, each page < 100 ms locally; `EXPLAIN ANALYZE` of both phase queries pasted in the handoff.
 
 **W-33 · backend · W-30, W-32** Reports and moderation API
-- `POST /reports` with 409 duplicate, 422 own content, 404 invisible target.
-- 5th distinct reporter auto-hides post/track/comment/playlist/artist (not user); counters adjusted.
-- `/admin/report-targets` queue + per-target reports + decision (`hide`/`dismiss`/`suspend`); non-moderator → 403.
+- `POST /reports`: check order of DATA_MODEL §13 (422 body → 404 invisible → 422 `cannot_report_own` → 409 `already_reported`), verified email, 20/h → 429; for each of the 6 target types an invisible target (hidden, private, non-playable post, comment of an invisible post, suspended user) returns the same bytes as a random uuid.
+- 5th distinct reporter auto-hides post/track/comment/playlist/artist (not user), under the advisory lock: 6 concurrent reporters (real processes, as in `ConcurrencySecurityTest`) → target hidden once, `commentCount` / artist `trackCount` moved once; the 201 body is identical before and after auto-hide.
+- `/admin/report-targets` queue (order and filters of the contract, preview labels truncated to 140), per-target reports, decision: allowed actions and 422 cases of DATA_MODEL §13, unknown target → 404, conditional moderation updates (hide twice → counters move once); `suspend` revokes every refresh token and the suspended user's next request with a still-valid access JWT → 403 `account_suspended`; non-moderator → 403 on every `/admin` route, before any lookup (unknown target included).
 
-**W-34 · frontend · W-30, W-32** Vertical feed
-- Full-screen snap-scroll feed (for-you tab uses `/feed/for-you` once W-40 lands; until then MSW), autoplay of the active clip, preload of next clip, pause on tab hide.
-- Visual: image, muted looping video or track cover fallback; tap = pause, double-tap = like.
-- Views batched (`/post-views` every 10 s + on exit with keepalive); "use this sound" opens the composer when `track.canClip`.
+**W-34 · frontend · W-38, W-39, W-32** Vertical feed
+- `/` (for-you, `/feed/for-you`) and `/following` (`/feed/following`) with a top switch "Pour toi | Abonnements"; `/posts/:id` shows one post in the same viewer (404 → "Ce post n'est plus disponible"). Real API, MSW only in Vitest.
+- Full-screen snap-scroll, autoplay of the active clip, preload of the next clip, pause on tab hide; starting a clip pauses the global player (no auto-resume); a clip URL refreshed through `/posts/{id}/stream-url` when expired or on 403/410.
+- Pages deduped by id; short page with a cursor → fetch next immediately; 400 `invalid_cursor` → restart without cursor; `nextCursor: null` → end card "Tu as tout vu" with "Recommencer" (new session); empty first page → empty state linking to Découvrir.
+- Visual: image, muted looping video (poster first) or track cover fallback; caption with hashtags as plain text; tap = pause, double-tap = like (optimistic, rollback on error); author → profile, track → track page.
+- Views: a post counts once it was active ≥ 1 s, `watchedMs` = audio time played; batched `/post-views` every 10 s, on feed exit and on page hide (`keepalive`); feed listen sent on leaving a clip (`source=feed`, `postId`) per DATA_MODEL §11.
+- "Utiliser ce son" opens `/posts/new?trackId=…` only when `track.canClip`; comments and report entry points are placeholders until W-36.
 
-**W-35 · frontend · W-30** Post composer
-- Pick track (own or `canClip`), choose start with a scrubber and duration 15–60 s with live preview of the segment.
-- Optional visual with client-side type/size checks; caption with hashtag highlighting; processing state until ready.
+**W-35 · frontend · W-38, W-30, W-31** Post composer
+- `/posts/new`: unverified email → the existing verify gate; track picker = own ready tracks (`/users/{me}/tracks`), or the `trackId` query when its `canClip` is true (else message, no form).
+- Start scrubber + duration 15–60 s with live preview of the segment through the track stream URL; client checks (visual type jpg/png/webp/mp4, image ≤ 5 MB, video ≤ 15 MB and ≤ 60 s read from video metadata) before upload; caption ≤ 300 with counter and hashtag highlighting (text only, no HTML).
+- Submit multipart; then poll `GET /posts/{id}` every 2 s until `ready` (→ open `/posts/:id`) or `failed` (reason in French via `errorMessages`), stop after 2 min with "Toujours en cours" + link to the profile; 404/409/413/415/422/429 mapped to French messages.
 
-**W-36 · frontend · W-32, W-33** Comments and reports
-- Comments sheet with infinite scroll, post, delete own; rate-limit 429 shows retry time.
-- Report dialog for track/post/comment/playlist/artist/user with reason + details; 409 shown as "already reported".
+**W-36 · frontend · W-34, W-32, W-33** Comments and reports
+- Comments sheet from the feed and `/posts/:id`: infinite scroll, post, delete when `canDelete`, optimistic `commentCount`; bodies rendered as text; 429 shows the wait from `Retry-After`.
+- Report dialog for track/post/comment/playlist/artist/user (track page, playlist page, artist page, profile, feed menu, comment menu), hidden on own content (`isOwner`, `isMe`); 8 reasons in French + optional details ≤ 1000; 201 → "Merci, on regarde", 409 → "Tu as déjà signalé ce contenu", 404 → "Ce contenu n'est plus disponible".
 
-**W-37 · qa-security · W-30..W-33** Phase 3 review
-- Comment XSS payloads rendered inert; caption/hashtag injection; report brigading (same user twice) blocked.
-- Hidden content invisible in every list and by direct id for non-owners.
+**W-37 · qa-security · W-30..W-33, W-39** Phase 3 review
+- Oracles: for posts, comments, post likes, post stream-url, `/stream` clip tokens, reports (6 types) and post-views, an invisible target gives the same status, body and headers as an unknown uuid (T7, T17); post creation on another user's private track → 404, not 422.
+- Hidden and suspended: hidden posts/comments and suspended authors' posts absent from `/feed/for-you`, `/feed/following`, `/users/{u}/posts`, comment lists, and 404 by id for non-owners; a clip URL issued before hiding stops working (T9).
+- Injection and encodings: comment/caption XSS payloads inert in the UI (T15), hashtag extraction with RTL/zero-width/NUL input (T21), unknown multipart and JSON fields (T8), hostile visuals (T11, T12).
+- Abuse: report brigading (same user twice → 409, 5 sock puppets → hide then moderator `dismiss` restores), auto-hide race and counters (T18), view and feed-listen inflation (T20: first view only, grant required), rate limits of every new bucket, `/admin` as non-moderator.
+- `docs/SECURITY.md` extended with phase-3 threats (T22+) and findings.
 
 ## Phase 4 — Recommendations v1, search, demo seed
 
-**W-40 · backend · W-32** Recommendations v1
+**W-40 · backend · W-39, W-32** Recommendations v1 (replaces the W-39 ranking)
 - `RecomputeAffinity`, `RecomputeTrending` (scheduled) and `SqlFeedRanker` per ADR 005; weights in one class, unit-tested on a fixture dataset (genre-affine user gets that genre ranked first).
-- `/feed/for-you`: no seen post, no own post, ≤ 2 per author per page, non-empty fallback when all seen; p95 < 150 ms on demo seed (EXPLAIN attached to PR).
+- DI alias `FeedRanker` → `SqlFeedRanker`, `SimpleFeedRanker` deleted; `/feed/for-you` contract unchanged (cursor `r` changes: old cursors → 400, the client restarts, W-34).
+- W-39's behavioural tests (exclusions, ≤ 2 per author per page, fallback, no repeat within a session) pass unchanged against `SqlFeedRanker`; p95 < 150 ms on demo seed (EXPLAIN attached to PR).
 
 **W-41 · backend · W-04, W-30** Search and hashtags
 - `PostgresSearchProvider` for 5 types; `beyonce` finds `Beyoncé`, `lof` finds `lofi` (prefix), `daft pnk` finds `Daft Punk` (trigram).
@@ -223,7 +270,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - Seed is deterministic (fixed random seed) and runs in < 5 min; ends with affinity + trending recomputed.
 
 **W-43 · frontend · W-40, W-41** Discovery UI
-- For-you/following tabs, search page with type tabs, debounced input (300 ms), hashtag page, genre chips.
+- Découvrir (`/discover`, W-38 shell): search page with type tabs, debounced input (300 ms), hashtag page, genre chips.
 - Empty and error states for every list.
 
 **W-44 · qa-security · W-40, W-41** Phase 4 review

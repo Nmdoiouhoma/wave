@@ -33,7 +33,7 @@ compose.yaml  Makefile  .env.example   (media-infra)
 | `Message/` | Messenger messages (shared contract, §8) | backend |
 | `MessageHandler/` | Handlers for non-media messages | backend |
 | `Media/` | ffprobe/ffmpeg wrappers + media message handlers | media-infra |
-| `Feed/` | `FeedRanker` + `SqlFeedRanker` | backend |
+| `Feed/` | `FeedRanker` + `SimpleFeedRanker` (phase 3, ADR 011) then `SqlFeedRanker` (W-40) + `ForYouWeights` | backend |
 | `Search/` | `SearchProvider` + `PostgresSearchProvider` | backend |
 | `Recommendation/` | affinity + trending computation | backend |
 | `RateLimit/` | limiter listener mapping route → limiter | backend |
@@ -91,7 +91,7 @@ RFC 7807, `Content-Type: application/problem+json`:
 - Request `?cursor=&limit=`; response `{ "items": [...], "nextCursor": "…" | null }`. No total counts.
 - Cursor = `base64url(json)` of the keyset of the last item + HMAC-SHA256 (first 16 bytes, key `APP_SECRET`) to reject tampering → 400 `invalid_cursor`. Example payload: `{"v":1,"k":["2026-10-24T08:15:30.123456Z","0192…"]}`.
 - Sort keys always end with `id` as tiebreaker. Fetch `limit + 1` rows to know if there is a next page.
-- Exceptions: search (offset in cursor, capped at 200), for-you (ranker cursor, ADR 005), playlist items (`position`).
+- Exceptions: search (offset in cursor, capped at 200), for-you (ranker cursor, ADR 005/011: pages may be shorter than `limit` with a non-null cursor), playlist items (`position`).
 
 ## 7. Shared PHP interfaces
 
