@@ -36,8 +36,8 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **Lot de retours FB-01 à FB-10** (`docs/FEEDBACK.md`) : tous traités sauf FB-01 (vrais e-mails, prévu avant la mise en prod).
 - **Phase 2** (W-20 à W-25, W-27, W-28) : playlists avec glisser-déposer, abonnements, likes, écoutes, recherche d'utilisateurs. Commits `38af9ba`..`4f92612`, poussés. Symfony 7.4.22 (CVE-2026-45070).
 - **Skills projet** (`.claude/skills/wave-*`) : stack, verif, commit, lot, retour, etat, ameliorer ; chacun apprend via son `lessons.md`.
-- **Correctifs W-26** (F10-F16, revue sécurité phase 2) : commits `741829c`..`2be4d1c`, **non poussés** (voir Points d'attention). Symfony 7.4.23 (CVE-2026-118513..118516), table `listen_grant`, suites de sécurité sociale et concurrence.
-- **Dernière vérification** (`verif.sh`, 07/11) : 323 tests backend (62 ignorés), 55 tests audio, 79 tests frontend, PHPStan propre, audit propre.
+- **Correctifs W-26** (F10-F17, revue sécurité phase 2 + re-revue) : commits `741829c`..HEAD, poussés. Symfony 7.4.23 (CVE-2026-118513..118516), table `listen_grant`, suites de sécurité sociale et concurrence. F18 (suspendu visible comme propriétaire/artiste) reporté en phase 5.
+- **Dernière vérification** (`verif.sh`, 07/11) : 333 tests backend (62 ignorés), 55 tests audio, 79 tests frontend, PHPStan propre, audit propre.
 
 ## En cours (non commité)
 
@@ -45,18 +45,17 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 ## Prochaines étapes
 
-1. Pousser les commits W-26 (compte GitHub `Nmdoiouhoma`), puis re-revue ciblée qa-security des correctifs et mise à jour de `docs/SECURITY.md` (T17-T21, F10-F16). Aligner le seuil Symfony 7.4.13 → 7.4.23 dans `infra/scripts/check-symfony-security.sh` et le Makefile (media-infra).
-2. Test de la phase 2 par l'utilisateur.
-3. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
-4. Phase 3 : posts courts, feed vertical, commentaires, signalement.
-5. Phase 4 : recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
-6. Phase 5 : durcissement, modération, suppression de compte, vrais e-mails (FB-01), README et checklist de mise en prod.
+1. Test de la phase 2 par l'utilisateur.
+2. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
+3. Phase 3 : posts courts, feed vertical, commentaires, signalement.
+4. Phase 4 : recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
+5. Phase 5 : durcissement, modération, suppression de compte, F18 (suspendus visibles comme propriétaires/artistes), vrais e-mails (FB-01), README et checklist de mise en prod.
 
 ## Points d'attention
 
 - **Docker Desktop s'arrête parfois** : relancer avec `open -a Docker`, puis `make up && make init`.
 - **Historique Git** : le backend de la phase 1 est en un seul commit sur GitHub. La version découpée est sur la branche locale `backend-split-commits`.
 - **Avant chaque publication** : lancer `make audit` séparément, son échec ne doit pas être masqué.
-- **Push** : le compte GitHub actif de `gh` est `nakib-m`, sans droit sur le dépôt ; pousser avec `Nmdoiouhoma` (`gh auth switch`).
+- **Push** : `gh auth switch -u Nmdoiouhoma`, `git push origin main`, puis revenir sur `nakib-m` (compte de l'utilisateur pour ses autres projets).
 - **/tmp du conteneur php** (tmpfs 64 Mo) : saturé le 07/11 par des fichiers de test (corrigé) ; si « No space left on device », `docker compose restart php`.
 - **Ne pas lancer verif.sh pendant qu'un agent fait tourner PHPUnit** : `doctrine:database:drop` échoue.
