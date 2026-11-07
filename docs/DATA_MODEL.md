@@ -182,7 +182,7 @@ Indexes: (user_id, status), (status, created_at). Consume = `UPDATE track_upload
 | search_vector | tsvector | no | trigger: name (A) + description (B) |
 | created_at, updated_at | timestamptz | no | updated_at bumps on item add/remove/reorder |
 
-Indexes: (owner_id, created_at DESC, id DESC), GIN(search_vector). Visible to others ⇔ is_public ∧ moderation=visible, else 404. Max 500 items (409 `playlist_full`). No cover upload in v1: `coverUrl` = cover of the first available item.
+Indexes: (owner_id, created_at DESC, id DESC), GIN(search_vector). Visible to others ⇔ is_public ∧ moderation=visible, else 404. Max 500 items (409 `playlist_full`). Max 200 playlists per owner (409 `playlist_limit_reached`, counted under a `SELECT … FOR UPDATE` of the owner's `app_user` row, same as the artist limit). No cover upload in v1: `coverUrl` = cover of the first available item.
 
 `playlist_item`
 | Column | Type | Null | Rules |
@@ -193,7 +193,7 @@ Indexes: (owner_id, created_at DESC, id DESC), GIN(search_vector). Visible to ot
 | position | int | no | 0-based, contiguous |
 | added_at | timestamptz | no | |
 
-Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFERRABLE INITIALLY DEFERRED** (reorder rewrites all positions in one transaction). Add = append at `item_count`. Remove = delete + `position = position - 1` for following items. Reorder = `PUT …/order` with the complete ordered list of trackIds (must equal the current set, else 409 `playlist_order_mismatch`). Only ready tracks visible to the adder can be added. Items whose track later becomes invisible to a viewer are returned with `track: null` (owner still gets `trackId`).
+Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFERRABLE INITIALLY DEFERRED** (reorder rewrites all positions in one transaction). Add = append at `item_count`. Remove = delete + `position = position - 1` for following items. Reorder = `PUT …/order` with the complete ordered list of trackIds (must equal the current set, else 409 `playlist_order_mismatch`). Only ready tracks visible to the adder can be added. Items whose track later becomes invisible to a viewer: owner gets them with `trackId` and `track: null`; non-owners do not get them at all (filtered in SQL, positions may show gaps). `trackIds` of a reorder must be a JSON list, else 422.
 
 ## 8. Social graph and likes
 
@@ -204,7 +204,7 @@ Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFE
 | `playlist_like` | user_id, playlist_id, created_at | PK(user_id, playlist_id) | CASCADE both | (playlist_id), (user_id, created_at DESC) | playlist.like_count |
 | `post_like` | user_id, post_id, created_at | PK(user_id, post_id) | CASCADE both | (post_id), (user_id, created_at DESC) | post.like_count |
 
-Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING` and increment only if a row was inserted; delete increments −1 only if a row was deleted. Liking own content is allowed. A user can like only what they can see (else 404).
+Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING` and increment only if a row was inserted; delete increments −1 only if a row was deleted. Liking own content is allowed. A user can like/follow only what they can see (else 404). Unlike/unfollow skip the visibility check: they only need the target row to exist (W-26 F14). Suspended users (`suspended_at` not null) are excluded from followers/following lists by a join on `app_user`; counters keep counting them until phase 5 moderation.
 
 ## 9. Post — `post`, `hashtag`, `post_hashtag`
 
@@ -267,8 +267,23 @@ Flat (no replies). Index (post_id, created_at DESC, id DESC). Delete allowed for
 | listened_ms | int | no | |
 | created_at | timestamptz | no | |
 
-Counted ⇔ `listened_ms ≥ 30 000` ∨ `listened_ms ≥ 50 % × reference` where reference = track.duration_ms (player) or post.clip_duration_ms (feed); ∧ `listened_ms ≤ reference + 2 000`; ∧ no counted listen for the same (user, track) in the last `max(30 s, reference / 2)`. Counted → insert row + `track.play_count + 1`. Listens on own tracks are counted too (simplicity; revisit if abused).
+Counted ⇔ all of (ADR 010):
+1. **duration**: `listened_ms ≥ 30 000` ∨ `listened_ms ≥ 50 % × reference` where reference = track.duration_ms (player) or post.clip_duration_ms (feed); ∧ `listened_ms ≤ reference + 2 000`;
+2. **grant**: a `listen_grant` row for (user, track) exists with `issued_at ≥ now − (reference + 30 min)`; it is **consumed** (`DELETE … RETURNING issued_at`) by every listen report that passes the visibility/ready checks, counted or not;
+3. **elapsed**: `listened_ms ≤ (now − issued_at) + 2 000` (one cannot have played more than the time since the URL was issued);
+4. **anti-replay**: no counted listen for the same (user, track) in the last `max(30 s, reference)` (whole duration);
+5. **daily cap**: fewer than 20 counted listens for the same (user, track) in the last 24 h (rolling; `COUNT` on the (user_id, track_id, created_at) index, `LIMIT 20`).
+Any rule failing → 200 `counted: false`, nothing stored. Counted → insert row + `track.play_count + 1`, same transaction as the grant consumption. Listens on own tracks are counted too (simplicity; revisit if abused).
 Indexes: (user_id, created_at DESC), (track_id, created_at DESC), (user_id, track_id, created_at DESC).
+
+`listen_grant` (W-26 F13, ADR 010) — one row per (user, track), proof that a stream URL was issued
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| user_id | uuid FK | no | CASCADE |
+| track_id | uuid FK | no | CASCADE |
+| issued_at | timestamptz | no | first issuance of the current play session |
+
+PK(user_id, track_id). Written on each successful `GET /tracks/{id}/stream-url` (and `GET /posts/{id}/stream-url` for the post's track, phase 3) by `INSERT … ON CONFLICT (user_id, track_id) DO UPDATE SET issued_at = now() WHERE listen_grant.issued_at < now() − (track.duration_ms + 30 min)`: a re-fetch during a session (expired URL, seek) keeps the original `issued_at`; a stale grant is renewed. Purge: scheduler job daily, `DELETE WHERE issued_at < now() − 1 day` (*job*). No index beyond the PK.
 
 `post_view`
 | Column | Type | Null | Rules |
@@ -320,7 +335,7 @@ A user cannot report their own content (422 `cannot_report_own`) and can only re
 1. Collect every storage key: user avatar; avatars of owned artists; raw/audio/cover keys of owned tracks; clip/visual/poster keys of posts authored by the user **and** of other users' posts using the user's tracks (they are deleted with the track, decision D5 follow-up).
 2. Fix counters on rows that survive, with set-based SQL: `followers_count`/`following_count` of the other side of each follow; `like_count` of tracks/playlists/posts the user liked; `comment_count` of posts the user commented (visible comments only); `item_count` of others' playlists containing the user's tracks (then compact `position`); `post_count` of hashtags of deleted posts. `play_count` is **not** decremented (aggregate, not personal data).
 3. Delete `report` rows whose target is any deleted row (polymorphic); reports filed by the user go by cascade; `handled_by_id` → NULL by FK.
-4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, listens, post views, affinity, account tokens, reports filed). Refresh tokens deleted by `username = id`.
+4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, listens, listen grants, post views, affinity, account tokens, reports filed). Refresh tokens deleted by `username = id`.
 5. Dispatch `PurgeObjects` (batches of ≤ 500 keys) and `SendAccountDeletedEmail` inside the same transaction.
 Username and email are free for re-registration immediately. Backups keep the data until their rotation (documented in the README prod checklist; 30 days). Synchronous; target < 5 s for 100 tracks / 500 posts; move to an async `DeleteAccount` message if it ever exceeds that.
 

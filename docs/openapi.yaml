@@ -19,6 +19,8 @@ info:
     - Unsupported method on an existing path (405) is answered as 404 `not_found`, so the route map is not disclosed.
     - Body with a missing required field or wrong JSON type → 400 `malformed_request` on auth routes (`/auth/*`, deserialized before validation); 422 `validation_failed` elsewhere.
     - An `artistId` (or any referenced id) the caller does not own or cannot see → 404 `not_found`, in bodies as in paths.
+    - Suspended accounts (W-26 F16): every `/users/{username}` route answers 404 `not_found` for a suspended user (profile, lists, follow), except `DELETE …/follow`; suspended users are left out of followers/following lists (counters unchanged until phase 5 moderation).
+    - Removing one's own link (`DELETE` like/follow, W-26 F14) never checks the target's visibility: it succeeds (idempotent) as long as the target exists; 404 only for a nonexistent target.
     - PATCH bodies are partial JSON (merge-patch semantics); `application/json` and `application/merge-patch+json` are both accepted.
 servers:
   - url: /api/v1
@@ -363,6 +365,7 @@ paths:
       tags: [users]
       operationId: getUserProfile
       summary: Get user profile
+      description: Suspended user → 404 `not_found`.
       responses:
         '200':
           description: Public profile.
@@ -379,7 +382,7 @@ paths:
       tags: [users]
       operationId: listFollowers
       summary: List followers
-      description: Ordered by follow date desc.
+      description: Ordered by follow date desc. Suspended users are omitted (`followersCount` still includes them). Suspended target → 404.
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -400,6 +403,7 @@ paths:
       tags: [users]
       operationId: listFollowing
       summary: List following
+      description: Ordered by follow date desc. Suspended users are omitted (`followingCount` still includes them). Suspended target → 404.
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -420,7 +424,7 @@ paths:
       tags: [users]
       operationId: followUser
       summary: Follow user
-      description: Idempotent. Following yourself → 422 `cannot_follow_self`.
+      description: Idempotent. Following yourself → 422 `cannot_follow_self`. Suspended target → 404 `not_found`.
       x-rate-limit: 200 per hour per user (shared bucket `social_write`)
       responses:
         '200':
@@ -436,7 +440,7 @@ paths:
       tags: [users]
       operationId: unfollowUser
       summary: Unfollow user
-      description: Idempotent.
+      description: Idempotent. Works on a suspended target too (removes one's own link, counters decremented); 404 only for an unknown username.
       responses:
         '200':
           description: Follow state.
@@ -839,7 +843,7 @@ paths:
       tags: [tracks, stream]
       operationId: getTrackStreamUrl
       summary: Get track stream url
-      description: 'Access check (track visible to caller) then a signed URL valid 5 min (D2, ADR 001). Not ready → 409 `track_not_ready`. Response is `Cache-Control: no-store`.'
+      description: 'Access check (track visible to caller) then a signed URL valid 5 min (D2, ADR 001). Not ready → 409 `track_not_ready`. Response is `Cache-Control: no-store`. Success also records a listen grant for (caller, track) (DATA_MODEL §11, ADR 010): a listen only counts after a stream URL was issued.'
       x-rate-limit: 120 per minute per user (bucket `stream_url`)
       responses:
         '200':
@@ -874,7 +878,7 @@ paths:
       tags: [tracks]
       operationId: unlikeTrack
       summary: Unlike track
-      description: Idempotent.
+      description: Idempotent. No visibility check on the target (removes one's own like, counter decremented); 404 only if the target does not exist.
       responses:
         '200':
           description: Like state.
@@ -893,7 +897,7 @@ paths:
       summary: Report listen
       description: |
         Sent once per play session (one session = one start of the track in the queue) when it ends: track end, skip, queue change, or page hide (`fetch(..., {keepalive: true})`; `sendBeacon` cannot carry the bearer header).
-        The server decides whether it counts (rules in DATA_MODEL §11) and answers 200 either way.
+        The server decides whether it counts (rules in DATA_MODEL §11, ADR 010) and answers 200 either way, `counted: false` included when no fresh listen grant exists (no prior `stream-url`), the declared `listenedMs` exceeds the time elapsed since the grant, the anti-replay window or the daily cap applies. No 4xx for these: they are not distinguishable from a normal non-counted listen.
         Track not visible → 404; visible but not ready → 409 `track_not_ready`. Phase 2 implements `source=player`; `source=feed` lands with posts in phase 3.
       x-rate-limit: 120 per minute per user (bucket `listen`)
       requestBody:
@@ -973,6 +977,8 @@ paths:
       tags: [playlists]
       operationId: createPlaylist
       summary: Create playlist
+      description: More than 200 playlists per user → 409 `playlist_limit_reached`.
+      x-rate-limit: 600 per hour per user (shared bucket `playlist_write`)
       requestBody:
         required: true
         content:
@@ -986,7 +992,9 @@ paths:
               schema: { $ref: '#/components/schemas/Playlist' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /playlists/{playlistId}:
     parameters:
@@ -1042,7 +1050,7 @@ paths:
       tags: [playlists]
       operationId: listPlaylistItems
       summary: List playlist items
-      description: 'Ordered by `position` asc. `limit` max 100. Items whose track is not visible to the caller have `track: null`.'
+      description: 'Ordered by `position` asc. `limit` max 100. Owner: items whose track is no longer visible to them are returned with `track: null` (trackId kept, needed for remove/reorder). Non-owner: such items are omitted entirely (no trackId leak), so positions may have gaps and fewer than `itemCount` items are listed.'
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - name: limit
@@ -1062,6 +1070,7 @@ paths:
       operationId: addPlaylistItem
       summary: Add playlist item
       description: Owner only. Appends. Track must be ready and visible to the caller (else 404 / 409 `track_not_ready`). Duplicate → 409 `track_already_in_playlist`. 500 items → 409 `playlist_full`.
+      x-rate-limit: shared bucket `playlist_write`
       requestBody:
         required: true
         content:
@@ -1079,6 +1088,7 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /playlists/{playlistId}/items/{trackId}:
     parameters:
@@ -1102,7 +1112,7 @@ paths:
       tags: [playlists]
       operationId: reorderPlaylist
       summary: Reorder playlist
-      description: Owner only. Full ordered list of every trackId currently in the playlist (including unavailable ones). Set mismatch (missing, extra, duplicate) → 409 `playlist_order_mismatch`.
+      description: Owner only. Full ordered list of every trackId currently in the playlist (including unavailable ones). Set mismatch (missing, extra, duplicate) → 409 `playlist_order_mismatch`. `trackIds` not a JSON array (e.g. an object), or an element not a uuid string → 422 `validation_failed`.
       requestBody:
         required: true
         content:
@@ -1115,6 +1125,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /playlists/{playlistId}/like:
     parameters:
@@ -1137,6 +1148,7 @@ paths:
       tags: [playlists]
       operationId: unlikePlaylist
       summary: Unlike playlist
+      description: Idempotent. No visibility check on the target (removes one's own like, counter decremented); 404 only if the target does not exist.
       responses:
         '200':
           description: Like state.
@@ -1252,6 +1264,7 @@ paths:
       tags: [posts]
       operationId: unlikePost
       summary: Unlike post
+      description: Idempotent. No visibility check on the target (removes one's own like, counter decremented); 404 only if the target does not exist.
       responses:
         '200':
           description: Like state.
@@ -1599,6 +1612,7 @@ components:
       name: username
       in: path
       required: true
+      description: Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`).
       schema: { type: string, pattern: '^[a-z0-9_.]{3,30}$' }
     ArtistSlug:
       name: slug
@@ -1727,6 +1741,7 @@ components:
         - track_not_ready            # 409
         - track_already_in_playlist  # 409
         - playlist_full              # 409
+        - playlist_limit_reached     # 409
         - playlist_order_mismatch    # 409
         - already_reported           # 409
         - too_many_pending_uploads   # 409
@@ -2097,7 +2112,7 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Track'
             - type: 'null'
-          description: Null when the track is not visible to the caller.
+          description: Null when the track is no longer visible to the caller (owner only; such items are omitted for non-owners).
     AddPlaylistItemRequest:
       type: object
       required: [trackId]
@@ -2111,6 +2126,7 @@ components:
       properties:
         trackIds:
           type: array
+          description: Must be a JSON array (list); an object → 422 `validation_failed`.
           maxItems: 500
           uniqueItems: true
           items: { type: string, format: uuid }
