@@ -1,5 +1,6 @@
 # Leçons wave-lot (les plus récentes en haut, 15 max)
 <!-- Format : AAAA-MM-JJ · symptôme → cause → règle. Une leçon intégrée au SKILL.md ou au script est retirée d'ici. -->
+- 2026-11-07 · contrat appliqué à la lettre créait un oracle d'existence (F14) → l'architecte n'avait pas croisé avec T17 → dans le brief architect, demander de vérifier chaque règle contre les tests de sécurité existants (SECURITY.md T*).
 - 2026-11-01 · lecture du handoff backend = 150 lignes de SQL → annexe de migrations en fin de fichier → lire `sed -n "1,/^## Annexe/p"` ; le SQL ne se lit qu'à la relecture des migrations.
 - 2026-11-01 · découpage des commits sans `git add -p` (non interactif) → fichiers partagés rangés dans le premier commit de fonctionnalité qui en dépend → acceptable, le signaler dans le corps du commit.
 - 2026-10-30 · backend et frontend coupés par la limite d'usage en pleine écriture des tests → travail non commité dans l'arbre → relancer par SendMessage, puis `wave-verif` avant de croire le rapport.
