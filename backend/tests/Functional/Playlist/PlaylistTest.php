@@ -135,9 +135,9 @@ final class PlaylistTest extends WaveApiTestCase
         $this->em()->flush();
 
         $items = $this->json($this->api('GET', '/api/v1/playlists/'.$playlist->getId().'/items', $bob))['items'];
-        self::assertNull($items[0]['track']);
-        self::assertSame($first->getId()->toRfc4122(), $items[0]['trackId']);
-        self::assertSame('Second', $items[1]['track']['title']);
+        // W-26 F15: a non-owner does not get the item at all (no trackId leak), positions keep their gap.
+        self::assertSame([[1, 'Second']], array_map(static fn (array $i): array => [$i['position'], $i['track']['title']], $items));
+        self::assertStringNotContainsString($first->getId()->toRfc4122(), $this->api('GET', '/api/v1/playlists/'.$playlist->getId().'/items', $bob)->getContent());
         self::assertNotNull($this->json($this->api('GET', '/api/v1/playlists/'.$playlist->getId().'/items', $alice))['items'][0]['track'], 'owner of the track still sees it');
         self::assertSame('http://wave.test/media/images/covers/x/second.webp', $this->json($this->api('GET', '/api/v1/playlists/'.$playlist->getId(), $bob))['coverUrl']);
     }

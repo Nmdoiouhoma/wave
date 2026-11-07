@@ -14,6 +14,7 @@ use App\Entity\Playlist;
 use App\Http\JsonInputDecoder;
 use App\Mapper\PlaylistMapper;
 use App\Problem\ApiProblemException;
+use App\Problem\ProblemCode;
 use App\Security\CurrentUser;
 use App\State\Provider\PlaylistLookup;
 use Doctrine\ORM\EntityManagerInterface;
@@ -72,9 +73,19 @@ final readonly class PlaylistProcessor implements ProcessorInterface
         if (!$input->has('name')) {
             throw ApiProblemException::validation('name', 'This value should not be blank.');
         }
-        $playlist = new Playlist($viewer, trim((string) $input->name), self::clean($input->description), $input->isPublic ?? true);
-        $this->em->persist($playlist);
-        $this->em->flush();
+        $playlist = $this->em->wrapInTransaction(function () use ($viewer, $input): Playlist {
+            // W-26 F15: limit per owner, concurrent creations serialised by a row lock on the user.
+            $conn = $this->em->getConnection();
+            $conn->executeQuery('SELECT 1 FROM app_user WHERE id = :id FOR UPDATE', ['id' => $viewer->getId()->toRfc4122()]);
+            if ((int) $conn->fetchOne('SELECT count(*) FROM playlist WHERE owner_id = :id', ['id' => $viewer->getId()->toRfc4122()]) >= Playlist::MAX_PER_USER) {
+                throw new ApiProblemException(ProblemCode::PlaylistLimitReached, \sprintf('A user can have at most %d playlists.', Playlist::MAX_PER_USER));
+            }
+            $playlist = new Playlist($viewer, trim((string) $input->name), self::clean($input->description), $input->isPublic ?? true);
+            $this->em->persist($playlist);
+            $this->em->flush();
+
+            return $playlist;
+        });
 
         return $this->mapper->toView($playlist, $viewer);
     }

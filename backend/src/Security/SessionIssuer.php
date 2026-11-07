@@ -6,6 +6,7 @@ namespace App\Security;
 
 use App\Entity\RefreshToken;
 use App\Entity\User;
+use App\Http\RequestEncodingListener;
 use App\Http\ViewNormalizer;
 use App\Mapper\UserMapper;
 use App\Problem\ApiProblemException;
@@ -227,7 +228,8 @@ final readonly class SessionIssuer
             $token = $request->cookies->get(self::COOKIE);
         }
 
-        return \is_string($token) && '' !== $token && \strlen($token) <= 128 ? $token : null;
+        // F12: NUL / invalid UTF-8 never reach PostgreSQL (truncation or 500); treated as no token.
+        return \is_string($token) && '' !== $token && \strlen($token) <= 128 && RequestEncodingListener::isCleanText($token) ? $token : null;
     }
 
     private function cookie(string $value, int $maxAge): Cookie

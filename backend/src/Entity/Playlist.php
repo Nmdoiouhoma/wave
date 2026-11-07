@@ -18,6 +18,8 @@ use Symfony\Component\Uid\Uuid;
 class Playlist
 {
     public const int MAX_ITEMS = 500;
+    /** Per owner (DATA_MODEL §7, W-26 F15). */
+    public const int MAX_PER_USER = 200;
 
     #[ORM\Id]
     #[ORM\Column(type: UuidType::NAME)]

@@ -28,11 +28,12 @@ final readonly class PostgresSearchProvider implements SearchProvider
         if (0 === $limit) {
             return new SearchHits([], null);
         }
-        $like = addcslashes(mb_strtolower(trim($query)), '%_\\');
 
         $ids = $this->db->fetchFirstColumn(
             <<<'SQL'
-                WITH q AS (SELECT wave_unaccent(lower(:q)) AS q, wave_unaccent(:like) AS p)
+                WITH n AS (SELECT wave_unaccent(lower(:q)) AS q),
+                -- LIKE escaping (chr(92) = backslash) after unaccent, which folds ％ ＿ ﹪ into % _ (F10)
+                q AS (SELECT n.q, replace(replace(replace(n.q, chr(92), chr(92) || chr(92)), '%', chr(92) || '%'), '_', chr(92) || '_') AS p FROM n)
                 SELECT u.id FROM app_user u, q
                 WHERE u.suspended_at IS NULL AND u.id <> :viewer
                   AND (
@@ -52,7 +53,7 @@ final readonly class PostgresSearchProvider implements SearchProvider
                     u.id
                 OFFSET :offset LIMIT :limit
                 SQL,
-            ['q' => trim($query), 'like' => $like, 'viewer' => $viewerId->toRfc4122(), 'offset' => $offset, 'limit' => $limit + 1],
+            ['q' => trim($query), 'viewer' => $viewerId->toRfc4122(), 'offset' => $offset, 'limit' => $limit + 1],
         );
 
         $hasMore = \count($ids) > $limit && $offset + $limit < self::MAX_RESULTS;

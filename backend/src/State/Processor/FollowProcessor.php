@@ -33,11 +33,13 @@ final readonly class FollowProcessor implements ProcessorInterface
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): FollowStateView
     {
         $me = $this->currentUser->require();
-        $target = $this->users->byUsername($uriVariables['username'] ?? null);
-
         if ($operation instanceof DeleteOperationInterface) {
+            // F14/F16: removing one's own link works on a suspended target too.
+            $target = $this->users->includingSuspended($uriVariables['username'] ?? null);
+
             return new FollowStateView(false, $this->em->wrapInTransaction(fn (): int => $this->follows->unfollow($me, $target)));
         }
+        $target = $this->users->byUsername($uriVariables['username'] ?? null);
         if ($me->getId()->equals($target->getId())) {
             throw new ApiProblemException(ProblemCode::CannotFollowSelf, 'You cannot follow yourself.');
         }

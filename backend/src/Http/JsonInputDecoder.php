@@ -8,6 +8,7 @@ use App\Problem\ApiProblemException;
 use App\Problem\ProblemCode;
 use App\Problem\Violation;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Validator\Constraints\Charset;
 use Symfony\Component\Validator\Constraints\Collection;
 use Symfony\Component\Validator\Constraints\Type;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
@@ -17,7 +18,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
  * controllers), so errors are identical everywhere:
  * - not JSON content type → 415 unsupported_media_type
  * - empty/invalid JSON or not an object → 400 malformed_request
- * - unknown property or wrong JSON type → 422 validation_failed (one violation each)
+ * - unknown property, wrong JSON type, NUL in a string → 422 validation_failed (one violation each)
  * - Validator constraints of the input DTO → 422 validation_failed.
  *
  * Input DTOs are classes with public typed properties and defaults; properties present in
@@ -82,6 +83,11 @@ final readonly class JsonInputDecoder
             $key = (string) $key;
             if ('provided' === $key || !$reflection->hasProperty($key) || !$reflection->getProperty($key)->isPublic() || $reflection->getProperty($key)->isStatic()) {
                 $violations[] = new Violation($key, 'This field is not allowed.', Collection::NO_SUCH_FIELD_ERROR);
+                continue;
+            }
+            if (!RequestEncodingListener::isClean($value)) {
+                // F12: PostgreSQL text cannot hold NUL (pdo_pgsql would truncate the value).
+                $violations[] = new Violation($key, 'This value contains a NUL character or invalid UTF-8.', Charset::BAD_ENCODING_ERROR);
                 continue;
             }
             $property = $reflection->getProperty($key);

@@ -166,16 +166,28 @@ final class PlaylistRepository extends ServiceEntityRepository
     }
 
     /**
-     * Items by position (keyset on position, which only the owner changes).
+     * Items by position (keyset on position, which only the owner changes). For anyone but the
+     * owner, items whose track is not visible to the viewer are left out in SQL (W-26 F15: no
+     * trackId leak; positions may show gaps).
      *
      * @return list<array{track_id: string, position: int, added_at: string}> $limit + 1 rows
      */
-    public function itemsPage(Playlist $playlist, ?int $afterPosition, int $limit): array
+    public function itemsPage(Playlist $playlist, ?User $viewer, ?int $afterPosition, int $limit): array
     {
+        $params = ['p' => $playlist->getId()->toRfc4122(), 'after' => $afterPosition ?? -1, 'limit' => $limit + 1];
+        $visible = '';
+        if (!$playlist->isOwnedBy($viewer)) {
+            $visible = "AND EXISTS (SELECT 1 FROM track t WHERE t.id = i.track_id
+                 AND ((t.status = 'ready' AND t.visibility = 'public' AND t.moderation = 'visible') OR t.owner_id = :v OR :mod = 1))";
+            $params += [
+                'v' => $viewer?->getId()->toRfc4122() ?? '00000000-0000-0000-0000-000000000000',
+                'mod' => null !== $viewer && $viewer->isModerator() ? 1 : 0,
+            ];
+        }
         $rows = $this->db()->fetchAllAssociative(
-            'SELECT track_id, position, added_at FROM playlist_item
-             WHERE playlist_id = :p AND position > :after ORDER BY position LIMIT :limit',
-            ['p' => $playlist->getId()->toRfc4122(), 'after' => $afterPosition ?? -1, 'limit' => $limit + 1],
+            "SELECT i.track_id, i.position, i.added_at FROM playlist_item i
+             WHERE i.playlist_id = :p AND i.position > :after {$visible} ORDER BY i.position LIMIT :limit",
+            $params,
         );
 
         return array_map(
@@ -217,10 +229,19 @@ final class PlaylistRepository extends ServiceEntityRepository
     /**
      * Track deletion (DATA_MODEL §7): before the cascade removes the items, decrement the
      * item_count of every playlist containing the track and compact positions.
+     *
+     * The touched playlists are locked first (by id, like {@see lock()} taken one at a time by
+     * add/remove/reorder) so that the shift sees an append committed meanwhile (F11).
      */
     public function detachTrackEverywhere(Uuid $trackId): void
     {
         $t = $trackId->toRfc4122();
+        $this->db()->fetchFirstColumn(
+            'SELECT p.id FROM playlist p
+             WHERE p.id IN (SELECT playlist_id FROM playlist_item WHERE track_id = :t)
+             ORDER BY p.id FOR UPDATE',
+            ['t' => $t],
+        );
         $this->db()->executeStatement(
             'UPDATE playlist_item x SET position = x.position - 1
              FROM playlist_item i WHERE i.track_id = :t AND x.playlist_id = i.playlist_id AND x.position > i.position',

@@ -47,6 +47,8 @@ final readonly class RateLimitListener
         'followUser' => [['social_write_user', self::BY_USER]],
         'likeTrack' => [['social_write_user', self::BY_USER]],
         'likePlaylist' => [['social_write_user', self::BY_USER]],
+        'createPlaylist' => [['playlist_write_user', self::BY_USER]],
+        'addPlaylistItem' => [['playlist_write_user', self::BY_USER]],
         'reportListen' => [['listen_user', self::BY_USER]],
         'search' => [['search_minute_user', self::BY_USER], ['search_day_user', self::BY_USER]],
     ];

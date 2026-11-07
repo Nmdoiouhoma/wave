@@ -30,6 +30,7 @@ enum ProblemCode: string
     case TrackNotReady = 'track_not_ready';
     case TrackAlreadyInPlaylist = 'track_already_in_playlist';
     case PlaylistFull = 'playlist_full';
+    case PlaylistLimitReached = 'playlist_limit_reached';
     case PlaylistOrderMismatch = 'playlist_order_mismatch';
     case AlreadyReported = 'already_reported';
     case TooManyPendingUploads = 'too_many_pending_uploads';
@@ -57,7 +58,7 @@ enum ProblemCode: string
             self::Forbidden, self::AccountSuspended, self::StreamTokenInvalid, self::EmailNotVerified => 403,
             self::NotFound => 404,
             self::EmailTaken, self::UsernameTaken, self::ArtistLimitReached, self::ArtistHasTracks,
-            self::TrackNotReady, self::TrackAlreadyInPlaylist, self::PlaylistFull, self::PlaylistOrderMismatch,
+            self::TrackNotReady, self::TrackAlreadyInPlaylist, self::PlaylistFull, self::PlaylistLimitReached, self::PlaylistOrderMismatch,
             self::AlreadyReported, self::TooManyPendingUploads, self::UploadAlreadyUsed, self::UploadExpired,
             self::UploadIncomplete, self::EmailAlreadyVerified => 409,
             self::StreamTokenExpired => 410,
@@ -94,6 +95,7 @@ enum ProblemCode: string
             self::TrackNotReady => 'Track not ready',
             self::TrackAlreadyInPlaylist => 'Track already in playlist',
             self::PlaylistFull => 'Playlist full',
+            self::PlaylistLimitReached => 'Playlist limit reached',
             self::PlaylistOrderMismatch => 'Playlist order mismatch',
             self::AlreadyReported => 'Already reported',
             self::TooManyPendingUploads => 'Too many pending uploads',

@@ -58,6 +58,25 @@ final readonly class LikeRepository
     }
 
     /**
+     * Removes the user's own like whatever the target's visibility (W-26 F14): having liked
+     * it, the user already knows it exists.
+     *
+     * @param 'track'|'playlist' $kind
+     *
+     * @return int|null like_count after the removal, null when the user had no such like
+     */
+    public function removeOwn(string $kind, User $user, Uuid $targetId): ?int
+    {
+        $t = self::TARGETS[$kind];
+        $deleted = $this->db->executeStatement(
+            "DELETE FROM {$t['table']} WHERE user_id = :u AND {$t['column']} = :t",
+            ['u' => $user->getId()->toRfc4122(), 't' => $targetId->toRfc4122()],
+        );
+
+        return 1 === $deleted ? $this->bump($t['counter'], $targetId, -1) : null;
+    }
+
+    /**
      * Which of $ids the viewer likes — one query for a whole page (no N+1).
      *
      * @param 'track'|'playlist' $kind

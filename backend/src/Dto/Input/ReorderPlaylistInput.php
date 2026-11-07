@@ -12,6 +12,7 @@ final class ReorderPlaylistInput extends InputDto
 {
     /** @var list<mixed>|null */
     #[Assert\NotNull]
+    #[Assert\Type('list')]
     #[Assert\Count(max: 500)]
     #[Assert\All([new Assert\Type('string'), new Assert\Uuid()])]
     public ?array $trackIds = null;

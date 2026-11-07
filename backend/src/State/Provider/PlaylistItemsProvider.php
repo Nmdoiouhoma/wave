@@ -51,7 +51,7 @@ final readonly class PlaylistItemsProvider implements ProviderInterface
             $after = $page->after[0];
         }
 
-        $rows = $this->playlists->itemsPage($playlist, $after, $page->limit);
+        $rows = $this->playlists->itemsPage($playlist, $viewer, $after, $page->limit);
         $next = null;
         if (\count($rows) > $page->limit) {
             $rows = \array_slice($rows, 0, $page->limit);

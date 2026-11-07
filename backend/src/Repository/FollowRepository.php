@@ -80,6 +80,7 @@ final readonly class FollowRepository
 
     /**
      * Followers (or followed users) of $user, newest follow first, keyset (created_at, other id).
+     * Suspended users are left out (W-26 F16); counters still include them.
      *
      * @param list<string|int|float|bool|null>|null $after
      *
@@ -99,6 +100,7 @@ final readonly class FollowRepository
 
         $rows = $this->db->fetchAllAssociative(
             "SELECT f.{$other} AS id, f.created_at AS at FROM follow f
+             JOIN app_user o ON o.id = f.{$other} AND o.suspended_at IS NULL
              WHERE f.{$self} = :u {$where}
              ORDER BY f.created_at DESC, f.{$other} DESC LIMIT :limit",
             $params,
