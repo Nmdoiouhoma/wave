@@ -204,7 +204,7 @@ Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFE
 | `playlist_like` | user_id, playlist_id, created_at | PK(user_id, playlist_id) | CASCADE both | (playlist_id), (user_id, created_at DESC) | playlist.like_count |
 | `post_like` | user_id, post_id, created_at | PK(user_id, post_id) | CASCADE both | (post_id), (user_id, created_at DESC) | post.like_count |
 
-Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING` and increment only if a row was inserted; delete increments −1 only if a row was deleted. Liking own content is allowed. A user can like/follow only what they can see (else 404). Unlike/unfollow skip the visibility check: they only need the target row to exist (W-26 F14). Suspended users (`suspended_at` not null) are excluded from followers/following lists by a join on `app_user`; counters keep counting them until phase 5 moderation.
+Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING` and increment only if a row was inserted; delete increments −1 only if a row was deleted. Liking own content is allowed. A user can like/follow only what they can see (else 404). Unlike: an existing like of the caller is deleted whatever the target's visibility; without one, an invisible target → 404 (no existence oracle). Unfollow: any existing user, suspended included (W-26 F14). Suspended users (`suspended_at` not null) are excluded from followers/following lists by a join on `app_user`; counters keep counting them until phase 5 moderation.
 
 ## 9. Post — `post`, `hashtag`, `post_hashtag`
 
@@ -283,7 +283,7 @@ Indexes: (user_id, created_at DESC), (track_id, created_at DESC), (user_id, trac
 | track_id | uuid FK | no | CASCADE |
 | issued_at | timestamptz | no | first issuance of the current play session |
 
-PK(user_id, track_id). Written on each successful `GET /tracks/{id}/stream-url` (and `GET /posts/{id}/stream-url` for the post's track, phase 3) by `INSERT … ON CONFLICT (user_id, track_id) DO UPDATE SET issued_at = now() WHERE listen_grant.issued_at < now() − (track.duration_ms + 30 min)`: a re-fetch during a session (expired URL, seek) keeps the original `issued_at`; a stale grant is renewed. Purge: scheduler job daily, `DELETE WHERE issued_at < now() − 1 day` (*job*). No index beyond the PK.
+PK(user_id, track_id). Written on each successful `GET /tracks/{id}/stream-url` (and `GET /posts/{id}/stream-url` for the post's track, phase 3) by `INSERT … ON CONFLICT (user_id, track_id) DO UPDATE SET issued_at = now() WHERE listen_grant.issued_at < now() − (track.duration_ms + 30 min)`: a re-fetch during a session (expired URL, seek) keeps the original `issued_at`; a stale grant is renewed. Purge: scheduler job daily, `DELETE WHERE issued_at < now() − 1 day` (*job*). Indexes: PK plus the Doctrine FK indexes on `user_id` and `track_id` (kept: the `track_id` one serves the CASCADE on track delete).
 
 `post_view`
 | Column | Type | Null | Rules |

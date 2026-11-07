@@ -4,7 +4,8 @@
 - F13 : écoute comptée seulement avec un `listen_grant` (user, track) frais (`issued_at ≥ now − (durée + 30 min)`), consommé par tout rapport ; `listenedMs ≤ écoulé depuis issued_at + 2 s` ; anti-rejeu `max(30 s, durée)` ; plafond 20 écoutes comptées / 24 h glissantes par (user, track). Échec → 200 `counted: false`, jamais de 4xx. État en Postgres (ADR 010).
 - F15 : 200 playlists max par utilisateur → 409 `playlist_limit_reached` (nouveau code) ; bucket `playlist_write` 600/h (create + add item) ; non-propriétaire : items à titre invisible omis (pas de `trackId`), propriétaire inchangé ; `trackIds` non-liste → 422 `validation_failed`.
 - F16 : suspendu → 404 sur toutes les routes `/users/{username}*` sauf `DELETE …/follow` ; suspendus omis des listes abonnés/abonnements ; compteurs inchangés jusqu'à la phase 5.
-- F14 : unlike/unfollow sans contrôle de visibilité, 404 seulement si la cible n'existe pas (règle globale + 4 opérations).
+- F14 (corrigé après retour backend, validé lead) : unlike supprime le like existant quelle que soit la visibilité ; sans like, cible invisible → 404 comme inexistante (pas d'oracle, T17). Unfollow : toute cible existante, suspendue comprise.
+- `listen_grant` garde les index Doctrine sur `user_id` et `track_id` (celui sur `track_id` sert la cascade), noté en DATA_MODEL §11.
 ## Contrat d'API modifié ? (oui/non + détail)
 - Oui : code `playlist_limit_reached` (409) ; 409/429 sur `createPlaylist`, 429 sur `addPlaylistItem`, 422 sur `reorderPlaylist` ; 404 pour suspendu ; items omis pour les non-propriétaires. Aucun schéma modifié (types front inchangés hormis l'enum `ProblemCode`).
 ## Reste à faire / points ouverts
@@ -16,7 +17,7 @@ Backend, à implémenter :
 5. `PlaylistItemsProvider` : pour un non-propriétaire, filtrer en SQL les items dont le titre est invisible.
 6. `PlaylistItemProcessor` (reorder) : `trackIds` doit être `array_is_list` d'uuid, sinon 422 `validation_failed`.
 7. `UserLookup::byUsername` → 404 si `suspended_at` non nul (variante sans ce filtre pour l'unfollow) ; `FollowRepository::page` : jointure `app_user` avec `suspended_at IS NULL`.
-8. Like/Follow processors DELETE : chercher la cible par id sans contrôle de visibilité (F14).
+8. F14 : déjà implémenté par le backend selon `w26-fix-backend.md`.
 - Front : enum `ProblemCode` à régénérer ; message pour `playlist_limit_reached`. SECURITY.md T20 à mettre à jour par qa après correctif.
 ## Commande pour vérifier
 `ruby -ryaml -e 'YAML.load_file("docs/openapi.yaml")'` · `grep -n "playlist_limit_reached\|listen_grant\|Suspended" docs/openapi.yaml docs/DATA_MODEL.md`

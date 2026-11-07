@@ -20,7 +20,7 @@ info:
     - Body with a missing required field or wrong JSON type → 400 `malformed_request` on auth routes (`/auth/*`, deserialized before validation); 422 `validation_failed` elsewhere.
     - An `artistId` (or any referenced id) the caller does not own or cannot see → 404 `not_found`, in bodies as in paths.
     - Suspended accounts (W-26 F16): every `/users/{username}` route answers 404 `not_found` for a suspended user (profile, lists, follow), except `DELETE …/follow`; suspended users are left out of followers/following lists (counters unchanged until phase 5 moderation).
-    - Removing one's own link (`DELETE` like/follow, W-26 F14) never checks the target's visibility: it succeeds (idempotent) as long as the target exists; 404 only for a nonexistent target.
+    - Removing one's own link (W-26 F14): `DELETE …/like` removes the caller's like whatever the target's visibility (counter decremented); if the caller has no like on it, an invisible target answers 404 like a nonexistent one (no existence oracle, T17). `DELETE /users/{username}/follow` succeeds on any existing user, suspended included; 404 only for an unknown username.
     - PATCH bodies are partial JSON (merge-patch semantics); `application/json` and `application/merge-patch+json` are both accepted.
 servers:
   - url: /api/v1
@@ -878,7 +878,7 @@ paths:
       tags: [tracks]
       operationId: unlikeTrack
       summary: Unlike track
-      description: Idempotent. No visibility check on the target (removes one's own like, counter decremented); 404 only if the target does not exist.
+      description: Idempotent. An existing like by the caller is removed whatever the target's visibility (counter decremented); without a like, a target the caller cannot see → 404 `not_found`, as if it did not exist.
       responses:
         '200':
           description: Like state.
@@ -1148,7 +1148,7 @@ paths:
       tags: [playlists]
       operationId: unlikePlaylist
       summary: Unlike playlist
-      description: Idempotent. No visibility check on the target (removes one's own like, counter decremented); 404 only if the target does not exist.
+      description: Idempotent. An existing like by the caller is removed whatever the target's visibility (counter decremented); without a like, a target the caller cannot see → 404 `not_found`, as if it did not exist.
       responses:
         '200':
           description: Like state.
@@ -1264,7 +1264,7 @@ paths:
       tags: [posts]
       operationId: unlikePost
       summary: Unlike post
-      description: Idempotent. No visibility check on the target (removes one's own like, counter decremented); 404 only if the target does not exist.
+      description: Idempotent. An existing like by the caller is removed whatever the target's visibility (counter decremented); without a like, a target the caller cannot see → 404 `not_found`, as if it did not exist.
       responses:
         '200':
           description: Like state.
