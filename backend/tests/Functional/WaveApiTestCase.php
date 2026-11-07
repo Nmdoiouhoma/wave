@@ -26,11 +26,40 @@ abstract class WaveApiTestCase extends ApiTestCase
 
     protected Client $client;
 
+    /** @var list<string> files from {@see uploadTempFile()}, removed in tearDown */
+    private array $uploadTempFiles = [];
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->client = static::createClient();
         $this->client->disableReboot();
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ($this->uploadTempFiles as $path) {
+            @unlink($path);
+        }
+        $this->uploadTempFiles = [];
+        parent::tearDown();
+    }
+
+    /** A temporary file of $size bytes (or $content), deleted after the test. */
+    protected function uploadTempFile(string $content = '', int $size = 0): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'wave-test-');
+        self::assertIsString($path);
+        $this->uploadTempFiles[] = $path;
+        file_put_contents($path, $content);
+        if ($size > \strlen($content)) {
+            $handle = fopen($path, 'r+');
+            self::assertIsResource($handle);
+            ftruncate($handle, $size);
+            fclose($handle);
+        }
+
+        return $path;
     }
 
     protected function em(): EntityManagerInterface

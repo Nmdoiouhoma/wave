@@ -174,10 +174,6 @@ final class MeTest extends WaveApiTestCase
 
     private function image(string $name, string $mime, int $size = 64): UploadedFile
     {
-        $path = tempnam(sys_get_temp_dir(), 'wave-test-');
-        self::assertIsString($path);
-        file_put_contents($path, str_repeat("\x89", $size));
-
-        return new UploadedFile($path, $name, $mime, null, true);
+        return new UploadedFile($this->uploadTempFile(str_repeat("\x89", $size)), $name, $mime, null, true);
     }
 }

@@ -177,13 +177,6 @@ final class TrackTest extends WaveApiTestCase
     /** @param int<0, max> $size */
     private function file(string $name, string $mime, int $size = 2048): UploadedFile
     {
-        $path = tempnam(sys_get_temp_dir(), 'wave-test-');
-        self::assertIsString($path);
-        $handle = fopen($path, 'w');
-        self::assertIsResource($handle);
-        ftruncate($handle, $size);
-        fclose($handle);
-
-        return new UploadedFile($path, $name, $mime, null, true);
+        return new UploadedFile($this->uploadTempFile(size: $size), $name, $mime, null, true);
     }
 }

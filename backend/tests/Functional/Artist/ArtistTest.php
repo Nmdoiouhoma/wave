@@ -137,10 +137,6 @@ final class ArtistTest extends WaveApiTestCase
 
     private function image(): UploadedFile
     {
-        $path = tempnam(sys_get_temp_dir(), 'wave-test-');
-        self::assertIsString($path);
-        file_put_contents($path, 'not really a png');
-
-        return new UploadedFile($path, 'a.png', 'image/png', null, true);
+        return new UploadedFile($this->uploadTempFile('not really a png'), 'a.png', 'image/png', null, true);
     }
 }
