@@ -91,7 +91,7 @@ reset: ## DANGER: remove containers AND volumes (db, objects, caches)
 	$(COMPOSE) --profile tools down -v --remove-orphans
 
 # ADR 006: non-zero exit if any check fails (all checks run, then report).
-audit: ## Security audit: PHP >= 8.4.27, security-http >= 7.4.13, composer + npm audit
+audit: ## Security audit: PHP >= 8.4.27, security-http >= 7.4.23, composer + npm audit
 	@status=0; \
 	$(MAKE) --no-print-directory audit-php || status=1; \
 	$(MAKE) --no-print-directory audit-symfony || status=1; \
@@ -103,7 +103,7 @@ audit: ## Security audit: PHP >= 8.4.27, security-http >= 7.4.13, composer + npm
 audit-php: ## Fail if the running php image is < 8.4.27
 	@$(EXEC_PHP) sh -s < infra/scripts/check-php-version.sh
 
-audit-symfony: ## Fail if symfony/security-http or http-kernel < 7.4.13
+audit-symfony: ## Fail if symfony/security-http or http-kernel < 7.4.23
 	@$(EXEC_PHP) sh -s < infra/scripts/check-symfony-security.sh
 
 audit-composer: ## composer audit (needs registry access: tools profile)
