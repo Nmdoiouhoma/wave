@@ -11,13 +11,15 @@ use App\Enum\MediaStatus;
 use App\Mapper\DateFormat;
 use App\Problem\ApiProblemException;
 use App\Problem\ProblemCode;
+use App\Repository\ListenGrantRepository;
 use App\Security\CurrentUser;
 use App\Stream\StreamTokenSigner;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * `GET /tracks/{trackId}/stream-url`: visibility check (404), readiness (409), then a
- * signed URL valid STREAM_URL_TTL seconds (ADR 001). Answered with `Cache-Control: no-store`.
+ * signed URL valid STREAM_URL_TTL seconds (ADR 001), and a listen grant (ADR 010). Answered
+ * with `Cache-Control: no-store`.
  *
  * @implements ProviderInterface<StreamUrlView>
  */
@@ -27,6 +29,7 @@ final readonly class TrackStreamUrlProvider implements ProviderInterface
         private TrackLookup $lookup,
         private CurrentUser $currentUser,
         private StreamTokenSigner $signer,
+        private ListenGrantRepository $grants,
         #[Autowire(env: 'APP_PUBLIC_URL')]
         private string $publicUrl,
     ) {
@@ -39,6 +42,8 @@ final readonly class TrackStreamUrlProvider implements ProviderInterface
         if (MediaStatus::Ready !== $track->getStatus() || null === $track->getAudioKey()) {
             throw new ApiProblemException(ProblemCode::TrackNotReady, 'The track is still processing or failed.');
         }
+        // ADR 010 (W-26 F13): a listen counts only after a stream URL was issued.
+        $this->grants->grant($viewer->getId(), $track->getId(), (int) $track->getDurationMs());
         $signed = $this->signer->sign(StreamTokenSigner::KIND_TRACK, $track->getId(), $viewer->getId());
 
         return new StreamUrlView(rtrim($this->publicUrl, '/').'/api/v1/stream/'.$signed['token'], DateFormat::format($signed['expiresAt']));

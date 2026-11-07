@@ -42,6 +42,8 @@ final readonly class WaveSchedule implements ScheduleProviderInterface
                 // F3: expired rate-limiter rows (cache.rate_limiter on Doctrine DBAL) are never
                 // removed on read; prune every pruneable pool daily.
                 RecurringMessage::cron('45 3 * * *', new RedispatchMessage(new RunCommandMessage('cache:pool:prune'), 'async'), new \DateTimeZone('UTC')),
+                // ADR 010: listen grants older than 1 day.
+                RecurringMessage::cron('50 3 * * *', new RedispatchMessage(new RunCommandMessage('wave:listen-grants:purge'), 'async'), new \DateTimeZone('UTC')),
             );
     }
 }
