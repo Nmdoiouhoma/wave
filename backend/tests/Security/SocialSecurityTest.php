@@ -254,6 +254,51 @@ final class SocialSecurityTest extends SecurityTestCase
         self::assertSame([], $names, 'even on an exact username');
     }
 
+    /**
+     * W-29a: track search never surfaces what `GET /tracks/{id}` would hide, nor a suspended
+     * owner's tracks, even on an exact title and even when the caller liked the track before it
+     * became private or hidden (the "liked first" ranking must not bypass visibility).
+     */
+    public function testTrackSearchNeverLeaksInvisibleTracks(): void
+    {
+        $me = $this->createUser('searcher');
+        $alice = $this->createUser('alice');
+        $artist = $this->createArtist($alice, 'Alice Band', 'alice-band');
+        $public = $this->createTrack($artist, 'Kestrel');
+        $private = $this->createTrack($artist, 'Kestrel');
+        $hidden = $this->createTrack($artist, 'Kestrel');
+        foreach ([$private, $hidden] as $track) {
+            self::assertSame(200, $this->api('PUT', '/api/v1/tracks/'.$track->getId().'/like', $me)->getStatusCode());
+        }
+        $banned = $this->createUser('banned');
+        $bannedTrack = $this->createTrack($this->createArtist($banned, 'Banned Band', 'banned-band'), 'Kestrel');
+        $this->api('PUT', '/api/v1/tracks/'.$bannedTrack->getId().'/like', $me);
+        $db = $this->em()->getConnection();
+        $db->executeStatement("UPDATE track SET visibility = 'private' WHERE id = ?", [$private->getId()->toRfc4122()]);
+        $db->executeStatement("UPDATE track SET moderation = 'hidden' WHERE id = ?", [$hidden->getId()->toRfc4122()]);
+        $db->executeStatement('UPDATE app_user SET suspended_at = now() WHERE id = ?', [$banned->getId()->toRfc4122()]);
+
+        foreach (['kestrel', 'Kestrel', 'kestre', 'alice band', 'banned band'] as $q) {
+            $r = $this->api('GET', '/api/v1/search?type=tracks&q='.rawurlencode($q), $me);
+            self::assertSame(200, $r->getStatusCode(), $q);
+            $ids = array_column($this->json($r)['tracks']['items'], 'id');
+            foreach ([$private, $hidden, $bannedTrack] as $invisible) {
+                self::assertNotContains($invisible->getId()->toRfc4122(), $ids, $q);
+            }
+            self::assertContains($public->getId()->toRfc4122(), $ids, $q.' (via similarity for the other artist name)');
+        }
+
+        // Hostile queries and wildcard look-alikes neither fail nor widen the match.
+        foreach (['%%', '__', ':*', "a'b", 'a&b', '\\\\', '％％', '＿＿', '﹪﹪'] as $q) {
+            $r = $this->api('GET', '/api/v1/search?type=tracks&q='.rawurlencode($q), $me);
+            self::assertSame(200, $r->getStatusCode(), $q.': '.$r->getContent(false));
+            self::assertSame([], $this->json($r)['tracks']['items'], $q.' must not match everything');
+        }
+        foreach (["ab\0cd", "ab\xff\xfe"] as $q) {
+            self::assertContains($this->api('GET', '/api/v1/search?type=tracks&q='.rawurlencode($q), $me)->getStatusCode(), [400, 422], bin2hex($q));
+        }
+    }
+
     /** `reportListen` is limited to 120/min per user (bucket `listen`). */
     public function testListenReportsAreRateLimited(): void
     {

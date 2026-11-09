@@ -78,7 +78,7 @@ final class UserSearchTest extends WaveApiTestCase
 
         $this->assertProblem($this->api('GET', '/api/v1/search?type=users&q=p', $me), 422, 'validation_failed');
         $this->assertProblem($this->api('GET', '/api/v1/search?q=paul', $me), 422, 'validation_failed');
-        $this->assertProblem($this->api('GET', '/api/v1/search?type=tracks&q=paul', $me), 422, 'validation_failed');
+        $this->assertProblem($this->api('GET', '/api/v1/search?type=artists&q=paul', $me), 422, 'validation_failed');
         $this->assertProblem($this->api('GET', '/api/v1/search?type=users&q='.str_repeat('a', 101), $me), 422, 'validation_failed');
         $this->assertProblem($this->api('GET', '/api/v1/search?type=users&q=paul'), 401, 'unauthenticated');
 

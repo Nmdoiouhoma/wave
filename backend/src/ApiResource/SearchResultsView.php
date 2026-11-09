@@ -9,8 +9,9 @@ use ApiPlatform\Metadata\Get;
 use App\State\Provider\SearchResultsProvider;
 
 /**
- * `SearchResults` schema. Phase 2 (W-27): only the `users` section exists, so the payload is
- * `{"users": UserPage}`; phase 4 adds the other sections (absent ones are omitted, not null).
+ * `SearchResults` schema. Phase 2: one section per request — `{"users": UserPage}` here (W-27),
+ * `{"tracks": TrackPage}` in {@see TrackSearchResultsView} (W-29a); phase 4 adds the other
+ * sections (absent ones are omitted, not null).
  */
 #[ApiResource(
     shortName: 'SearchResults',
