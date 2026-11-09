@@ -1,4 +1,4 @@
-# État du projet Wave — 07/11/2026
+# État du projet Wave — 09/11/2026
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
@@ -39,15 +39,17 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **Correctifs W-26** (F10-F17, revue sécurité phase 2 + re-revue) : commits `741829c`..HEAD, poussés. Symfony 7.4.23 (CVE-2026-118513..118516), table `listen_grant`, suites de sécurité sociale et concurrence. F18 (suspendu visible comme propriétaire/artiste) reporté en phase 5.
 - **Dernière vérification** (`verif.sh`, 07/11) : 333 tests backend (62 ignorés), 55 tests audio, 79 tests frontend, PHPStan propre, audit propre.
 
+- **Test phase 2 + lot fb-1109** (09/11) : FB-13 like en 500 (table `lock_keys` absente de la base dev seulement, recréée ; like/écoute ne dépendent plus du recalcul d'affinité), FB-14 genre groupé dès 2 fichiers, FB-15 recherche de morceaux avancée (W-29a/b) et ajout depuis la page playlist. Commits `73c615b`..`7d817af`. verif.sh : 341 tests backend (62 ignorés), 55 audio, 85 frontend, audit OK.
+
 ## En cours (non commité)
 
 - Rien. Front, points ouverts : feuille d'ajout limitée à 20 playlists, pas de bouton Suivre sur le créateur d'une playlist, glisser-déposer à tester sur mobile.
 
 ## Prochaines étapes
 
-1. Test de la phase 2 par l'utilisateur.
+1. Retest par l'utilisateur (like, ajout depuis une playlist, genre groupé) ; reste non testé : écoute complète et compteur, vidéos avec et sans son, glisser-déposer sur mobile. Revue qa du lot fb-1109.
 2. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
-3. Phase 3 : posts courts, feed vertical, commentaires, signalement.
+3. Phase 3 : posts courts, feed vertical, commentaires, signalement, notifications in-app (FB-16 : W-45, W-46). Lots : W-38∥W-30 → W-31∥W-32∥W-39 → W-33∥W-34∥W-35∥W-45 → W-36∥W-46 → W-37.
 4. Phase 4 : recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
 5. Phase 5 : durcissement, modération, suppression de compte, F18 (suspendus visibles comme propriétaires/artistes), vrais e-mails (FB-01), README et checklist de mise en prod.
 
