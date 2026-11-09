@@ -19,7 +19,7 @@ use Symfony\Component\Uid\Uuid;
 /**
  * `PUT|DELETE /tracks/{trackId}/like` and `/playlists/{playlistId}/like`: idempotent; one
  * can like only what one can see (404), but one's own like can always be removed (F14). A new
- * track like asks for an affinity recompute.
+ * track like asks for an affinity recompute once committed (FB-13).
  *
  * @implements ProcessorInterface<mixed, LikeStateView>
  */
@@ -59,14 +59,11 @@ final readonly class LikeProcessor implements ProcessorInterface
         }
 
         $target = $isTrack ? $this->tracks->visible($rawId)->getId() : $this->playlists->visible($rawId)->getId();
-        $count = $this->em->wrapInTransaction(function () use ($kind, $user, $target, $isTrack): int {
-            [$changed, $count] = $this->likes->like($kind, $user, $target);
-            if ($changed && $isTrack) {
-                $this->affinity->touch($user);
-            }
-
-            return $count;
-        });
+        [$changed, $count] = $this->em->wrapInTransaction(fn (): array => $this->likes->like($kind, $user, $target));
+        // FB-13: after commit, best effort: the like never fails because of the recompute request.
+        if ($changed && $isTrack) {
+            $this->affinity->touch($user);
+        }
 
         return new LikeStateView(true, $count);
     }

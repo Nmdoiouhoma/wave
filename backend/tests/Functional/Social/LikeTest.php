@@ -39,6 +39,26 @@ final class LikeTest extends WaveApiTestCase
         $this->assertProblem($this->api('PUT', '/api/v1/tracks/'.$private->getId().'/like', $bob), 404, 'not_found');
     }
 
+    /**
+     * FB-13: the affinity deduplication lock (DoctrineDbalStore, same connection) failing must not
+     * fail the like nor poison its transaction (25P02). Any INSERT into lock_keys fails here.
+     */
+    public function testLikeSucceedsWhenTheAffinityLockFails(): void
+    {
+        $alice = $this->createUser('alice');
+        $bob = $this->createUser('bob');
+        $track = $this->createTrack($this->createArtist($alice));
+        $other = $this->createTrack($this->createArtist($alice, 'Other', 'other'), 'Other song');
+        $db = $this->em()->getConnection();
+        $db->executeStatement('ALTER TABLE lock_keys ADD CONSTRAINT fb13_lock_fails CHECK (false) NOT VALID');
+
+        self::assertSame(['liked' => true, 'likeCount' => 1], $this->json($this->api('PUT', '/api/v1/tracks/'.$track->getId().'/like', $bob)));
+        self::assertSame(['liked' => true, 'likeCount' => 1], $this->json($this->api('PUT', '/api/v1/tracks/'.$other->getId().'/like', $bob)), 'connection still usable');
+        self::assertSame(1, $this->json($this->api('GET', '/api/v1/tracks/'.$track->getId(), $bob))['likeCount']);
+        self::assertSame(2, (int) $db->fetchOne('SELECT count(*) FROM track_like WHERE user_id = ?', [$bob->getId()->toRfc4122()]));
+        self::assertSame([], $this->queued('async', RecomputeAffinity::class), 'recompute request dropped, not half-sent');
+    }
+
     public function testPlaylistLikeAndMyLikedLists(): void
     {
         $alice = $this->createUser('alice');

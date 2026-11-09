@@ -13,9 +13,10 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * Stores counted listens only (DATA_MODEL §11): row + `track.play_count + 1` + affinity
- * recompute request, in one transaction with the consumption of the listen grant (ADR 010);
- * serialised per (user, track) so the anti-replay window and the daily cap hold under concurrent reports.
+ * Stores counted listens only (DATA_MODEL §11): row + `track.play_count + 1`, in one transaction
+ * with the consumption of the listen grant (ADR 010); serialised per (user, track) so the anti-replay
+ * window and the daily cap hold under concurrent reports. The affinity recompute request follows the
+ * commit, best effort (FB-13).
  */
 final readonly class ListenRecorder
 {
@@ -26,7 +27,7 @@ final readonly class ListenRecorder
     /** @return array{bool, int} [counted, play_count] */
     public function record(User $user, Track $track, ListenSource $source, int $listenedMs, int $referenceMs): array
     {
-        return $this->em->wrapInTransaction(function () use ($user, $track, $source, $listenedMs, $referenceMs): array {
+        $result = $this->em->wrapInTransaction(function () use ($user, $track, $source, $listenedMs, $referenceMs): array {
             $db = $this->em->getConnection();
             $u = $user->getId()->toRfc4122();
             $t = $track->getId()->toRfc4122();
@@ -58,9 +59,13 @@ final readonly class ListenRecorder
                 ['id' => Uuid::v7()->toRfc4122(), 'u' => $u, 't' => $t, 's' => $source->value, 'ms' => $listenedMs],
             );
             $count = (int) $db->fetchOne('UPDATE track SET play_count = play_count + 1 WHERE id = :t RETURNING play_count', ['t' => $t]);
-            $this->affinity->touch($user);
 
             return [true, $count];
         });
+        if ($result[0]) {
+            $this->affinity->touch($user);
+        }
+
+        return $result;
     }
 }

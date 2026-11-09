@@ -34,6 +34,20 @@ final class ListenTest extends WaveApiTestCase
         self::assertSame([$bob->getId()->toRfc4122(), $alice->getId()->toRfc4122()], array_map(static fn (RecomputeAffinity $m): string => $m->userId, $affinity), 'deduplicated per user');
     }
 
+    /** FB-13: a counted listen survives a failing affinity deduplication lock. */
+    public function testListenCountsWhenTheAffinityLockFails(): void
+    {
+        $alice = $this->createUser('alice');
+        $bob = $this->createUser('bob');
+        $track = $this->createTrack($this->createArtist($alice));
+        $this->em()->getConnection()->executeStatement('ALTER TABLE lock_keys ADD CONSTRAINT fb13_lock_fails CHECK (false) NOT VALID');
+
+        self::assertSame(['counted' => true, 'playCount' => 1], $this->json($this->listen($bob, $track, 31_000)));
+        self::assertSame(1, $this->reload($track)->getPlayCount());
+        self::assertSame(1, (int) $this->em()->getConnection()->fetchOne('SELECT count(*) FROM listen'));
+        self::assertSame([], $this->queued('async', RecomputeAffinity::class));
+    }
+
     /** W-26 F13 (ADR 010): a listen counts only against a fresh, unconsumed stream grant. */
     public function testListenNeedsAFreshGrantFromStreamUrl(): void
     {
