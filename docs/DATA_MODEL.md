@@ -33,6 +33,7 @@ Source of truth for the PostgreSQL 16 schema. API shapes live in `openapi.yaml`;
 | `ReportTargetType` | `track`, `post`, `comment`, `playlist`, `artist`, `user` |
 | `ReportReason` | `spam`, `harassment`, `hate`, `sexual`, `violence`, `copyright`, `impersonation`, `other` |
 | `ReportStatus` | `open`, `actioned`, `dismissed` |
+| `NotificationType` | `follow`, `track_like`, `playlist_like`, `post_like`, `comment` (FB-16) |
 | `Role` | `ROLE_USER` (implicit), `ROLE_MODERATOR`, `ROLE_ADMIN` (inherits moderator) |
 
 ## 2. User — `app_user`
@@ -204,7 +205,39 @@ Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFE
 | `playlist_like` | user_id, playlist_id, created_at | PK(user_id, playlist_id) | CASCADE both | (playlist_id), (user_id, created_at DESC) | playlist.like_count |
 | `post_like` | user_id, post_id, created_at | PK(user_id, post_id) | CASCADE both | (post_id), (user_id, created_at DESC) | post.like_count |
 
-Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING` and increment only if a row was inserted; delete increments −1 only if a row was deleted. Liking own content is allowed. A user can like/follow only what they can see (else 404). Unlike: an existing like of the caller is deleted whatever the target's visibility; without one, an invisible target → 404 (no existence oracle). Unfollow: any existing user, suspended included (W-26 F14). Suspended users (`suspended_at` not null) are excluded from followers/following lists by a join on `app_user`; counters keep counting them until phase 5 moderation.
+Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING` and increment only if a row was inserted; delete increments −1 only if a row was deleted. Liking own content is allowed. A user can like/follow only what they can see (else 404). Unlike: an existing like of the caller is deleted whatever the target's visibility; without one, an invisible target → 404 (no existence oracle). Unfollow: any existing user, suspended included (W-26 F14). Inserted follows/likes write a notification and unfollow/unlike remove the actor from it (§8b, phase 3). Suspended users (`suspended_at` not null) are excluded from followers/following lists by a join on `app_user`; counters keep counting them until phase 5 moderation.
+
+## 8b. Notification — `notification`, `notification_actor` (FB-16, phase 3, W-45)
+
+`notification` (one row = one aggregated item of the bell)
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| id | uuid PK | no | |
+| recipient_id | uuid FK → app_user | no | CASCADE |
+| type | varchar(16) | no | `NotificationType` |
+| track_id | uuid FK → track | yes | CASCADE; set iff type=`track_like` |
+| playlist_id | uuid FK → playlist | yes | CASCADE; set iff type=`playlist_like` |
+| post_id | uuid FK → post | yes | CASCADE; set iff type ∈ {`post_like`, `comment`} |
+| read_at | timestamptz | yes | null = unread |
+| created_at | timestamptz | no | |
+| updated_at | timestamptz | no | bumped when an actor joins |
+
+CHECK: exactly the target column of its type is set (all three null for `follow`). Indexes: (recipient_id, updated_at DESC, id DESC); **unique** `(recipient_id, type, track_id, playlist_id, post_id) NULLS NOT DISTINCT WHERE read_at IS NULL` (PG ≥ 15, hand-written in the migration, remove from `diff` output like GIN indexes) = one unread item per (recipient, type, target).
+`notification_actor`: notification_id FK CASCADE, actor_id FK → app_user CASCADE, created_at; PK(notification_id, actor_id); index (actor_id).
+
+Events (same transaction as the action, only when it really inserted a row, so idempotent PUTs notify once):
+| Action | type | recipient | target |
+|---|---|---|---|
+| follow inserted (§8) | `follow` | followed user | — |
+| track like inserted | `track_like` | track.owner_id | track |
+| playlist like inserted | `playlist_like` | playlist.owner_id | playlist |
+| post like inserted | `post_like` | post.author_id | post |
+| comment created (§10) | `comment` | post.author_id | post |
+Write = `INSERT INTO notification … ON CONFLICT (…) WHERE read_at IS NULL DO UPDATE SET updated_at = now() RETURNING id`, then `INSERT INTO notification_actor … ON CONFLICT DO NOTHING`. Concurrent events on one target merge into one row (no lock needed). **No notification to oneself**: actor = recipient → nothing written (liking or commenting one's own content).
+Aggregation: while unread, every new actor joins the same row; after `POST /me/notifications/read` (`read_at = now()` where `updated_at ≤ upTo`), the next event opens a new row. A like/unlike loop therefore yields at most one new item per read by the recipient (no spam).
+Undo: unfollow / unlike delete the actor's `notification_actor` rows for that (recipient, type, target), read or not, then delete those notifications left without actor. Comment deletion or hiding does **not** touch notifications (no comment body is ever stored or shown, so nothing leaks).
+Cleanup: target deleted → FK CASCADE removes the row (track, playlist, post, and by cascade every path of §9 and §13b); recipient deleted → CASCADE; actor deleted → its actor rows CASCADE, and an item left without actor is omitted at read time (and deleted by `DELETE /me` step 4, set-based).
+Read-time filters (list and unread count use the same query): recipient = caller only (no id in any route, no IDOR surface); actors with `suspended_at` not null are left out of `actors` and `actorCount`, items with no remaining actor are omitted; the target must be visible to the recipient by the rule of its type (track §6 — always true for the owner; playlist §7 — idem; post "visible to a caller" §9, so a post on a track that became invisible to its author is omitted). Hidden own content stays listed (the owner sees it anyway). Retention: read items older than 90 days purged in phase 5 (W-50 or a scheduler job), not before.
 
 ## 9. Post — `post`, `hashtag`, `post_hashtag`
 
@@ -230,7 +263,7 @@ Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING`
 | created_at | timestamptz | no | |
 
 Indexes: (author_id, created_at DESC, id DESC), (track_id), partial (created_at DESC, id DESC) WHERE status='ready' AND moderation='visible', partial (trending_score DESC, id DESC) same predicate.
-**All phase-3 tables** (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view`, `report`) are created by one W-30 migration, so W-32, W-33 and W-39 add behaviour without migrations.
+**All phase-3 tables** (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view`, `report`, `notification`, `notification_actor` §8b) are created by one W-30 migration, so W-32, W-33 and W-39 add behaviour without migrations.
 
 Creation rule (D5): track must be ready, moderation=visible and either `track.owner_id = author_id` or (`visibility = public` ∧ `allow_clips`).
 Creation errors (W-30, no existence oracle): track unknown or invisible to the caller (others' private/processing/failed/hidden track) → 404 `not_found`, identical to an unknown id; others' public-visible track with `allow_clips = false` → 422 `clips_not_allowed`; own track hidden by moderation → 422 `clips_not_allowed`; own track processing or failed → 409 `track_not_ready`; range → 422 `clip_out_of_range`.
@@ -347,7 +380,7 @@ Allowed actions: content targets `hide`/`dismiss` (`suspend` → 422 `validation
 1. Collect every storage key: user avatar; avatars of owned artists; raw/audio/cover keys of owned tracks; clip/visual/poster keys of posts authored by the user **and** of other users' posts using the user's tracks (they are deleted with the track, decision D5 follow-up).
 2. Fix counters on rows that survive, with set-based SQL: `followers_count`/`following_count` of the other side of each follow; `like_count` of tracks/playlists/posts the user liked; `comment_count` of posts the user commented (visible comments only); `item_count` of others' playlists containing the user's tracks (then compact `position`); `post_count` of hashtags of deleted posts. `play_count` is **not** decremented (aggregate, not personal data).
 3. Delete `report` rows whose target is any deleted row (polymorphic); reports filed by the user go by cascade; `handled_by_id` → NULL by FK.
-4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, listens, listen grants, post views, affinity, account tokens, reports filed). Refresh tokens deleted by `username = id`.
+4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, listens, listen grants, post views, affinity, account tokens, reports filed). Then `DELETE FROM notification n WHERE NOT EXISTS (SELECT 1 FROM notification_actor a WHERE a.notification_id = n.id)` (items whose only actors were the user, §8b). Refresh tokens deleted by `username = id`.
 5. Dispatch `PurgeObjects` (batches of ≤ 500 keys) and `SendAccountDeletedEmail` inside the same transaction.
 Username and email are free for re-registration immediately. Backups keep the data until their rotation (documented in the README prod checklist; 30 days). Synchronous; target < 5 s for 100 tracks / 500 posts; move to an async `DeleteAccount` message if it ever exceeds that.
 

@@ -52,7 +52,7 @@ compose.yaml  Makefile  .env.example   (media-infra)
 ```
 src/
   api/            client.ts (fetch wrapper, refresh single-flight), schema.d.ts (generated), queries/<domain>.ts (TanStack hooks)
-  features/<domain>/   components + hooks per domain: auth, profile, artists, tracks, player, playlists, feed, posts, search, moderation
+  features/<domain>/   components + hooks per domain: auth, profile, artists, tracks, player, playlists, feed, posts, search, notifications, moderation
   components/ui/  shared primitives
   stores/         Zustand stores (player.ts, session.ts)
   routes/         route modules (React Router)

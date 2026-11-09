@@ -163,6 +163,15 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 - "Rechercher" entry in the nav (bottom bar on mobile) → search page; input debounced 300 ms, no request below 2 chars, previous request cancelled.
 - Results with avatar, names, follower count and follow/unfollow button (optimistic, shared cache with profile); infinite scroll; empty, error and 429 states.
 
+**W-29a · backend · W-27, W-22** Track search (FB-15, moved forward from phase 4)
+- `GET /search?type=tracks&q=` per contract, in `PostgresSearchProvider` next to users (same `q` checks, offset cursor ≤ 200 bound to `q` and `type`, bucket `search`, F10 LIKE escaping); `type` other than `users`/`tracks` → 422.
+- Visibility (fixture with one track per case): others' private, processing, failed, hidden tracks, own processing/failed/hidden tracks and tracks of a suspended owner never returned, even on exact title; others' public ready track and own private ready track returned.
+- Matching: `beyonce` finds an artist `Beyoncé`, `nuit` finds `La nuit` (per-word prefix), `mideight` finds `Midnight` (trigram). Ranking asserted: own > liked > exact title > prefix > similarity > `playCount` > id; `likedByMe`, `isOwner`, `canClip` correct without N+1 (query count asserted).
+
+**W-29b · frontend · W-29a, W-24** Add tracks from the playlist page (FB-15)
+- Playlist page (owner only): "Ajouter des morceaux" opens a sheet; below 2 chars it shows "Tes morceaux" (`/users/{me}/tracks`, ready only) then "Tes titres likés" (`/me/likes/tracks`); from 2 chars, `/search?type=tracks` results (debounced 300 ms, previous request cancelled, infinite scroll), the backend already ranks own and liked first (no client merge).
+- Each row: add button → `POST /playlists/{id}/items`; tracks already in the playlist shown as "Ajouté" (409 duplicate treated the same); `playlist_full` and 429 in French; playlist and item counts refreshed in the shared cache.
+
 **W-26 · qa-security · W-20..W-23, W-27** Phase 2 review
 - IDOR tests: mutate another user's playlist (403), read private playlist (404), add someone's private track (404).
 - User search: no email or suspended account ever returned; `search` rate limits (60/min, 1000/day) enforced; cursor beyond 200 results rejected; tsquery/LIKE metacharacters (`%`, `_`, `:*`, `&`, `'`) do not error or widen matches.
@@ -170,7 +179,7 @@ Parallel start of phase 1: **media-infra** W-01→W-02, **backend** W-03→W-04 
 
 ## Phase 3 — Posts, vertical feed, comments, reports
 
-Lots (lead order corrected for dependencies, see `docs/handoff/phase3-architect.md`): **1** W-38 ∥ W-30 · **2** W-31 ∥ W-32 ∥ W-39 · **3** W-33 ∥ W-34 ∥ W-35 · **4** W-36 then W-37.
+Lots (lead order corrected for dependencies, see `docs/handoff/phase3-architect.md`; FB-16 added W-45/W-46, `docs/handoff/fb-1109-architect.md`): **1** W-38 ∥ W-30 · **2** W-31 ∥ W-32 ∥ W-39 · **3** W-33 ∥ W-34 ∥ W-35 ∥ W-45 · **4** W-36 ∥ W-46 then W-37.
 Phase-3 visibility rules live in DATA_MODEL §9-§13 (post visible/playable, comment visible, report check order); every "invisible → 404" below must be byte-identical (body + headers) to an unknown id (T7, T17).
 
 **W-38 · frontend · —** Navigation shell (FB-11)
@@ -196,7 +205,7 @@ Phase-3 visibility rules live in DATA_MODEL §9-§13 (post visible/playable, com
 - Tests: tab order and labels, active-tab table, + sheet links and focus return, `/search?q=ab` → `/discover?q=ab`, full player open → tab bar still in the DOM and clickable, mini player absent on `/`.
 
 **W-30 · backend · W-09** Posts
-- One migration creates every phase-3 table of DATA_MODEL §9-§13 (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view` with its `(user_id, last_seen_at, post_id)` index, `report`), constraints and indexes; up/down on an empty DB.
+- One migration creates every phase-3 table of DATA_MODEL §9-§13 (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view` with its `(user_id, last_seen_at, post_id)` index, `report`) plus `notification` and `notification_actor` of §8b (CHECK on target columns, hand-written partial unique index `NULLS NOT DISTINCT`), constraints and indexes; up/down on an empty DB.
 - `POST /posts` multipart → 202 `processing`, dispatches `GenerateClip` (+ `ProcessPostVisual` if visual); verified email required (403 `email_not_verified`); rate limit 30/day → 429 with `Retry-After`; unknown multipart field → 422.
 - Error order of DATA_MODEL §9: others' private / processing / hidden track and unknown id → identical 404; others' public track with `allowClips=false` → 422 `clips_not_allowed`; own processing track → 409 `track_not_ready`; start + duration > track → 422 `clip_out_of_range`; duration 14 999 or 60 001 → 422; image > 5 MB or video > 15 MB → 413, GIF or MP3 as visual → 415 (content sniffed, not extension only); no post row left on 413/415.
 - Hashtags: `#Lo_Fi #lofi #LOFI` → `lo_fi`, `lofi` (NFKC lowercase, deduped), 11 tags → first 10 kept; `hashtag.postCount` exact after create and delete.
@@ -246,11 +255,24 @@ Phase-3 visibility rules live in DATA_MODEL §9-§13 (post visible/playable, com
 - Comments sheet from the feed and `/posts/:id`: infinite scroll, post, delete when `canDelete`, optimistic `commentCount`; bodies rendered as text; 429 shows the wait from `Retry-After`.
 - Report dialog for track/post/comment/playlist/artist/user (track page, playlist page, artist page, profile, feed menu, comment menu), hidden on own content (`isOwner`, `isMe`); 8 reasons in French + optional details ≤ 1000; 201 → "Merci, on regarde", 409 → "Tu as déjà signalé ce contenu", 404 → "Ce contenu n'est plus disponible".
 
-**W-37 · qa-security · W-30..W-33, W-39** Phase 3 review
+**W-45 · backend · W-30, W-32, W-21, W-22** Notifications (FB-16)
+- Event writes of DATA_MODEL §8b in the transaction of follow, track/playlist/post like and comment creation, only when a row was inserted: PUT like twice → one actor; like of own track, comment on own post → no row; follow → `follow` item with `target: null`.
+- Aggregation: 3 users like one track → one unread item, `actorCount` 3, `actors` newest first; after `POST /me/notifications/read` a 4th like opens a new item; 10 concurrent likes on one target (real processes) → one unread row, 10 actors; two follows of the same user → one `follow` row (`NULLS NOT DISTINCT` inference).
+- Undo and cleanup: unlike/unfollow removes the actor, item deleted when empty; deleting the track, playlist or post (incl. track deletion cascading posts) removes its items; `DELETE /me` of the only actor leaves no item (DATA_MODEL §13b).
+- Read filters: suspended actor absent from `actors` and `actorCount`, item with only suspended actors absent from list and count; `post_like` on a post whose clip track turned private (other owner) absent for its author; own hidden track still listed.
+- Endpoints per contract: keyset on `(updatedAt, id)` with tampered cursor → 400, `limit` 51 → 400; `unread-count` capped at 100 and equal to the unread items listed; `read` marks only rows with `updatedAt ≤ upTo` and of the caller (another user's unread items untouched), unknown field → 422, bucket `notifications` 120/min → 429.
+
+**W-46 · frontend · W-38, W-45** Notification bell
+- Bell in the shell (mobile: top right of the Pour toi/Profil headers, outside the tab bar; desktop: rail) with unread badge (`99+` from 100); count polled every 60 s while the page is visible and on focus, no polling when hidden.
+- `/notifications` page (active tab: none): infinite scroll, French sentences per type ("Alice a commencé à te suivre", "Alice et 2 autres ont aimé ton morceau « X »", "… ont commenté ton post"), avatars, relative date, unread items highlighted; tap → profile (`follow`), `/t/:id`, `/p/:id` or `/posts/:id`.
+- Opening the page sends `read` with the newest displayed `updatedAt`, badge reset optimistically; labels rendered as text (no HTML); empty and error states.
+
+**W-37 · qa-security · W-30..W-33, W-39, W-45** Phase 3 review
 - Oracles: for posts, comments, post likes, post stream-url, `/stream` clip tokens, reports (6 types) and post-views, an invisible target gives the same status, body and headers as an unknown uuid (T7, T17); post creation on another user's private track → 404, not 422.
 - Hidden and suspended: hidden posts/comments and suspended authors' posts absent from `/feed/for-you`, `/feed/following`, `/users/{u}/posts`, comment lists, and 404 by id for non-owners; a clip URL issued before hiding stops working (T9).
 - Injection and encodings: comment/caption XSS payloads inert in the UI (T15), hashtag extraction with RTL/zero-width/NUL input (T21), unknown multipart and JSON fields (T8), hostile visuals (T11, T12).
 - Abuse: report brigading (same user twice → 409, 5 sock puppets → hide then moderator `dismiss` restores), auto-hide race and counters (T18), view and feed-listen inflation (T20: first view only, grant required), rate limits of every new bucket, `/admin` as non-moderator.
+- Notifications (W-45): no route takes a notification or user id (nothing to probe); items never show a suspended actor or a target invisible to the recipient (T7, T17); like/unlike and follow/unfollow loops create at most one unread item per read; `read` cannot touch another user's rows.
 - `docs/SECURITY.md` extended with phase-3 threats (T22+) and findings.
 
 ## Phase 4 — Recommendations v1, search, demo seed
@@ -261,7 +283,7 @@ Phase-3 visibility rules live in DATA_MODEL §9-§13 (post visible/playable, com
 - W-39's behavioural tests (exclusions, ≤ 2 per author per page, fallback, no repeat within a session) pass unchanged against `SqlFeedRanker`; p95 < 150 ms on demo seed (EXPLAIN attached to PR).
 
 **W-41 · backend · W-04, W-30** Search and hashtags
-- `PostgresSearchProvider` for 5 types; `beyonce` finds `Beyoncé`, `lof` finds `lofi` (prefix), `daft pnk` finds `Daft Punk` (trigram).
+- `PostgresSearchProvider` for the 3 remaining types (users W-27, tracks W-29a keep their rules and ranking); `beyonce` finds `Beyoncé`, `lof` finds `lofi` (prefix), `daft pnk` finds `Daft Punk` (trigram).
 - `/search` without type returns 5 sections ≤ 5 items; with type paginates up to 200; private/hidden never returned.
 - `GET /hashtags/{name}` and `/hashtags/{name}/posts`.
 

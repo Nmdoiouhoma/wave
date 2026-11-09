@@ -358,6 +358,59 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /me/notifications:
+    get:
+      tags: [me]
+      operationId: listMyNotifications
+      summary: List my notifications
+      description: |
+        In-app notifications of the caller (FB-16, W-45), read and unread, ordered by `updatedAt` desc then id desc (keyset). One item aggregates every actor of the same event type on the same target while it is unread ("Alice et 3 autres ont aimé ton morceau"); once read, a new event opens a new item.
+        Items whose target is no longer visible to the caller (rules of the target's own endpoint: e.g. a post on a track the caller can no longer see) or whose actors are all suspended or deleted are omitted. `actors` = up to 3 most recent non-suspended actors; `actorCount` counts non-suspended actors.
+        An item may move to the top between two pages when a new actor joins it: clients dedupe by id. `limit` default 20, max 50.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of notifications.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me/notifications/unread-count:
+    get:
+      tags: [me]
+      operationId: getMyUnreadNotificationCount
+      summary: Get my unread notification count
+      description: Number of unread items that `GET /me/notifications` would list (same omissions), capped at 100 (the client shows "99+" from 100). Polled by the client (every 60 s while visible and on focus).
+      x-rate-limit: 120 per minute per user (bucket `notifications`)
+      responses:
+        '200':
+          description: Unread count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnreadNotificationCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /me/notifications/read:
+    post:
+      tags: [me]
+      operationId: markMyNotificationsRead
+      summary: Mark my notifications read
+      description: Marks read every unread notification of the caller with `updatedAt ≤ upTo` (the client sends the `updatedAt` of the newest item it displayed, so an event arriving meanwhile stays unread). Idempotent; no id in the request, so nothing about other users can be probed. Unknown JSON field → 422.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MarkNotificationsReadRequest' }
+      responses:
+        '204': { description: Marked read. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   # ───────────────────────────── users ─────────────────────────────
   /users/{username}:
     parameters:
@@ -1411,10 +1464,11 @@ paths:
       summary: Search
       description: |
         `SearchProvider` v1 = PostgreSQL FTS (`simple` + unaccent, prefix match on every token) + pg_trgm similarity.
-        **Phase 2 (W-27, FB-07)**: only `type=users` is implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
+        **Phase 2 (W-27, FB-07; W-29a, FB-15)**: only `type=users` and `type=tracks` are implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
         **Users**: matches `username` and `displayName`, case- and accent-insensitive (`wave_unaccent(lower(...))`), a user matches if either field starts with `q` (prefix, also per word of displayName) or trigram similarity ≥ 0.3. Ranking: exact username match first, then prefix match, then `greatest(similarity(username), similarity(displayName))` desc, then `followersCount` desc, then id. Suspended users and the caller are excluded. Items carry `isFollowedByMe` for inline follow buttons.
+        **Tracks** (FB-15, W-29a): only tracks the caller can see **and** play: `status=ready` ∧ `moderation=visible` ∧ (`visibility=public` ∨ owner = caller) ∧ owner not suspended. Others' private, processing, failed or hidden tracks, the caller's own processing/failed/hidden tracks and every track of a suspended owner are never returned (stricter than `GET /tracks/{id}` for suspended owners, F18). A track matches if its title or its artist name starts with `q` (also per word) or has trigram similarity ≥ 0.3, with the same normalisation as users. Ranking: tracks owned by the caller first, then tracks liked by the caller, then exact title match, prefix match, `greatest(similarity(title), similarity(artist name))` desc, `playCount` desc, id. No extra parameter: the caller's own and liked tracks surface first by this ranking (they are already known to the caller, so no oracle). Items are full `Track` objects (`likedByMe`, `isOwner`, `canClip` without N+1).
         Without `type` (phase 4): every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
-        With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable).
+        With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable); the cursor is bound to `q` and `type` (reused with another one → 400 `invalid_cursor`).
         Only content visible to the caller is returned.
       x-rate-limit: 60 per minute and 1000 per day per user (bucket `search`; anti-scraping)
       parameters:
@@ -2243,6 +2297,55 @@ components:
         users: { $ref: '#/components/schemas/UserPage' }
         playlists: { $ref: '#/components/schemas/PlaylistPage' }
         hashtags: { $ref: '#/components/schemas/HashtagPage' }
+
+    # ── notifications (FB-16, W-45) ──
+    NotificationType:
+      type: string
+      enum: [follow, track_like, playlist_like, post_like, comment]
+    NotificationTarget:
+      type: object
+      description: The caller's own content the event is about. Null for `follow`.
+      required: [type, id, label, imageUrl]
+      properties:
+        type: { type: string, enum: [track, playlist, post] }
+        id: { $ref: '#/components/schemas/Id' }
+        label: { type: string, description: 'Track title, playlist name, or post caption truncated to 80 chars (track title when no caption). Plain text.' }
+        imageUrl: { $ref: '#/components/schemas/MediaUrl', description: 'Track cover; post visual (poster for video) else its track cover; playlist: cover of its first available item.' }
+    Notification:
+      type: object
+      required: [id, type, actors, actorCount, target, read, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        actors:
+          type: array
+          maxItems: 3
+          items: { $ref: '#/components/schemas/UserSummary' }
+          description: Most recent non-suspended actors first; never empty.
+        actorCount: { type: integer, minimum: 1 }
+        target:
+          oneOf:
+            - $ref: '#/components/schemas/NotificationTarget'
+            - type: 'null'
+        read: { type: boolean }
+        updatedAt: { $ref: '#/components/schemas/DateTime' }
+    NotificationPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+        nextCursor: { type: [string, 'null'] }
+    UnreadNotificationCount:
+      type: object
+      required: [unreadCount]
+      properties:
+        unreadCount: { type: integer, minimum: 0, maximum: 100 }
+    MarkNotificationsReadRequest:
+      type: object
+      additionalProperties: false
+      required: [upTo]
+      properties:
+        upTo: { $ref: '#/components/schemas/DateTime' }
 
     # ── reports ──
     ReportTargetType:
