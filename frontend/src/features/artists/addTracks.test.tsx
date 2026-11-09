@@ -29,7 +29,7 @@ describe('add tracks to an artist (W-63)', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('option', { name: 'Ambient' }).length).toBeGreaterThan(0),
     );
-    await user.selectOptions(screen.getByLabelText('Genre pour tous les fichiers'), 'ambient');
+    await user.selectOptions(screen.getByLabelText('Appliquer un genre à tous'), 'ambient');
     await user.click(screen.getByRole('button', { name: 'Envoyer les 2 morceaux' }));
 
     await waitFor(() =>

@@ -31,7 +31,7 @@ describe('allowClips only for public tracks (FB-09)', () => {
     await waitFor(() =>
       expect(screen.getAllByRole('option', { name: 'Ambient' }).length).toBeGreaterThan(0),
     );
-    await user.selectOptions(screen.getByLabelText('Genre pour tous les fichiers'), 'ambient');
+    await user.selectOptions(screen.getByLabelText('Genre de nuit.mp3'), 'ambient');
     await user.click(screen.getByRole('button', { name: 'Envoyer le morceau' }));
     await waitFor(() => expect(db.state.tracks.some((t) => t.title === 'nuit')).toBe(true));
     expect(db.state.tracks.find((t) => t.title === 'nuit')).toMatchObject({

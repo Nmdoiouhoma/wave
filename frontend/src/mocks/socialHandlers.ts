@@ -1,7 +1,7 @@
 // MSW handlers for phase 2: playlists, likes, follows, user search (openapi + W-27 rules).
 import { http } from 'msw';
 import type { FollowState, LikeState, PlaylistItem, Violation } from '@/api/types';
-import type { MockUser } from './fixtures';
+import type { MockTrack, MockUser } from './fixtures';
 import {
   db,
   findTrack,
@@ -125,6 +125,45 @@ function userSearchRank(u: MockUser, q: string): number | null {
     return 1;
   if (name.includes(q) || fold(u.displayName).includes(q)) return 2;
   return null;
+}
+
+/** W-29a rules: ready ∧ visible ∧ (public ∨ own) ∧ owner not suspended; own, then liked, first. */
+function searchTracks(viewer: MockUser, q: string) {
+  const liked = new Set(
+    db.state.trackLikes.filter((l) => l.userId === viewer.id).map((l) => l.targetId),
+  );
+  return db.state.tracks
+    .filter(
+      (t) =>
+        t.status === 'ready' &&
+        t.moderation === 'visible' &&
+        (t.visibility === 'public' || t.ownerId === viewer.id) &&
+        !db.state.users.find((u) => u.id === t.ownerId)?.suspended,
+    )
+    .map((t) => {
+      const title = fold(t.title);
+      const artist = fold(db.state.artists.find((a) => a.id === t.artistId)?.name ?? '');
+      const words = `${title} ${artist}`.split(/\s+/);
+      const match =
+        title === q
+          ? 0
+          : title.startsWith(q) || artist.startsWith(q) || words.some((w) => w.startsWith(q))
+            ? 1
+            : title.includes(q) || artist.includes(q)
+              ? 2
+              : null;
+      return { t, match, group: t.ownerId === viewer.id ? 0 : liked.has(t.id) ? 1 : 2 };
+    })
+    .filter((x): x is { t: MockTrack; match: number; group: number } => x.match !== null)
+    .sort(
+      (a, b) =>
+        a.group - b.group ||
+        a.match - b.match ||
+        b.t.playCount - a.t.playCount ||
+        a.t.id.localeCompare(b.t.id),
+    )
+    .slice(0, 200)
+    .map((x) => toTrack(x.t, viewer));
 }
 
 export const socialHandlers = [
@@ -317,14 +356,16 @@ export const socialHandlers = [
     return json(paginate(items, request));
   }),
 
-  // ───────────── search (phase 2: users only, W-27) ─────────────
+  // ───────────── search (phase 2: users W-27, tracks W-29a) ─────────────
   http.get(`${API}/search`, ({ request }) => {
     const viewer = requireUser(request);
     const url = new URL(request.url);
     const q = fold((url.searchParams.get('q') ?? '').trim());
-    if (url.searchParams.get('type') !== 'users')
-      return invalid([violation('type', 'Seule la recherche de personnes est disponible.')]);
+    const type = url.searchParams.get('type');
+    if (type !== 'users' && type !== 'tracks')
+      return invalid([violation('type', 'Type de recherche non disponible.')]);
     if (q.length < 2 || q.length > 100) return invalid([violation('q', '2 à 100 caractères.')]);
+    if (type === 'tracks') return json({ tracks: paginate(searchTracks(viewer, q), request) });
     const ranked = db.state.users
       .filter((u) => u.id !== viewer.id && !u.suspended)
       .map((u) => ({ u, rank: userSearchRank(u, q) }))

@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { isApiError } from '@/api/errors';
 import {
@@ -34,6 +34,7 @@ import {
   CloseIcon,
   EditIcon,
   GripIcon,
+  ListPlusIcon,
   LockIcon,
   MusicIcon,
   PauseIcon,
@@ -49,6 +50,7 @@ import { errorMessage } from '@/lib/errorMessages';
 import { formatDuration } from '@/lib/format';
 import { currentTrack, isPlayable, playerStore, usePlayer } from '@/stores/player';
 import { toast } from '@/stores/toast';
+import { AddTracksSheet } from './AddTracksSheet';
 import { PlaylistForm } from './PlaylistForm';
 
 export const ORDER_CONFLICT_MESSAGE =
@@ -80,6 +82,9 @@ function PlaylistView({
   itemsQuery: ReturnType<typeof usePlaylistItems>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [adding, setAdding] = useState(false);
+  // Stable: Sheet re-runs its focus effect when onClose changes (would steal focus on re-render).
+  const closeAdding = useCallback(() => setAdding(false), []);
   const tracks = playableTracks(items ?? []);
   const playingHere = usePlayer((s) => {
     const t = currentTrack(s);
@@ -144,6 +149,16 @@ function PlaylistView({
               <Button
                 variant="secondary"
                 size="lg"
+                icon={<ListPlusIcon size={16} />}
+                onClick={() => setAdding(true)}
+              >
+                Ajouter des morceaux
+              </Button>
+            )}
+            {owner && (
+              <Button
+                variant="secondary"
+                size="lg"
                 icon={<EditIcon size={16} />}
                 onClick={() => setEditing(true)}
               >
@@ -179,12 +194,15 @@ function PlaylistView({
           )
         ) : (
           <EmptyState icon={<MusicIcon size={28} />} title="Cette playlist est vide">
-            {owner && 'Ajoute des morceaux depuis le menu ⋯ de n’importe quel titre.'}
+            {owner && 'Utilise « Ajouter des morceaux » ou le menu ⋯ de n’importe quel titre.'}
           </EmptyState>
         )}
       </section>
 
       {owner && <EditSheet playlist={playlist} open={editing} onClose={() => setEditing(false)} />}
+      {owner && (
+        <AddTracksSheet playlist={playlist} items={items} open={adding} onClose={closeAdding} />
+      )}
     </div>
   );
 }

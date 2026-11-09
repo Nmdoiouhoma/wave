@@ -21,6 +21,7 @@ import { errorMessage } from '@/lib/errorMessages';
 import { playerStore } from '@/stores/player';
 import { toast } from '@/stores/toast';
 import { uiStore, useUi } from '@/stores/ui';
+import { ADD_ERRORS } from './addErrors';
 import { PlaylistForm } from './PlaylistForm';
 
 export function TrackSheets() {
@@ -101,12 +102,6 @@ function TrackActions({ track }: { track: Track }) {
     </div>
   );
 }
-
-const ADD_ERRORS: Record<string, string> = {
-  track_already_in_playlist: 'Ce morceau est déjà dans cette playlist.',
-  playlist_full: 'Cette playlist est pleine (500 morceaux maximum).',
-  track_not_ready: 'Ce morceau n’est pas encore prêt.',
-};
 
 function AddToPlaylist({ track }: { track: Track }) {
   const me = useCurrentUser();

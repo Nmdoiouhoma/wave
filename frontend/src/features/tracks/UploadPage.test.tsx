@@ -107,7 +107,7 @@ describe('upload page (W-62/W-63)', () => {
     );
     await waitForGenres();
     expect(screen.getByLabelText('Artiste')).toHaveDisplayValue('Nuit Blanche');
-    await user.selectOptions(screen.getByLabelText('Genre pour tous les fichiers'), 'ambient');
+    await user.selectOptions(screen.getByLabelText('Appliquer un genre à tous'), 'ambient');
     await user.click(screen.getByRole('button', { name: 'Envoyer les 5 morceaux' }));
 
     await waitFor(
@@ -156,7 +156,8 @@ describe('upload page (W-62/W-63)', () => {
     renderRoute(<UploadPage />, { url: '/?artist=lea-martin' });
     await user.upload(await waitFor(picker), audioFile('silent-clip.mp4', 'video/mp4'));
     await waitForGenres();
-    await user.selectOptions(screen.getByLabelText('Genre pour tous les fichiers'), 'ambient');
+    expect(screen.queryByLabelText('Appliquer un genre à tous')).toBeNull(); // FB-14: 1 file only
+    await user.selectOptions(screen.getByLabelText('Genre de silent-clip.mp4'), 'ambient');
     await user.click(screen.getByRole('button', { name: 'Envoyer le morceau' }));
     await screen.findByText('Fichier reçu, traitement de l’audio en cours…');
     await act(() => vi.advanceTimersByTimeAsync(3_100));

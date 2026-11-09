@@ -16,4 +16,5 @@ export const keys = {
   likedTracks: () => ['me', 'likes', 'tracks'] as const,
   likedPlaylists: () => ['me', 'likes', 'playlists'] as const,
   searchUsers: (q: string) => ['search', 'users', q] as const,
+  searchTracks: (q: string) => ['search', 'tracks', q] as const,
 };

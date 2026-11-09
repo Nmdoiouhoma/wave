@@ -117,3 +117,15 @@ export function useUserSearch(q: string) {
     staleTime: 30_000,
   });
 }
+
+export function useTrackSearch(q: string) {
+  const query = q.trim();
+  return useInfiniteQuery({
+    queryKey: keys.searchTracks(query),
+    queryFn: ({ pageParam, signal }) => api.search.tracks(query, { cursor: pageParam }, { signal }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled: query.length >= 2,
+    staleTime: 30_000,
+  });
+}

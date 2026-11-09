@@ -173,19 +173,21 @@ export function MultiUploader({ artist, initialArtistId, onProgressChange }: Mul
                 ))}
               </SelectField>
             )}
-            <SelectField
-              label="Genre pour tous les fichiers"
-              value={genreForAll}
-              onChange={(e) => applyGenreToAll(e.target.value)}
-              hint="Tu peux ensuite le changer fichier par fichier."
-            >
-              <option value="">Choisir un genre</option>
-              {genres.data?.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </SelectField>
+            {ready.length >= 2 && (
+              <SelectField
+                label="Appliquer un genre à tous"
+                value={genreForAll}
+                onChange={(e) => applyGenreToAll(e.target.value)}
+                hint="Tu peux ensuite le changer fichier par fichier."
+              >
+                <option value="">Choisir un genre</option>
+                {genres.data?.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </SelectField>
+            )}
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Visibilité">
               {(
                 [

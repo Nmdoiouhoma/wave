@@ -272,6 +272,68 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/me/notifications': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List my notifications
+     * @description In-app notifications of the caller (FB-16, W-45), read and unread, ordered by `updatedAt` desc then id desc (keyset). One item aggregates every actor of the same event type on the same target while it is unread ("Alice et 3 autres ont aimé ton morceau"); once read, a new event opens a new item.
+     *     Items whose target is no longer visible to the caller (rules of the target's own endpoint: e.g. a post on a track the caller can no longer see) or whose actors are all suspended or deleted are omitted. `actors` = up to 3 most recent non-suspended actors; `actorCount` counts non-suspended actors.
+     *     An item may move to the top between two pages when a new actor joins it: clients dedupe by id. `limit` default 20, max 50.
+     */
+    get: operations['listMyNotifications'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/me/notifications/unread-count': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get my unread notification count
+     * @description Number of unread items that `GET /me/notifications` would list (same omissions), capped at 100 (the client shows "99+" from 100). Polled by the client (every 60 s while visible and on focus).
+     */
+    get: operations['getMyUnreadNotificationCount'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/me/notifications/read': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Mark my notifications read
+     * @description Marks read every unread notification of the caller with `updatedAt ≤ upTo` (the client sends the `updatedAt` of the newest item it displayed, so an event arriving meanwhile stays unread). Idempotent; no id in the request, so nothing about other users can be probed. Unknown JSON field → 422.
+     */
+    post: operations['markMyNotificationsRead'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/users/{username}': {
     parameters: {
       query?: never;
@@ -733,7 +795,7 @@ export interface paths {
      * Report listen
      * @description Sent once per play session (one session = one start of the track in the queue) when it ends: track end, skip, queue change, or page hide (`fetch(..., {keepalive: true})`; `sendBeacon` cannot carry the bearer header).
      *     The server decides whether it counts (rules in DATA_MODEL §11, ADR 010) and answers 200 either way, `counted: false` included when no fresh listen grant exists (no prior `stream-url`), the declared `listenedMs` exceeds the time elapsed since the grant, the anti-replay window or the daily cap applies. No 4xx for these: they are not distinguishable from a normal non-counted listen.
-     *     Track not visible → 404; visible but not ready → 409 `track_not_ready`. Phase 2 implements `source=player`; `source=feed` lands with posts in phase 3.
+     *     Track not visible → 404; visible but not ready → 409 `track_not_ready`. Phase 2 implements `source=player`; `source=feed` (phase 3, W-32) uses the clip duration as reference and the grant written when the post's clip URL was issued (DATA_MODEL §11).
      */
     post: operations['reportListen'];
     delete?: never;
@@ -754,7 +816,7 @@ export interface paths {
     };
     /**
      * Serve audio through nginx X-Accel (no JWT)
-     * @description PHP verifies signature and expiry, re-checks the media still exists and is ready, then answers with `X-Accel-Redirect: /_protected/private/{audioKey}` and `Content-Type: audio/mp4`;
+     * @description PHP verifies signature and expiry, re-checks the media still exists and is ready and, for a clip token (`k` = `c`), that the post is still visible to `uid` (DATA_MODEL §9), then answers with `X-Accel-Redirect: /_protected/private/{audioKey}` and `Content-Type: audio/mp4`;
      *     nginx streams from MinIO with Range support and slice caching. The body/206 below is what the client receives from nginx.
      *     On 403/410 the player fetches a new stream URL and resumes at the current position.
      */
@@ -921,10 +983,11 @@ export interface paths {
     /**
      * Create post
      * @description Multipart. Returns 202 `status: processing`; clip (and visual) produced by the worker; poll `GET /posts/{id}`.
-     *     Rules (D4, D5): track ready and visible, and (caller owns it, or track public with `allowClips`) else 422 `clips_not_allowed`;
-     *     `clipStartMs + clipDurationMs ≤ track.durationMs` else 422 `clip_out_of_range`.
+     *     Rules (D4, D5, DATA_MODEL §9), in this order: `trackId` unknown or not visible to the caller → 404 `not_found` (same body as an unknown id);
+     *     others' track with `allowClips: false`, or own track hidden by moderation → 422 `clips_not_allowed`; own track processing/failed → 409 `track_not_ready`;
+     *     `clipStartMs + clipDurationMs ≤ track.durationMs` else 422 `clip_out_of_range`. The visual is checked (413/415) before the post row is created.
      *     Visual optional: image ≤ 5 MB (jpg/png/webp) or video MP4 ≤ 15 MB, ≤ 60 s (any audio stream is stripped). Oversize → 413, other type → 415.
-     *     Hashtags are extracted from the caption (max 10).
+     *     Hashtags are extracted from the caption (max 10, `#Lo_Fi #lofi` → `lo_fi`, `lofi`).
      */
     post: operations['createPost'];
     delete?: never;
@@ -944,14 +1007,14 @@ export interface paths {
     };
     /**
      * Get post
-     * @description Non-playable posts → 404 except for the author and moderators.
+     * @description Non-playable posts → 404 except for the author and moderators. A post whose track the caller cannot see → 404, author included (DATA_MODEL §9).
      */
     get: operations['getPost'];
     put?: never;
     post?: never;
     /**
      * Delete post
-     * @description Author or moderator.
+     * @description Author or moderator. The author may delete their post whatever its visibility; for anyone else a post they cannot see → 404, a visible post of someone else → 403. Hashtag counts, reports and stored objects are cleaned up (DATA_MODEL §9).
      */
     delete: operations['deletePost'];
     options?: never;
@@ -1015,11 +1078,14 @@ export interface paths {
     };
     /**
      * List comments
-     * @description Newest first. Hidden comments omitted (except for their author and moderators).
+     * @description Newest first. Hidden comments omitted (except for their author and moderators); comments by suspended authors omitted. Post not visible to the caller → 404.
      */
     get: operations['listComments'];
     put?: never;
-    /** Create comment */
+    /**
+     * Create comment
+     * @description Post must be playable for the caller (else 404). Body trimmed, 1–500 characters after trim (else 422 `validation_failed`); plain text, clients never render it as HTML.
+     */
     post: operations['createComment'];
     delete?: never;
     options?: never;
@@ -1041,7 +1107,7 @@ export interface paths {
     post?: never;
     /**
      * Delete comment
-     * @description Comment author, post author or moderator.
+     * @description Comment author, post author or moderator. A comment the caller cannot see (DATA_MODEL §10) → 404, identical to an unknown id; visible but not deletable → 403.
      */
     delete: operations['deleteComment'];
     options?: never;
@@ -1060,7 +1126,7 @@ export interface paths {
     put?: never;
     /**
      * Report post views
-     * @description Batched by the client (flush every 10 s, on feed exit and on page hide with `keepalive`). Unknown or invisible post ids are ignored silently. Upsert semantics (DATA_MODEL §11).
+     * @description Batched by the client (flush every 10 s, on feed exit and on page hide with `keepalive`). Unknown, invisible and own post ids are ignored silently (204 either way, no existence oracle). Upsert semantics (DATA_MODEL §11), `watchedMs` clamped to the clip duration, max kept, duplicates in a batch merged. Any recorded view marks the post as seen for `/feed/for-you`.
      */
     post: operations['reportPostViews'];
     delete?: never;
@@ -1078,9 +1144,11 @@ export interface paths {
     };
     /**
      * Get for you feed
-     * @description Ranked by `FeedRanker` (ADR 005). Excludes posts already viewed (PostView), own posts and non-playable posts; max 2 posts per author per page.
-     *     When unseen candidates run out, falls back to already-seen posts by trending score (never empty if any playable post exists).
-     *     Cursor is opaque and session-bound; duplicates across pages are possible after affinity recomputation, clients dedupe by id. `limit` default 10, max 20.
+     * @description Ranked by `FeedRanker`: phase 3 = `SimpleFeedRanker` (ADR 011: followed authors, liked genres, recent popular posts), phase 4 = ADR 005 ranker (W-40), same contract.
+     *     Excludes posts already viewed (PostView), own posts and non-playable posts (suspended authors included); max 2 posts per author per page.
+     *     A session starts with a request without cursor. When unseen candidates run out, the session continues with already-seen posts, least recently seen first, never repeating a post within the session.
+     *     The first page is never empty if another user has a playable post. A page may contain fewer than `limit` items while `nextCursor` is not null; `nextCursor: null` ends the session (the client may start a new one).
+     *     Cursor is opaque and session-bound; a cursor issued by another ranker version → 400 `invalid_cursor` (client restarts without cursor). Duplicates across pages are possible when likes/follows change scores mid-session; clients dedupe by id. `limit` default 10, max 20.
      */
     get: operations['getForYouFeed'];
     put?: never;
@@ -1100,7 +1168,7 @@ export interface paths {
     };
     /**
      * Get following feed
-     * @description Playable posts by followed users, newest first (seen posts included). `limit` default 10, max 20.
+     * @description Playable posts by followed users (suspended authors excluded), newest first (seen posts included), keyset on `(createdAt, id)`. Empty page and null `nextCursor` when the caller follows nobody. `limit` default 10, max 20.
      */
     get: operations['getFollowingFeed'];
     put?: never;
@@ -1121,10 +1189,11 @@ export interface paths {
     /**
      * Search
      * @description `SearchProvider` v1 = PostgreSQL FTS (`simple` + unaccent, prefix match on every token) + pg_trgm similarity.
-     *     **Phase 2 (W-27, FB-07)**: only `type=users` is implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
+     *     **Phase 2 (W-27, FB-07; W-29a, FB-15)**: only `type=users` and `type=tracks` are implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
      *     **Users**: matches `username` and `displayName`, case- and accent-insensitive (`wave_unaccent(lower(...))`), a user matches if either field starts with `q` (prefix, also per word of displayName) or trigram similarity ≥ 0.3. Ranking: exact username match first, then prefix match, then `greatest(similarity(username), similarity(displayName))` desc, then `followersCount` desc, then id. Suspended users and the caller are excluded. Items carry `isFollowedByMe` for inline follow buttons.
+     *     **Tracks** (FB-15, W-29a): only tracks the caller can see **and** play: `status=ready` ∧ `moderation=visible` ∧ (`visibility=public` ∨ owner = caller) ∧ owner not suspended. Others' private, processing, failed or hidden tracks, the caller's own processing/failed/hidden tracks and every track of a suspended owner are never returned (stricter than `GET /tracks/{id}` for suspended owners, F18). A track matches if its title or its artist name starts with `q` (also per word) or has trigram similarity ≥ 0.3, with the same normalisation as users. Ranking: tracks owned by the caller first, then tracks liked by the caller, then exact title match, prefix match, `greatest(similarity(title), similarity(artist name))` desc, `playCount` desc, id. No extra parameter: the caller's own and liked tracks surface first by this ranking (they are already known to the caller, so no oracle). Items are full `Track` objects (`likedByMe`, `isOwner`, `canClip` without N+1).
      *     Without `type` (phase 4): every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
-     *     With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable).
+     *     With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable); the cursor is bound to `q` and `type` (reused with another one → 400 `invalid_cursor`).
      *     Only content visible to the caller is returned.
      */
     get: operations['search'];
@@ -1190,7 +1259,8 @@ export interface paths {
     put?: never;
     /**
      * Create report
-     * @description Target must be visible to the caller (else 404). Own content → 422 `cannot_report_own`. Same reporter + target twice → 409 `already_reported`.
+     * @description Checks in order (DATA_MODEL §13): body → 422; target not visible to the caller (hidden, private, non-playable post, comment of an invisible post, suspended user…) → 404 byte-identical to an unknown id;
+     *     own content (user target = self) → 422 `cannot_report_own`; same reporter + target twice → 409 `already_reported`. `targetId` of a `user` target is the user's `id`.
      *     5 distinct open reporters auto-hide the target (not for `user` targets). The response never reveals whether auto-hide happened.
      */
     post: operations['createReport'];
@@ -1209,7 +1279,7 @@ export interface paths {
     };
     /**
      * List report targets
-     * @description ROLE_MODERATOR. Moderation queue grouped by target, most reported first then oldest first. Non-moderator → 403 `forbidden`.
+     * @description ROLE_MODERATOR. Moderation queue grouped by target, most reported first then oldest first (keyset on `(openReportCount DESC, firstReportedAt ASC, targetType, targetId)`, counts may move between pages). With `status` other than `open`, `openReportCount` counts the reports of that status. Non-moderator → 403 `forbidden` on every `/admin` route.
      */
     get: operations['listReportTargets'];
     put?: never;
@@ -1259,7 +1329,8 @@ export interface paths {
      * Decide report target
      * @description ROLE_MODERATOR. Applies to every open report of the target (DATA_MODEL §13).
      *     `hide` → target hidden, reports actioned. `dismiss` → target visible again, reports dismissed. `suspend` (user targets only, else 422) → account suspended, refresh tokens revoked, reports actioned.
-     *     A decision is also allowed with no open report (proactive moderation).
+     *     `hide` on a user target, suspending oneself or an already suspended user → 422 `validation_failed`. Unknown target → 404. Non-moderator → 403 before any lookup.
+     *     A decision is also allowed with no open report (proactive moderation). Unsuspend comes in phase 5.
      */
     post: operations['decideReportTarget'];
     delete?: never;
@@ -1637,7 +1708,7 @@ export interface components {
       track: components['schemas']['Track'];
       clipStartMs: number;
       clipDurationMs: number;
-      /** @description Signed clip URL (TTL 5 min) embedded to avoid one call per post; null unless ready. Expired → `GET /posts/{id}/stream-url`. */
+      /** @description Signed clip URL (TTL 5 min, ADR 001 token kind `c`) embedded to avoid one call per post; null unless ready and visible to the caller. Issuing it records the caller's listen grant for the track (DATA_MODEL §11). Expired, or `/stream` answers 403/410 → `GET /posts/{id}/stream-url`. */
       clip: components['schemas']['StreamUrl'] | null;
       /** @description Null when no visual or not processed yet; client falls back to `track.coverUrl`. */
       visual: components['schemas']['PostVisual'] | null;
@@ -1695,6 +1766,38 @@ export interface components {
       users?: components['schemas']['UserPage'];
       playlists?: components['schemas']['PlaylistPage'];
       hashtags?: components['schemas']['HashtagPage'];
+    };
+    /** @enum {string} */
+    NotificationType: 'follow' | 'track_like' | 'playlist_like' | 'post_like' | 'comment';
+    /** @description The caller's own content the event is about. Null for `follow`. */
+    NotificationTarget: {
+      /** @enum {string} */
+      type: 'track' | 'playlist' | 'post';
+      id: components['schemas']['Id'];
+      /** @description Track title, playlist name, or post caption truncated to 80 chars (track title when no caption). Plain text. */
+      label: string;
+      /** @description Track cover; post visual (poster for video) else its track cover; playlist: cover of its first available item. */
+      imageUrl: components['schemas']['MediaUrl'];
+    };
+    Notification: {
+      id: components['schemas']['Id'];
+      type: components['schemas']['NotificationType'];
+      /** @description Most recent non-suspended actors first; never empty. */
+      actors: components['schemas']['UserSummary'][];
+      actorCount: number;
+      target: components['schemas']['NotificationTarget'] | null;
+      read: boolean;
+      updatedAt: components['schemas']['DateTime'];
+    };
+    NotificationPage: {
+      items: components['schemas']['Notification'][];
+      nextCursor: string | null;
+    };
+    UnreadNotificationCount: {
+      unreadCount: number;
+    };
+    MarkNotificationsReadRequest: {
+      upTo: components['schemas']['DateTime'];
     };
     /** @enum {string} */
     ReportTargetType: 'track' | 'post' | 'comment' | 'playlist' | 'artist' | 'user';
@@ -2322,6 +2425,78 @@ export interface operations {
       };
       400: components['responses']['BadRequest'];
       401: components['responses']['Unauthorized'];
+    };
+  };
+  listMyNotifications: {
+    parameters: {
+      query?: {
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of notifications. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['NotificationPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+    };
+  };
+  getMyUnreadNotificationCount: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Unread count. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UnreadNotificationCount'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      429: components['responses']['TooManyRequests'];
+    };
+  };
+  markMyNotificationsRead: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MarkNotificationsReadRequest'];
+      };
+    };
+    responses: {
+      /** @description Marked read. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      422: components['responses']['Unprocessable'];
     };
   };
   getUserProfile: {

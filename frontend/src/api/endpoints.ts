@@ -123,12 +123,18 @@ export function createWaveApi(client: ApiClient) {
         request<TrackPage>('GET', `/artists/${enc(slug)}/tracks`, { query: { ...page } }),
     },
     search: {
-      /** Phase 2: only `type=users` (W-27). */
+      /** Phase 2: `type=users` (W-27) and `type=tracks` (W-29a). */
       users: (q: string, page: PageParams = {}, opts: { signal?: AbortSignal } = {}) =>
         request<SearchResults>('GET', '/search', {
           query: { q, type: 'users', ...page },
           signal: opts.signal,
         }).then((r): UserPage => r.users ?? { items: [], nextCursor: null }),
+      /** W-29a: own tracks then liked ones first (backend ranking, no client merge). */
+      tracks: (q: string, page: PageParams = {}, opts: { signal?: AbortSignal } = {}) =>
+        request<SearchResults>('GET', '/search', {
+          query: { q, type: 'tracks', ...page },
+          signal: opts.signal,
+        }).then((r): TrackPage => r.tracks ?? { items: [], nextCursor: null }),
     },
     genres: {
       list: () => request<Genre[]>('GET', '/genres', { auth: false }),
