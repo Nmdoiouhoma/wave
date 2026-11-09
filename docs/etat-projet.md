@@ -47,11 +47,11 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 ## Prochaines étapes
 
-1. Retest par l'utilisateur (like, ajout depuis une playlist, genre groupé) ; reste non testé : écoute complète et compteur, vidéos avec et sans son, glisser-déposer sur mobile. Revue qa du lot fb-1109.
+1. Retest par l'utilisateur (like, ajout depuis une playlist, genre groupé) ; reste non testé : écoute complète et compteur, vidéos avec et sans son, glisser-déposer sur mobile. Revue qa du lot fb-1109 faite : 0 critique/élevé, 367 tests backend.
 2. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
 3. Phase 3 : posts courts, feed vertical, commentaires, signalement, notifications in-app (FB-16 : W-45, W-46). Lots : W-38∥W-30 → W-31∥W-32∥W-39 → W-33∥W-34∥W-35∥W-45 → W-36∥W-46 → W-37.
-4. Phase 4 : recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
-5. Phase 5 : durcissement, modération, suppression de compte, F18 (suspendus visibles comme propriétaires/artistes), vrais e-mails (FB-01), README et checklist de mise en prod.
+4. Phase 4 : mesurer avec EXPLAIN sur ~100 k morceaux si l'index trigramme de la recherche de morceaux sert (moyen de la revue fb-1109, W-41), recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
+5. Phase 5 : durcissement, bas niveau de la revue fb-1109 (`docs/handoff/fb-1109-qa.md` : TOCTOU à l'hydratation, erreurs 404/422 génériques, morceau de suspendu proposé dans la feuille d'ajout, demande d'affinité perdue si le process meurt), modération, suppression de compte, F18 (suspendus visibles comme propriétaires/artistes), vrais e-mails (FB-01), README et checklist de mise en prod.
 
 ## Points d'attention
 
