@@ -143,6 +143,10 @@ class Track
         $this->failureReason = $reason;
     }
 
+    /**
+     * Same for every viewer: `artist.track_count`, trending, discovery only. "Visible to the
+     * caller" (FB-18 audiences) is App\Security\TrackAudience.
+     */
     public function isPublicVisible(): bool
     {
         return MediaStatus::Ready === $this->status
@@ -153,12 +157,6 @@ class Track
     public function isOwnedBy(?User $user): bool
     {
         return null !== $user && $this->owner->getId()->equals($user->getId());
-    }
-
-    /** DATA_MODEL §6: owner and moderators see everything, others only public-visible tracks. */
-    public function isVisibleTo(?User $viewer): bool
-    {
-        return $this->isPublicVisible() || $this->isOwnedBy($viewer) || (null !== $viewer && $viewer->isModerator());
     }
 
     /** D5: may $viewer create a post from this track now. */

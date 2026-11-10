@@ -12,6 +12,7 @@ use App\Problem\ApiProblemException;
 use App\Repository\PostRepository;
 use App\Repository\TrackRepository;
 use App\Repository\UserRepository;
+use App\Security\TrackAudience;
 use App\Storage\ObjectStorage;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
@@ -30,6 +31,7 @@ final readonly class StreamController
         private PostRepository $posts,
         private UserRepository $users,
         private ObjectStorage $storage,
+        private TrackAudience $audience,
     ) {
     }
 
@@ -58,7 +60,7 @@ final readonly class StreamController
         $track = $this->tracks->findWithRelations($grant->id);
         $viewer = $this->users->find($grant->viewerId);
         if (!$track instanceof Track || !$viewer instanceof User || $viewer->isSuspended()
-            || MediaStatus::Ready !== $track->getStatus() || null === $track->getAudioKey() || !$track->isVisibleTo($viewer)) {
+            || MediaStatus::Ready !== $track->getStatus() || null === $track->getAudioKey() || !$this->audience->isTrackVisible($track, $viewer)) {
             throw ApiProblemException::notFound();
         }
 
@@ -71,7 +73,7 @@ final readonly class StreamController
         $post = $this->posts->findWithRelations($grant->id);
         $viewer = $this->users->find($grant->viewerId);
         if (!$post instanceof Post || !$viewer instanceof User || $viewer->isSuspended()
-            || MediaStatus::Ready !== $post->getStatus() || null === $post->getClipKey() || !$post->isVisibleTo($viewer)) {
+            || MediaStatus::Ready !== $post->getStatus() || null === $post->getClipKey() || !$this->audience->isPostVisible($post, $viewer)) {
             throw ApiProblemException::notFound();
         }
 

@@ -47,6 +47,7 @@ enum ProblemCode: string
     case ClipOutOfRange = 'clip_out_of_range';
     case CannotFollowSelf = 'cannot_follow_self';
     case CannotReportOwn = 'cannot_report_own';
+    case NotAFollower = 'not_a_follower';
     case RateLimited = 'rate_limited';
     case InternalError = 'internal_error';
 
@@ -65,7 +66,7 @@ enum ProblemCode: string
             self::PayloadTooLarge => 413,
             self::UnsupportedMediaType => 415,
             self::ValidationFailed, self::ArtistRequired, self::ClipsNotAllowed, self::ClipOutOfRange,
-            self::CannotFollowSelf, self::CannotReportOwn => 422,
+            self::CannotFollowSelf, self::CannotReportOwn, self::NotAFollower => 422,
             self::RateLimited => 429,
             self::InternalError => 500,
         };
@@ -112,6 +113,7 @@ enum ProblemCode: string
             self::ClipOutOfRange => 'Clip out of range',
             self::CannotFollowSelf => 'Cannot follow yourself',
             self::CannotReportOwn => 'Cannot report own content',
+            self::NotAFollower => 'Not a follower',
             self::RateLimited => 'Too many requests',
             self::InternalError => 'Internal error',
         };

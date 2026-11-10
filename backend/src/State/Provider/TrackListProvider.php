@@ -61,11 +61,11 @@ final readonly class TrackListProvider implements ProviderInterface
         if ('listArtistTracks' === $operation->getName()) {
             $artist = $this->artists->visible($uriVariables['slug'] ?? null);
             $seesAll = null !== $viewer && ($artist->isOwnedBy($viewer) || $viewer->isModerator());
-            $rows = $this->tracks->findPageByArtist($artist, !$seesAll, $page->after, $page->limit);
+            $rows = $this->tracks->findPageByArtist($artist, $viewer, $seesAll, $page->after, $page->limit);
         } else {
             $owner = $this->users->byUsername($uriVariables['username'] ?? null);
             $seesAll = null !== $viewer && ($viewer->getId()->equals($owner->getId()) || $viewer->isModerator());
-            $rows = $this->tracks->findPageByOwner($owner, !$seesAll, $page->after, $page->limit);
+            $rows = $this->tracks->findPageByOwner($owner, $viewer, $seesAll, $page->after, $page->limit);
         }
 
         $next = null;

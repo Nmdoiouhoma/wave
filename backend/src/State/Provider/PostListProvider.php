@@ -43,7 +43,7 @@ final readonly class PostListProvider implements ProviderInterface
             $viewer->getId()->equals($author->getId()) => 'author',
             default => 'playable',
         };
-        $rows = $this->posts->findPageByAuthor($author, $scope, $page->after, $page->limit);
+        $rows = $this->posts->findPageByAuthor($author, $viewer, $scope, $page->after, $page->limit);
         $next = null;
         if (\count($rows) > $page->limit) {
             $rows = \array_slice($rows, 0, $page->limit);

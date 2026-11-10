@@ -47,6 +47,7 @@ final readonly class RateLimitListener
         'getPostStreamUrl' => [['stream_url_user', self::BY_USER]],
         'createPost' => [['post_create_user', self::BY_USER]],
         'followUser' => [['social_write_user', self::BY_USER]],
+        'addCloseFriend' => [['social_write_user', self::BY_USER]],
         'likeTrack' => [['social_write_user', self::BY_USER]],
         'likePlaylist' => [['social_write_user', self::BY_USER]],
         'createPlaylist' => [['playlist_write_user', self::BY_USER]],

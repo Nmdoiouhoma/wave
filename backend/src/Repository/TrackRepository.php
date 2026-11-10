@@ -8,6 +8,7 @@ use App\Entity\Artist;
 use App\Entity\Track;
 use App\Entity\User;
 use App\Pagination\Keyset;
+use App\Security\TrackAudience;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\QueryBuilder;
@@ -62,15 +63,16 @@ final class TrackRepository extends ServiceEntityRepository
     }
 
     /**
-     * Newest first, keyset on (created_at, id); fetches $limit + 1 rows.
+     * Newest first, keyset on (created_at, id); fetches $limit + 1 rows. $seesAll (owner,
+     * moderator): every track; otherwise the tracks visible to $viewer (TrackAudience, §6).
      *
      * @param list<string|int|float|bool|null>|null $after
      *
      * @return list<Track>
      */
-    public function findPageByOwner(User $owner, bool $onlyPublicVisible, ?array $after, int $limit): array
+    public function findPageByOwner(User $owner, ?User $viewer, bool $seesAll, ?array $after, int $limit): array
     {
-        $qb = $this->pageQuery($onlyPublicVisible, $after, $limit)
+        $qb = $this->pageQuery($viewer, $seesAll, $after, $limit)
             ->andWhere('t.owner = :owner')->setParameter('owner', $owner->getId(), 'uuid');
 
         /* @var list<Track> */
@@ -82,9 +84,9 @@ final class TrackRepository extends ServiceEntityRepository
      *
      * @return list<Track>
      */
-    public function findPageByArtist(Artist $artist, bool $onlyPublicVisible, ?array $after, int $limit): array
+    public function findPageByArtist(Artist $artist, ?User $viewer, bool $seesAll, ?array $after, int $limit): array
     {
-        $qb = $this->pageQuery($onlyPublicVisible, $after, $limit)
+        $qb = $this->pageQuery($viewer, $seesAll, $after, $limit)
             ->andWhere('t.artist = :artist')->setParameter('artist', $artist->getId(), 'uuid');
 
         /* @var list<Track> */
@@ -92,15 +94,16 @@ final class TrackRepository extends ServiceEntityRepository
     }
 
     /** @param list<string|int|float|bool|null>|null $after */
-    private function pageQuery(bool $onlyPublicVisible, ?array $after, int $limit): QueryBuilder
+    private function pageQuery(?User $viewer, bool $seesAll, ?array $after, int $limit): QueryBuilder
     {
         $qb = $this->createQueryBuilder('t')
             ->addSelect('a', 'o', 'g')
             ->join('t.artist', 'a')->join('t.owner', 'o')->join('t.genre', 'g')
             ->orderBy('t.createdAt', 'DESC')->addOrderBy('t.id', 'DESC')
             ->setMaxResults($limit + 1);
-        if ($onlyPublicVisible) {
-            $qb->andWhere("t.status = 'ready' AND t.visibility = 'public' AND t.moderation = 'visible'");
+        if (!$seesAll) {
+            $qb->andWhere(TrackAudience::visibleDql('t'));
+            TrackAudience::bindDql($qb, $viewer);
         }
         if (null !== $after) {
             [$at, $id] = Keyset::timestampAndId($after);

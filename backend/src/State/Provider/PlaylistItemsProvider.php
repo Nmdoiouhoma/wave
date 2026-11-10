@@ -16,12 +16,14 @@ use App\Pagination\PageRequest;
 use App\Repository\PlaylistRepository;
 use App\Repository\TrackRepository;
 use App\Security\CurrentUser;
+use App\Security\TrackAudience;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
  * `GET /playlists/{playlistId}/items`: by position (keyset on position, ADR 002 exception),
  * limit default 50 max 100; items whose track is not visible to the caller get `track: null`.
- * Three queries per page whatever its size (items, tracks with relations, likes).
+ * Constant queries per page whatever its size (items, tracks with relations, audience
+ * memberships when a restricted track is present, likes).
  *
  * @implements ProviderInterface<PlaylistItemPage>
  */
@@ -34,6 +36,7 @@ final readonly class PlaylistItemsProvider implements ProviderInterface
         private TrackMapper $trackMapper,
         private CurrentUser $currentUser,
         private CursorCodec $codec,
+        private TrackAudience $audience,
     ) {
     }
 
@@ -59,7 +62,8 @@ final readonly class PlaylistItemsProvider implements ProviderInterface
         }
 
         $tracks = $this->tracks->findByIdsWithRelations(array_column($rows, 'track_id'));
-        $visible = array_values(array_filter($tracks, static fn (Track $t): bool => $t->isVisibleTo($viewer)));
+        $seen = $this->audience->trackVisibility(array_values($tracks), $viewer);
+        $visible = array_values(array_filter($tracks, static fn (Track $t): bool => $seen[$t->getId()->toRfc4122()]));
         $views = [];
         foreach ($this->trackMapper->toViews($visible, $viewer) as $view) {
             $views[$view->id] = $view;

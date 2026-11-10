@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Search;
 
+use App\Security\TrackAudience;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Uid\Uuid;
 
@@ -13,7 +14,8 @@ use Symfony\Component\Uid\Uuid;
  * - users (W-27): username or display name starting with the query (also per word of the display
  *   name) or similar. Ranking: exact username, prefix, similarity, followers, id. Suspended users
  *   and the caller are excluded.
- * - tracks (W-29a, FB-15): only what the caller can see and play — ready, visible, public or own,
+ * - tracks (W-29a, FB-15): only what the caller can see and play — ready, visible, caller in the audience
+ *   (TrackAudience, FB-18),
  *   owner not suspended. Title or artist name starting with the query (also per word) or similar.
  * Ranking: own, liked by the caller, exact title, prefix, similarity, play count, id.
  */
@@ -27,7 +29,7 @@ final readonly class PostgresSearchProvider implements SearchProvider
     {
         $sql = match ($type) {
             SearchType::Users => self::USERS_SQL,
-            SearchType::Tracks => self::TRACKS_SQL,
+            SearchType::Tracks => str_replace('{AUDIENCE}', TrackAudience::sql('t'), self::TRACKS_SQL),
             default => throw new \LogicException('Only user and track search exist before phase 4.'),
         };
         $limit = max(0, min($limit, self::MAX_RESULTS - $offset));
@@ -37,7 +39,8 @@ final readonly class PostgresSearchProvider implements SearchProvider
 
         $ids = $this->db->fetchFirstColumn(
             self::QUERY_CTE.$sql,
-            ['q' => trim($query), 'viewer' => $viewerId->toRfc4122(), 'offset' => $offset, 'limit' => $limit + 1],
+            ['q' => trim($query), 'viewer' => $viewerId->toRfc4122(), 'offset' => $offset, 'limit' => $limit + 1]
+                + (SearchType::Tracks === $type ? ['v' => $viewerId->toRfc4122()] : []),
         );
 
         $hasMore = \count($ids) > $limit && $offset + $limit < self::MAX_RESULTS;
@@ -64,7 +67,7 @@ final readonly class PostgresSearchProvider implements SearchProvider
             JOIN artist a ON a.id = t.artist_id
             JOIN app_user o ON o.id = t.owner_id
             WHERE t.status = 'ready' AND t.moderation = 'visible'
-              AND (t.visibility = 'public' OR t.owner_id = :viewer)
+              AND {AUDIENCE}
               AND o.suspended_at IS NULL
         )
         SELECT c.id FROM c, q

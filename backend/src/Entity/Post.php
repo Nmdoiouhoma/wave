@@ -7,7 +7,6 @@ namespace App\Entity;
 use App\Enum\FailureReason;
 use App\Enum\MediaStatus;
 use App\Enum\Moderation;
-use App\Enum\Visibility;
 use App\Enum\VisualType;
 use App\Repository\PostRepository;
 use Doctrine\DBAL\Types\Types;
@@ -132,29 +131,7 @@ class Post
         $this->failureReason = $reason;
     }
 
-    /**
-     * DATA_MODEL §9 "playable": ready, visible, track visible to moderation, author not
-     * suspended, and the clip still allowed (author owns the track, or public + allowClips).
-     */
-    public function isPlayable(): bool
-    {
-        return MediaStatus::Ready === $this->status
-            && Moderation::Visible === $this->moderation
-            && Moderation::Visible === $this->track->getModeration()
-            && !$this->author->isSuspended()
-            && ($this->track->isOwnedBy($this->author)
-                || (Visibility::Public === $this->track->getVisibility() && $this->track->isAllowClips()));
-    }
-
-    /** DATA_MODEL §9 "visible to a caller": moderator, playable, or author who can still see the track. */
-    public function isVisibleTo(?User $viewer): bool
-    {
-        if (null === $viewer) {
-            return false;
-        }
-
-        return $viewer->isModerator() || $this->isPlayable() || ($this->isAuthoredBy($viewer) && $this->track->isVisibleTo($viewer));
-    }
+    // "Playable" and "visible to a caller" depend on the viewer (FB-18): App\Security\TrackAudience.
 
     public function isAuthoredBy(?User $user): bool
     {

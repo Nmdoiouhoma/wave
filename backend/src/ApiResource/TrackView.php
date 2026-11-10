@@ -65,7 +65,7 @@ final readonly class TrackView
         public ?int $durationMs,
         public string $status,
         public ?string $failureReason,
-        public string $visibility,
+        public ?string $visibility,
         public bool $allowClips,
         public string $moderation,
         public int $playCount,

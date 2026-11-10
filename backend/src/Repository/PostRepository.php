@@ -7,6 +7,7 @@ namespace App\Repository;
 use App\Entity\Post;
 use App\Entity\User;
 use App\Pagination\Keyset;
+use App\Security\TrackAudience;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
@@ -49,24 +50,26 @@ final class PostRepository extends ServiceEntityRepository
     /**
      * `/users/{username}/posts`, newest first, keyset on (created_at, id); fetches $limit + 1 rows.
      * DATA_MODEL §9: moderators see every post, the author their posts whose track they can
-     * still see (§6), everyone else playable posts only.
+     * still see (§6), everyone else the posts playable for them (viewer-dependent, FB-18).
      *
      * @param 'all'|'author'|'playable'             $scope
      * @param list<string|int|float|bool|null>|null $after
      *
      * @return list<Post>
      */
-    public function findPageByAuthor(User $author, string $scope, ?array $after, int $limit): array
+    public function findPageByAuthor(User $author, User $viewer, string $scope, ?array $after, int $limit): array
     {
         $qb = $this->withRelations()
             ->andWhere('p.author = :author')->setParameter('author', $author->getId(), 'uuid')
             ->orderBy('p.createdAt', 'DESC')->addOrderBy('p.id', 'DESC')
             ->setMaxResults($limit + 1);
         if ('author' === $scope) {
-            $qb->andWhere("t.owner = :author OR (t.status = 'ready' AND t.visibility = 'public' AND t.moderation = 'visible')");
+            $qb->andWhere(TrackAudience::visibleDql('t'));
+            TrackAudience::bindDql($qb, $author);
         } elseif ('playable' === $scope) {
             $qb->andWhere("p.status = 'ready' AND p.moderation = 'visible' AND t.moderation = 'visible' AND u.suspendedAt IS NULL")
-                ->andWhere("t.owner = p.author OR (t.visibility = 'public' AND t.allowClips = true)");
+                ->andWhere("(t.visibility = 'public' AND t.allowClips = true) OR (t.owner = p.author AND ".TrackAudience::dql('t').')');
+            TrackAudience::bindDql($qb, $viewer);
         }
         if (null !== $after) {
             [$at, $id] = Keyset::timestampAndId($after);

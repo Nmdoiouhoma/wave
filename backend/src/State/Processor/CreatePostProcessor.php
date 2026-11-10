@@ -12,6 +12,7 @@ use App\Entity\Track;
 use App\Entity\User;
 use App\Enum\MediaStatus;
 use App\Enum\Moderation;
+use App\Enum\Visibility;
 use App\Enum\VisualType;
 use App\Http\RequestEncodingListener;
 use App\Http\ResponseHeadersListener;
@@ -23,6 +24,7 @@ use App\Post\VisualSniffer;
 use App\Problem\ApiProblemException;
 use App\Problem\ProblemCode;
 use App\Security\CurrentUser;
+use App\Security\TrackAudience;
 use App\State\Provider\TrackLookup;
 use App\Storage\ObjectStorage;
 use App\Storage\StorageArea;
@@ -56,6 +58,7 @@ final readonly class CreatePostProcessor implements ProcessorInterface
         private EntityManagerInterface $em,
         private MessageBusInterface $bus,
         private PostMapper $mapper,
+        private TrackAudience $audience,
     ) {
     }
 
@@ -190,8 +193,12 @@ final readonly class CreatePostProcessor implements ProcessorInterface
         }
         // A moderator can see others' private/processing/hidden tracks: for posting, they are
         // just another user, so such a track is "not visible" (same 404 as an unknown id).
-        if (!$track->isPublicVisible()) {
+        if (!$this->audience->isTrackVisible($track, $user, false)) {
             throw ApiProblemException::notFound();
+        }
+        // FB-18: others' followers/close_friends track the caller can see → still not clippable.
+        if (Visibility::Public !== $track->getVisibility()) {
+            throw new ApiProblemException(ProblemCode::ClipsNotAllowed, 'Only public tracks can be clipped by others.');
         }
         if (!$track->isAllowClips()) {
             throw new ApiProblemException(ProblemCode::ClipsNotAllowed, 'The owner of this track does not allow clips.');

@@ -9,6 +9,7 @@ use ApiPlatform\State\ProcessorInterface;
 use App\Post\PostCleanup;
 use App\Problem\ApiProblemException;
 use App\Security\CurrentUser;
+use App\Security\TrackAudience;
 use App\State\Provider\PostLookup;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -25,6 +26,7 @@ final readonly class DeletePostProcessor implements ProcessorInterface
         private CurrentUser $currentUser,
         private PostCleanup $cleanup,
         private EntityManagerInterface $em,
+        private TrackAudience $audience,
     ) {
     }
 
@@ -33,7 +35,7 @@ final readonly class DeletePostProcessor implements ProcessorInterface
         $viewer = $this->currentUser->require();
         $post = $this->lookup->find($uriVariables['postId'] ?? null);
         if (!$post->isAuthoredBy($viewer) && !$viewer->isModerator()) {
-            throw $post->isVisibleTo($viewer) ? ApiProblemException::forbidden('Only the author or a moderator can delete this post.') : ApiProblemException::notFound();
+            throw $this->audience->isPostVisible($post, $viewer) ? ApiProblemException::forbidden('Only the author or a moderator can delete this post.') : ApiProblemException::notFound();
         }
         $this->em->wrapInTransaction(fn () => $this->cleanup->deletePost($post->getId()));
         $this->em->detach($post);

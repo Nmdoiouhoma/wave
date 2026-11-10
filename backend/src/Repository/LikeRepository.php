@@ -6,6 +6,7 @@ namespace App\Repository;
 
 use App\Entity\User;
 use App\Pagination\Keyset;
+use App\Security\TrackAudience;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\Uid\Uuid;
@@ -110,12 +111,13 @@ final readonly class LikeRepository
     public function likedTracksPage(User $user, ?array $after, int $limit): array
     {
         [$where, $params] = $this->keyset($after, 'l.track_id');
-        $params += ['u' => $user->getId()->toRfc4122(), 'limit' => $limit + 1, 'mod' => $user->isModerator() ? 1 : 0];
+        $params += ['u' => $user->getId()->toRfc4122(), 'limit' => $limit + 1] + TrackAudience::params($user);
 
+        $visible = TrackAudience::visibleSql('t');
         $rows = $this->db->fetchAllAssociative(
             "SELECT l.track_id AS id, l.created_at AS at FROM track_like l JOIN track t ON t.id = l.track_id
              WHERE l.user_id = :u {$where}
-               AND ((t.status = 'ready' AND t.visibility = 'public' AND t.moderation = 'visible') OR t.owner_id = :u OR :mod = 1)
+               AND {$visible}
              ORDER BY l.created_at DESC, l.track_id DESC LIMIT :limit",
             $params,
         );
@@ -136,7 +138,7 @@ final readonly class LikeRepository
     public function likedPlaylistsPage(User $user, ?array $after, int $limit): array
     {
         [$where, $params] = $this->keyset($after, 'l.playlist_id');
-        $params += ['u' => $user->getId()->toRfc4122(), 'limit' => $limit + 1, 'mod' => $user->isModerator() ? 1 : 0];
+        $params += ['u' => $user->getId()->toRfc4122(), 'limit' => $limit + 1] + TrackAudience::params($user);
 
         $rows = $this->db->fetchAllAssociative(
             "SELECT l.playlist_id AS id, l.created_at AS at FROM playlist_like l JOIN playlist p ON p.id = l.playlist_id

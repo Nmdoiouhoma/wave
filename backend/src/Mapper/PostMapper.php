@@ -14,6 +14,7 @@ use App\Enum\MediaStatus;
 use App\Repository\LikeRepository;
 use App\Repository\ListenGrantRepository;
 use App\Repository\PostRepository;
+use App\Security\TrackAudience;
 use App\Storage\ObjectStorage;
 use App\Stream\StreamTokenSigner;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -34,6 +35,7 @@ final readonly class PostMapper
         private ListenGrantRepository $grants,
         private StreamTokenSigner $signer,
         private ObjectStorage $storage,
+        private TrackAudience $audience,
         #[Autowire(env: 'APP_PUBLIC_URL')]
         private string $publicUrl,
     ) {
@@ -67,12 +69,13 @@ final readonly class PostMapper
             $trackViews[$view->id] = $view;
         }
 
+        $visible = $this->audience->postVisibility($posts, $viewer);
         $grants = [];
         $views = [];
         foreach ($posts as $post) {
             $id = $post->getId()->toRfc4122();
             $clip = null;
-            if (null !== $viewer && MediaStatus::Ready === $post->getStatus() && null !== $post->getClipKey() && $post->isVisibleTo($viewer)) {
+            if (null !== $viewer && MediaStatus::Ready === $post->getStatus() && null !== $post->getClipKey() && $visible[$id]) {
                 $clip = $this->signClip($post, $viewer);
                 $trackId = $post->getTrack()->getId()->toRfc4122();
                 $grants[$trackId] = max($grants[$trackId] ?? 0, $post->getClipDurationMs());

@@ -208,6 +208,34 @@ final class ConcurrencySecurityTest extends SecurityTestCase
         self::assertSame(0, (int) $this->raw->fetchOne('SELECT item_count FROM playlist WHERE id = ?', [$playlist]));
     }
 
+    /**
+     * W-47: adding a close friend while that user unfollows never leaves a member without a
+     * follow edge (composite FK + conditional insert), and neither side answers 500.
+     */
+    public function testCloseFriendAddRacingAnUnfollowNeverLeavesAMemberWithoutFollow(): void
+    {
+        $owner = $this->user('owner');
+        $requests = [];
+        for ($i = 0; $i < 8; ++$i) {
+            $fan = $this->user('cf'.$i);
+            $this->raw->insert('follow', ['follower_id' => $fan->getId()->toRfc4122(), 'followed_id' => $owner->getId()->toRfc4122(), 'created_at' => 'now()']);
+            $this->raw->executeStatement('UPDATE app_user SET following_count = 1 WHERE id = ?', [$fan->getId()->toRfc4122()]);
+            $requests[] = ['PUT', '/api/v1/me/close-friends/'.self::PREFIX.'_cf'.$i, $owner, ''];
+            $requests[] = ['DELETE', '/api/v1/users/'.self::PREFIX.'_owner/follow', $fan, ''];
+        }
+        $this->raw->executeStatement('UPDATE app_user SET followers_count = 8 WHERE id = ?', [$owner->getId()->toRfc4122()]);
+
+        $statuses = $this->runConcurrently($requests);
+        foreach ($statuses as $i => $status) {
+            self::assertContains($status, 0 === $i % 2 ? [200, 422] : [200], $requests[$i][0].' '.$requests[$i][1]);
+        }
+        self::assertSame(0, (int) $this->raw->fetchOne('SELECT count(*) FROM follow WHERE followed_id = ?', [$owner->getId()->toRfc4122()]));
+        self::assertSame(0, (int) $this->raw->fetchOne(
+            'SELECT count(*) FROM close_friend cf WHERE NOT EXISTS (SELECT 1 FROM follow f WHERE f.follower_id = cf.friend_id AND f.followed_id = cf.owner_id)',
+        ));
+        self::assertSame(0, (int) $this->raw->fetchOne('SELECT count(*) FROM close_friend WHERE owner_id = ?', [$owner->getId()->toRfc4122()]));
+    }
+
     // ------------------------------------------------------------- helpers ---
 
     /**

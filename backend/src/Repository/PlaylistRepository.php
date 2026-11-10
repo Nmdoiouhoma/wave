@@ -7,6 +7,7 @@ namespace App\Repository;
 use App\Entity\Playlist;
 use App\Entity\User;
 use App\Pagination\Keyset;
+use App\Security\TrackAudience;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
@@ -186,12 +187,8 @@ final class PlaylistRepository extends ServiceEntityRepository
         $params = ['p' => $playlist->getId()->toRfc4122(), 'after' => $afterPosition ?? -1, 'limit' => $limit + 1];
         $visible = '';
         if (!$playlist->isOwnedBy($viewer)) {
-            $visible = "AND EXISTS (SELECT 1 FROM track t WHERE t.id = i.track_id
-                 AND ((t.status = 'ready' AND t.visibility = 'public' AND t.moderation = 'visible') OR t.owner_id = :v OR :mod = 1))";
-            $params += [
-                'v' => $viewer?->getId()->toRfc4122() ?? '00000000-0000-0000-0000-000000000000',
-                'mod' => null !== $viewer && $viewer->isModerator() ? 1 : 0,
-            ];
+            $visible = 'AND EXISTS (SELECT 1 FROM track t WHERE t.id = i.track_id AND '.TrackAudience::visibleSql('t').')';
+            $params += TrackAudience::params($viewer);
         }
         $rows = $this->db()->fetchAllAssociative(
             "SELECT i.track_id, i.position, i.added_at FROM playlist_item i
@@ -218,16 +215,11 @@ final class PlaylistRepository extends ServiceEntityRepository
             return [];
         }
         $rows = $this->db()->fetchAllKeyValue(
-            "SELECT DISTINCT ON (i.playlist_id) i.playlist_id, t.cover_key
+            'SELECT DISTINCT ON (i.playlist_id) i.playlist_id, t.cover_key
              FROM playlist_item i JOIN track t ON t.id = i.track_id
-             WHERE i.playlist_id IN (:ids)
-               AND ((t.status = 'ready' AND t.visibility = 'public' AND t.moderation = 'visible') OR t.owner_id = :v OR :mod = 1)
-             ORDER BY i.playlist_id, i.position",
-            [
-                'ids' => array_map(static fn (Uuid $id): string => $id->toRfc4122(), $playlistIds),
-                'v' => $viewer?->getId()->toRfc4122() ?? '00000000-0000-0000-0000-000000000000',
-                'mod' => null !== $viewer && $viewer->isModerator() ? 1 : 0,
-            ],
+             WHERE i.playlist_id IN (:ids) AND '.TrackAudience::visibleSql('t').'
+             ORDER BY i.playlist_id, i.position',
+            ['ids' => array_map(static fn (Uuid $id): string => $id->toRfc4122(), $playlistIds)] + TrackAudience::params($viewer),
             ['ids' => ArrayParameterType::STRING],
         );
 
