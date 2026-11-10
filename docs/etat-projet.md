@@ -1,4 +1,4 @@
-# État du projet Wave — 09/11/2026
+# État du projet Wave — 10/11/2026
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
