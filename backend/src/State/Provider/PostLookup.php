@@ -29,6 +29,17 @@ final readonly class PostLookup
         return $post;
     }
 
+    /** Post playable for $viewer (DATA_MODEL §9, FB-18); anything else is the same 404 as an unknown id. */
+    public function playable(mixed $id, ?User $viewer): Post
+    {
+        $post = $this->find($id);
+        if (!$this->audience->isPostPlayable($post, $viewer)) {
+            throw ApiProblemException::notFound();
+        }
+
+        return $post;
+    }
+
     public function visible(mixed $id, ?User $viewer): Post
     {
         $post = $this->find($id);

@@ -18,6 +18,8 @@ use App\State\Processor\LikeProcessor;
         new Delete(uriTemplate: '/tracks/{trackId}/like', uriVariables: ['trackId'], name: 'unlikeTrack', status: 200, read: false, deserialize: false, processor: LikeProcessor::class),
         new Put(uriTemplate: '/playlists/{playlistId}/like', uriVariables: ['playlistId'], name: 'likePlaylist', read: false, deserialize: false, processor: LikeProcessor::class),
         new Delete(uriTemplate: '/playlists/{playlistId}/like', uriVariables: ['playlistId'], name: 'unlikePlaylist', status: 200, read: false, deserialize: false, processor: LikeProcessor::class),
+        new Put(uriTemplate: '/posts/{postId}/like', uriVariables: ['postId'], name: 'likePost', read: false, deserialize: false, processor: LikeProcessor::class),
+        new Delete(uriTemplate: '/posts/{postId}/like', uriVariables: ['postId'], name: 'unlikePost', status: 200, read: false, deserialize: false, processor: LikeProcessor::class),
     ],
 )]
 final readonly class LikeStateView

@@ -37,6 +37,9 @@ services:
 
     App\Search\SearchProvider: '@App\Search\PostgresSearchProvider'
 
+    # ADR 011: phase 3 ranker; W-40 rebinds this alias to SqlFeedRanker.
+    App\Feed\FeedRanker: '@App\Feed\SimpleFeedRanker'
+
     # DeduplicateStamp keys travel with the message, so the store must be serializable and
     # shared by php and workers: Doctrine DBAL table `lock_keys` (flock/advisory locks are not).
     wave.dedup_lock_store:

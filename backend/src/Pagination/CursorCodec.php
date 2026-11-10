@@ -70,6 +70,49 @@ final readonly class CursorCodec
         return $keys;
     }
 
+    /**
+     * Ranker cursors (CONVENTIONS §7, ADR 011): a whole payload object signed like encode().
+     * The caller owns the shape and validates it after decodePayload().
+     *
+     * @param array<string, mixed> $payload must carry `v`
+     */
+    public function encodePayload(array $payload): string
+    {
+        $json = json_encode($payload, \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_SLASHES);
+
+        return self::b64($json).self::b64($this->mac($json));
+    }
+
+    /**
+     * Checks length, MAC and canonical encoding, then returns the decoded JSON object.
+     *
+     * @return array<mixed>
+     *
+     * @throws ApiProblemException invalid_cursor
+     */
+    public function decodePayload(string $cursor): array
+    {
+        if (\strlen($cursor) <= self::MAC_CHARS || \strlen($cursor) > self::MAX_LENGTH) {
+            throw self::invalid();
+        }
+        $payload = self::unb64(substr($cursor, 0, -self::MAC_CHARS));
+        if (null === $payload
+            || !hash_equals(self::b64($this->mac($payload)), substr($cursor, -self::MAC_CHARS))
+            || self::b64($payload) !== substr($cursor, 0, -self::MAC_CHARS)) {
+            throw self::invalid();
+        }
+        try {
+            $data = json_decode($payload, true, 4, \JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw self::invalid();
+        }
+        if (!\is_array($data) || array_is_list($data)) {
+            throw self::invalid();
+        }
+
+        return $data;
+    }
+
     public static function invalid(): ApiProblemException
     {
         return new ApiProblemException(ProblemCode::InvalidCursor, 'The cursor is invalid.');

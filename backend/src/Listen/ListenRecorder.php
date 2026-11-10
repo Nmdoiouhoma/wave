@@ -25,9 +25,9 @@ final readonly class ListenRecorder
     }
 
     /** @return array{bool, int} [counted, play_count] */
-    public function record(User $user, Track $track, ListenSource $source, int $listenedMs, int $referenceMs): array
+    public function record(User $user, Track $track, ListenSource $source, int $listenedMs, int $referenceMs, ?Uuid $postId = null): array
     {
-        $result = $this->em->wrapInTransaction(function () use ($user, $track, $source, $listenedMs, $referenceMs): array {
+        $result = $this->em->wrapInTransaction(function () use ($user, $track, $source, $listenedMs, $referenceMs, $postId): array {
             $db = $this->em->getConnection();
             $u = $user->getId()->toRfc4122();
             $t = $track->getId()->toRfc4122();
@@ -55,8 +55,8 @@ final readonly class ListenRecorder
                 return [false, $playCount()];
             }
             $db->executeStatement(
-                'INSERT INTO listen (id, user_id, track_id, post_id, source, listened_ms, created_at) VALUES (:id, :u, :t, NULL, :s, :ms, clock_timestamp())',
-                ['id' => Uuid::v7()->toRfc4122(), 'u' => $u, 't' => $t, 's' => $source->value, 'ms' => $listenedMs],
+                'INSERT INTO listen (id, user_id, track_id, post_id, source, listened_ms, created_at) VALUES (:id, :u, :t, :p, :s, :ms, clock_timestamp())',
+                ['id' => Uuid::v7()->toRfc4122(), 'u' => $u, 't' => $t, 'p' => $postId?->toRfc4122(), 's' => $source->value, 'ms' => $listenedMs],
             );
             $count = (int) $db->fetchOne('UPDATE track SET play_count = play_count + 1 WHERE id = :t RETURNING play_count', ['t' => $t]);
 

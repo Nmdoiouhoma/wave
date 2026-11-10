@@ -108,6 +108,66 @@ final class PostRepository extends ServiceEntityRepository
         return $byPost;
     }
 
+    /**
+     * Posts with their relations fetch-joined, in the order of $ids (one query). Unknown ids are
+     * dropped. W-39 hydration of ranker output (`/feed/for-you`).
+     *
+     * @param list<Uuid> $ids
+     *
+     * @return list<Post>
+     */
+    public function findManyInOrder(array $ids): array
+    {
+        if ([] === $ids) {
+            return [];
+        }
+        /** @var list<Post> $rows */
+        $rows = $this->withRelations()
+            ->andWhere('p.id IN (:ids)')
+            ->setParameter('ids', array_map(static fn (Uuid $id): string => $id->toRfc4122(), $ids))
+            ->getQuery()->getResult();
+        $byId = [];
+        foreach ($rows as $post) {
+            $byId[$post->getId()->toRfc4122()] = $post;
+        }
+        $ordered = [];
+        foreach ($ids as $id) {
+            if (isset($byId[$id->toRfc4122()])) {
+                $ordered[] = $byId[$id->toRfc4122()];
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * `/feed/following` (W-32): posts of users $viewer follows, playable for $viewer
+     * (TrackAudience::postPlayableDql, suspended authors excluded), newest first, keyset on
+     * (created_at, id); fetches $limit + 1 rows. Follows nobody → no row.
+     *
+     * @param list<string|int|float|bool|null>|null $after
+     *
+     * @return list<Post>
+     */
+    public function findFollowingPage(User $viewer, ?array $after, int $limit): array
+    {
+        $qb = $this->withRelations()
+            ->andWhere('p.author IN (SELECT IDENTITY(ff.followed) FROM App\Entity\Follow ff WHERE ff.follower = :v)')
+            ->andWhere(TrackAudience::postPlayableDql('p', 't', 'u'))
+            ->orderBy('p.createdAt', 'DESC')->addOrderBy('p.id', 'DESC')
+            ->setMaxResults($limit + 1);
+        TrackAudience::bindDql($qb, $viewer);
+        if (null !== $after) {
+            [$at, $id] = Keyset::timestampAndId($after);
+            $qb->andWhere('p.createdAt < :afterAt OR (p.createdAt = :afterAt AND p.id < :afterId)')
+                ->setParameter('afterAt', $at, Types::DATETIMETZ_IMMUTABLE)
+                ->setParameter('afterId', $id, 'uuid');
+        }
+
+        /* @var list<Post> */
+        return $qb->getQuery()->getResult();
+    }
+
     private function withRelations(): QueryBuilder
     {
         return $this->createQueryBuilder('p')

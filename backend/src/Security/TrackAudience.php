@@ -61,6 +61,23 @@ final readonly class TrackAudience
         return "({$t}.owner = :v OR ({$t}.status = 'ready' AND {$t}.moderation = 'visible' AND ".self::dql($t).'))';
     }
 
+    /**
+     * Native SQL: post `$p` (track `$t`, author `$u`) is playable for `:v` (DATA_MODEL §9,
+     * viewer-dependent, FB-18). Same rule as isPostPlayable(); binds `:v` only.
+     */
+    public static function postPlayableSql(string $p = 'p', string $t = 't', string $u = 'u'): string
+    {
+        return "({$p}.status = 'ready' AND {$p}.moderation = 'visible' AND {$t}.moderation = 'visible' AND {$u}.suspended_at IS NULL"
+            ." AND (({$t}.visibility = 'public' AND {$t}.allow_clips = true) OR ({$t}.owner_id = {$p}.author_id AND ".self::sql($t).')))';
+    }
+
+    /** DQL rendering of postPlayableSql() (same predicate); bind `:v` with bindDql(). */
+    public static function postPlayableDql(string $p = 'p', string $t = 't', string $u = 'u'): string
+    {
+        return "({$p}.status = 'ready' AND {$p}.moderation = 'visible' AND {$t}.moderation = 'visible' AND {$u}.suspendedAt IS NULL"
+            ." AND (({$t}.visibility = 'public' AND {$t}.allowClips = true) OR ({$t}.owner = {$p}.author AND ".self::dql($t).')))';
+    }
+
     public static function bindDql(QueryBuilder $qb, ?User $viewer): void
     {
         $qb->setParameter('v', $viewer?->getId() ?? Uuid::fromString(self::NO_VIEWER), 'uuid');

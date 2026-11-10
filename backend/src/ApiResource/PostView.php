@@ -12,6 +12,8 @@ use ApiPlatform\Metadata\Post;
 use App\Security\EmailVerifiedVoter;
 use App\State\Processor\CreatePostProcessor;
 use App\State\Processor\DeletePostProcessor;
+use App\State\Provider\FollowingFeedProvider;
+use App\State\Provider\ForYouFeedProvider;
 use App\State\Provider\PostListProvider;
 use App\State\Provider\PostProvider;
 
@@ -33,6 +35,8 @@ use App\State\Provider\PostProvider;
         new Get(uriTemplate: '/posts/{postId}', uriVariables: ['postId'], name: 'getPost', provider: PostProvider::class),
         new Delete(uriTemplate: '/posts/{postId}', uriVariables: ['postId'], name: 'deletePost', read: false, deserialize: false, output: false, processor: DeletePostProcessor::class),
         new Get(uriTemplate: '/users/{username}/posts', uriVariables: ['username'], name: 'listUserPosts', output: PostPage::class, provider: PostListProvider::class),
+        new Get(uriTemplate: '/feed/following', name: 'getFollowingFeed', output: PostPage::class, provider: FollowingFeedProvider::class),
+        new Get(uriTemplate: '/feed/for-you', name: 'getForYouFeed', output: PostPage::class, provider: ForYouFeedProvider::class),
     ],
 )]
 final readonly class PostView
