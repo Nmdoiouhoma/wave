@@ -83,12 +83,14 @@ export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => vo
           <span className="size-10" />
         </header>
 
-        <div className="mt-6 flex justify-center">
+        {/* The cover yields height first: on short screens (≈ 620 px) the transport row must
+            stay visible above the tab bar without scrolling (Chrome test 10/11). */}
+        <div className="mt-4 flex justify-center">
           <Cover
             url={track.coverUrl}
             seed={track.id}
             rounded="rounded-3xl"
-            className="aspect-square w-full max-w-[22rem] shadow-2xl shadow-black/60"
+            className="aspect-square w-full max-w-[min(22rem,calc(100dvh-24rem))] min-w-32 shadow-2xl shadow-black/60"
           />
         </div>
 
