@@ -43,7 +43,12 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 - **Phase 3, vague 1** (10/11) : W-38 navigation (`ca66be5`), W-30 posts + migration unique des tables phase 3 (`3849acd`, appliquée en dev), revue qa 0 critique/élevé (`docs/handoff/phase3-v1-qa.md`), correctifs moyen 1 (upload borné, `b969551`) et moyen 2 + bas 4 (`719f28b`). verif.sh : 382 tests backend (62 ignorés), 55 audio, 121 frontend, audit OK.
 
+- **Phase 3, lot 1b audiences FB-18** (10/11) : ADR 012 (`42d0166`), W-48 front (`a26b74c`), W-47 back (`0732061`), revue qa 0 critique/élevé, moyen 1 couvert par le test de désabonnement + règle CLAUDE.md (`28d0de8`, `docs/handoff/lot1b-qa.md`).
+- **Phase 3, vague 2** (10/11) : W-31 média des posts (`2438da2`), W-39 Pour toi (`bc58185`), W-32 interactions + fil Abonnements (`b346595`). verif.sh : 443 tests backend (84 ignorés dont 22 média), 77 média, audit OK. `make test` sous flock, PHPStan à 2 processus.
+
 ## En cours (non commité)
+
+- Revue qa de la vague 2 (Opus) lancée le 10/11 → `docs/handoff/phase3-v2-qa.md`. Si absente à la reprise : relancer la revue (commits `2438da2`..`b346595`).
 
 - Rien. Front, points ouverts : feuille d'ajout limitée à 20 playlists, pas de bouton Suivre sur le créateur d'une playlist, glisser-déposer à tester sur mobile.
 
@@ -51,8 +56,9 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 1. Retest par l'utilisateur (like, ajout depuis une playlist, genre groupé) ; reste non testé : écoute complète et compteur, vidéos avec et sans son, glisser-déposer sur mobile. Revue qa du lot fb-1109 faite : 0 critique/élevé, 367 tests backend.
 2. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
-3. **Avant la vague 2** : test de la vague 1 par l'utilisateur, et sa décision sur les posts d'un morceau privé (qa : acceptable si avertissement à la création, si repasser en privé ne retire pas les posts et si le `TrackView` exposé est réduit, `PostMapper.php:66`). Briefs vague 2 : W-32 doit vérifier que le post est jouable pour une écoute avec `postId` (moyen 3) ; W-31 purge l'objet si le post a été supprimé pendant le traitement (bas 3). Phase 5 : bas 1 (verrou du morceau à la suppression), bas 2 (ordre des verrous des hashtags), bas 5 (onglet courant ne ferme pas le lecteur), 3 index redondants avec les clés primaires (`post_hashtag`, `post_like`, `post_view`).
-4. Phase 3 : posts courts, feed vertical, commentaires, signalement, notifications in-app (FB-16 : W-45, W-46). Lots : ~~W-38∥W-30~~ (fait) → W-31∥W-32∥W-39 → W-33∥W-34∥W-35∥W-45 → W-36∥W-46 → W-37.
+3. **Reprise** : lire `docs/handoff/phase3-v2-qa.md`, faire corriger critique/élevé/moyen par les propriétaires, verif.sh seul, commit. Puis test utilisateur combiné : audiences (lot 1b, 4 étapes à 2 comptes) ; la vague 2 n'a pas d'écran. Puis vague 3 : W-33∥W-34∥W-35∥W-45. Point ouvert W-32 : `findPageByAuthor` garde une condition « jouable » écrite à la main.
+3bis. ~~Avant la vague 2~~ (fait) : test de la vague 1 par l'utilisateur, et sa décision sur les posts d'un morceau privé (qa : acceptable si avertissement à la création, si repasser en privé ne retire pas les posts et si le `TrackView` exposé est réduit, `PostMapper.php:66`). Briefs vague 2 : W-32 doit vérifier que le post est jouable pour une écoute avec `postId` (moyen 3) ; W-31 purge l'objet si le post a été supprimé pendant le traitement (bas 3). Phase 5 : bas 1 (verrou du morceau à la suppression), bas 2 (ordre des verrous des hashtags), bas 5 (onglet courant ne ferme pas le lecteur), 3 index redondants avec les clés primaires (`post_hashtag`, `post_like`, `post_view`).
+4. Phase 3 : posts courts, feed vertical, commentaires, signalement, notifications in-app (FB-16 : W-45, W-46). Lots : ~~W-38∥W-30~~ → ~~lot 1b~~ → ~~W-31∥W-32∥W-39~~ → W-33∥W-34∥W-35∥W-45 → W-36∥W-46 → W-37.
 5. Phase 4 : mesurer avec EXPLAIN sur ~100 k morceaux si l'index trigramme de la recherche de morceaux sert (moyen de la revue fb-1109, W-41), recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
 6. Phase 5 : durcissement, bas niveau de la revue fb-1109 (`docs/handoff/fb-1109-qa.md` : TOCTOU à l'hydratation, erreurs 404/422 génériques, morceau de suspendu proposé dans la feuille d'ajout, demande d'affinité perdue si le process meurt), modération, suppression de compte, F18 (suspendus visibles comme propriétaires/artistes), vrais e-mails (FB-01), README et checklist de mise en prod.
 
