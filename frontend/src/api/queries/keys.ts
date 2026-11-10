@@ -15,6 +15,7 @@ export const keys = {
   playlistItems: (id: string) => ['playlist', id, 'items'] as const,
   likedTracks: () => ['me', 'likes', 'tracks'] as const,
   likedPlaylists: () => ['me', 'likes', 'playlists'] as const,
+  closeFriends: (scope: 'members' | 'followers') => ['me', 'close-friends', scope] as const,
   searchUsers: (q: string) => ['search', 'users', q] as const,
   searchTracks: (q: string) => ['search', 'tracks', q] as const,
 };

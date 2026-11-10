@@ -22,11 +22,11 @@ describe('allowClips only for public tracks (FB-09)', () => {
     expect(toggle).toHaveAccessibleDescription(ALLOW_CLIPS_HELP);
     expect(toggle).toHaveAttribute('aria-checked', 'true');
     await user.click(toggle); // opt out while public
-    await user.click(screen.getByText('Privé'));
+    await user.click(screen.getByRole('radio', { name: 'Moi seul' }));
     expect(clipsSwitch()).toBeNull(); // hidden (aria-hidden + inert), not removed from state
-    await user.click(screen.getByText('Public'));
+    await user.click(screen.getByRole('radio', { name: 'Public' }));
     expect(clipsSwitch()).toHaveAttribute('aria-checked', 'false'); // previous choice restored
-    await user.click(screen.getByText('Privé'));
+    await user.click(screen.getByRole('radio', { name: 'Moi seul' }));
 
     await waitFor(() =>
       expect(screen.getAllByRole('option', { name: 'Ambient' }).length).toBeGreaterThan(0),
@@ -46,7 +46,7 @@ describe('allowClips only for public tracks (FB-09)', () => {
     renderRoute(<TrackPage />, { path: '/t/:id', url: '/t/0192f3a2-0000-7000-8000-000000000004' });
     await user.click(await screen.findByRole('button', { name: 'Modifier' }));
     expect(clipsSwitch()).toBeNull();
-    await user.selectOptions(screen.getByLabelText('Visibilité'), 'public');
+    await user.click(screen.getByRole('radio', { name: 'Public' }));
     expect(clipsSwitch()).toHaveAttribute('aria-checked', 'true');
   });
 });

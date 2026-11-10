@@ -11,6 +11,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button, IconButton } from '@/components/ui/Button';
 import { SelectField } from '@/components/ui/Field';
 import { AllowClipsField } from '@/features/tracks/AllowClipsField';
+import { AudienceField } from '@/features/tracks/AudienceField';
 import { cx } from '@/components/ui/cx';
 import { CheckIcon, CloseIcon, MusicIcon, PlayIcon, UploadIcon } from '@/components/ui/icons';
 import { ProgressBar } from '@/components/ui/ProgressBar';
@@ -188,33 +189,7 @@ export function MultiUploader({ artist, initialArtistId, onProgressChange }: Mul
                 ))}
               </SelectField>
             )}
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Visibilité">
-              {(
-                [
-                  ['public', 'Public', 'Visible par tout le monde'],
-                  ['private', 'Privé', 'Visible par toi seul·e'],
-                ] as const
-              ).map(([value, label, desc]) => (
-                <label
-                  key={value}
-                  className={cx(
-                    'has-[:focus-visible]:ring-accent flex cursor-pointer flex-col rounded-xl px-4 py-3 ring-1 transition has-[:focus-visible]:ring-2',
-                    visibility === value ? 'bg-accent/10 ring-accent' : 'bg-surface-2 ring-line',
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="visibility"
-                    value={value}
-                    checked={visibility === value}
-                    onChange={() => setVisibility(value)}
-                    className="sr-only"
-                  />
-                  <span className="text-sm font-semibold">{label}</span>
-                  <span className="text-muted text-xs">{desc}</span>
-                </label>
-              ))}
-            </div>
+            <AudienceField value={visibility} onChange={setVisibility} />
             <AllowClipsField
               visibility={visibility}
               checked={allowClips}

@@ -25,6 +25,12 @@ export interface MockFollow {
   followeeId: string;
   at: string;
 }
+/** FB-18 `close_friend`: one list per owner, members must follow the owner. */
+export interface MockCloseFriend {
+  ownerId: string;
+  friendId: string;
+  at: string;
+}
 
 const FIRST = [
   'Camille',
@@ -101,6 +107,11 @@ export function seedFollows(): MockFollow[] {
   follows.push({ followerId: USER_IDS.lea, followeeId: USER_IDS.kenji, at: at(3) });
   follows.push({ followerId: USER_IDS.nour, followeeId: USER_IDS.lea, at: at(2) });
   return follows;
+}
+
+/** Nour (follows Léa) is in Léa's close friends. */
+export function seedCloseFriends(): MockCloseFriend[] {
+  return [{ ownerId: USER_IDS.lea, friendId: USER_IDS.nour, at: at(1) }];
 }
 
 export const PLAYLIST_IDS = {

@@ -241,12 +241,62 @@ export interface paths {
     };
     /**
      * List my liked tracks
-     * @description Ordered by like date desc. Tracks no longer visible to me are omitted.
+     * @description Ordered by like date desc. Tracks no longer visible to me are omitted (audience change, unfollow, removal from close friends included).
      */
     get: operations['listMyLikedTracks'];
     put?: never;
     post?: never;
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/me/close-friends': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List my close friends, or my followers with their close-friend flag
+     * @description FB-18, ADR 012. The caller's own list only (no route reads another user's list).
+     *     `scope=members` (default): members, newest addition first, keyset on (addedAt, id).
+     *     `scope=followers`: every follower of the caller (picker of the track form), newest follow first, keyset on (follow createdAt, id), each with `isCloseFriend`.
+     *     Suspended users are omitted in both scopes. The cursor is bound to `scope` (reused with the other → 400 `invalid_cursor`); unknown `scope` value → 400 `malformed_request`.
+     */
+    get: operations['listMyCloseFriends'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/me/close-friends/{username}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
+        username: components['parameters']['Username'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Add a follower to my close friends
+     * @description Idempotent. Unknown or suspended username → 404 `not_found`. The user must follow the caller (yourself included, since you cannot follow yourself) → else 422 `not_a_follower`, also when a concurrent unfollow wins. Applies at once to every `close_friends` track of the caller and their posts.
+     */
+    put: operations['addCloseFriend'];
+    post?: never;
+    /**
+     * Remove a user from my close friends
+     * @description Idempotent (200 with `isCloseFriend` false when not a member). Works on a suspended user too; 404 only for an unknown username. Access to the caller's `close_friends` tracks and their posts ends at the removed user's next request.
+     */
+    delete: operations['removeCloseFriend'];
     options?: never;
     head?: never;
     patch?: never;
@@ -442,7 +492,7 @@ export interface paths {
     };
     /**
      * List user tracks
-     * @description All artists of the user, newest first. Others see public-visible tracks only; the owner sees every own track (any status/visibility/moderation).
+     * @description All artists of the user, newest first. Others see the tracks visible to them (ready, not hidden, caller in the track's audience, DATA_MODEL §6); the owner sees every own track (any status/visibility/moderation).
      */
     get: operations['listUserTracks'];
     put?: never;
@@ -984,10 +1034,11 @@ export interface paths {
      * Create post
      * @description Multipart. Returns 202 `status: processing`; clip (and visual) produced by the worker; poll `GET /posts/{id}`.
      *     Rules (D4, D5, DATA_MODEL §9), in this order: `trackId` unknown or not visible to the caller → 404 `not_found` (same body as an unknown id);
-     *     others' track with `allowClips: false`, or own track hidden by moderation → 422 `clips_not_allowed`; own track processing/failed → 409 `track_not_ready`;
+     *     others' track visible to the caller but not public with `allowClips: true` (clips off, or a `followers`/`close_friends` track), or own track hidden by moderation → 422 `clips_not_allowed`; own track processing/failed → 409 `track_not_ready`;
      *     `clipStartMs + clipDurationMs ≤ track.durationMs` else 422 `clip_out_of_range`. The visual is checked (413/415) before the post row is created.
      *     Visual optional: image ≤ 5 MB (jpg/png/webp) or video MP4 ≤ 15 MB, ≤ 60 s (any audio stream is stripped). Oversize → 413, other type → 415.
      *     Hashtags are extracted from the caption (max 10, `#Lo_Fi #lofi` → `lo_fi`, `lofi`).
+     *     A post on the caller's own non-public track is playable only by that track's audience, now and after any later audience change (FB-18); the client warns before submitting.
      */
     post: operations['createPost'];
     delete?: never;
@@ -1007,7 +1058,7 @@ export interface paths {
     };
     /**
      * Get post
-     * @description Non-playable posts → 404 except for the author and moderators. A post whose track the caller cannot see → 404, author included (DATA_MODEL §9).
+     * @description Posts not playable for the caller (DATA_MODEL §9, viewer-dependent since FB-18) → 404 except for the author and moderators. A post whose track the caller cannot see → 404, author included (DATA_MODEL §9).
      */
     get: operations['getPost'];
     put?: never;
@@ -1191,7 +1242,7 @@ export interface paths {
      * @description `SearchProvider` v1 = PostgreSQL FTS (`simple` + unaccent, prefix match on every token) + pg_trgm similarity.
      *     **Phase 2 (W-27, FB-07; W-29a, FB-15)**: only `type=users` and `type=tracks` are implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
      *     **Users**: matches `username` and `displayName`, case- and accent-insensitive (`wave_unaccent(lower(...))`), a user matches if either field starts with `q` (prefix, also per word of displayName) or trigram similarity ≥ 0.3. Ranking: exact username match first, then prefix match, then `greatest(similarity(username), similarity(displayName))` desc, then `followersCount` desc, then id. Suspended users and the caller are excluded. Items carry `isFollowedByMe` for inline follow buttons.
-     *     **Tracks** (FB-15, W-29a): only tracks the caller can see **and** play: `status=ready` ∧ `moderation=visible` ∧ (`visibility=public` ∨ owner = caller) ∧ owner not suspended. Others' private, processing, failed or hidden tracks, the caller's own processing/failed/hidden tracks and every track of a suspended owner are never returned (stricter than `GET /tracks/{id}` for suspended owners, F18). A track matches if its title or its artist name starts with `q` (also per word) or has trigram similarity ≥ 0.3, with the same normalisation as users. Ranking: tracks owned by the caller first, then tracks liked by the caller, then exact title match, prefix match, `greatest(similarity(title), similarity(artist name))` desc, `playCount` desc, id. No extra parameter: the caller's own and liked tracks surface first by this ranking (they are already known to the caller, so no oracle). Items are full `Track` objects (`likedByMe`, `isOwner`, `canClip` without N+1).
+     *     **Tracks** (FB-15, W-29a): only tracks the caller can see **and** play: `status=ready` ∧ `moderation=visible` ∧ caller in the track's audience (owner, public, follower of a `followers` track, member of the owner's close friends for a `close_friends` track; DATA_MODEL §6) ∧ owner not suspended. Others' tracks outside the caller's audience, processing, failed or hidden tracks, the caller's own processing/failed/hidden tracks and every track of a suspended owner are never returned (stricter than `GET /tracks/{id}` for suspended owners, F18). A track matches if its title or its artist name starts with `q` (also per word) or has trigram similarity ≥ 0.3, with the same normalisation as users. Ranking: tracks owned by the caller first, then tracks liked by the caller, then exact title match, prefix match, `greatest(similarity(title), similarity(artist name))` desc, `playCount` desc, id. No extra parameter: the caller's own and liked tracks surface first by this ranking (they are already known to the caller, so no oracle). Items are full `Track` objects (`likedByMe`, `isOwner`, `canClip` without N+1).
      *     Without `type` (phase 4): every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
      *     With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable); the cursor is bound to `q` and `type` (reused with another one → 400 `invalid_cursor`).
      *     Only content visible to the caller is returned.
@@ -1382,6 +1433,7 @@ export interface components {
       | 'clip_out_of_range'
       | 'cannot_follow_self'
       | 'cannot_report_own'
+      | 'not_a_follower'
       | 'rate_limited'
       | 'internal_error';
     Problem: {
@@ -1435,8 +1487,11 @@ export interface components {
       | 'too_large'
       | 'processing_error'
       | null;
-    /** @enum {string} */
-    Visibility: 'public' | 'private';
+    /**
+     * @description Track audience (FB-18, ADR 012): `followers` = users following the owner; `close_friends` = the owner's list (`/me/close-friends`), all followers; `private` = owner only.
+     * @enum {string}
+     */
+    Visibility: 'public' | 'followers' | 'close_friends' | 'private';
     /** @enum {string} */
     Moderation: 'visible' | 'hidden';
     LikeState: {
@@ -1447,6 +1502,17 @@ export interface components {
       following: boolean;
       /** @description Followers of the target user. */
       followersCount: number;
+    };
+    CloseFriendState: {
+      isCloseFriend: boolean;
+    };
+    CloseFriendItem: components['schemas']['UserSummary'] & {
+      /** @description Always true with `scope=members`. */
+      isCloseFriend: boolean;
+    };
+    CloseFriendPage: {
+      items: components['schemas']['CloseFriendItem'][];
+      nextCursor: string | null;
     };
     StreamUrl: {
       /**
@@ -1581,7 +1647,8 @@ export interface components {
       durationMs: number | null;
       status: components['schemas']['MediaStatus'];
       failureReason: components['schemas']['FailureReason'];
-      visibility: components['schemas']['Visibility'];
+      /** @description Real audience for the owner and moderators. Anyone else gets `public`, or null for a restricted track they are allowed to see (the audience is not disclosed, ADR 012). */
+      visibility: components['schemas']['Visibility'] | null;
       allowClips: boolean;
       moderation: components['schemas']['Moderation'];
       playCount: number;
@@ -1642,7 +1709,7 @@ export interface components {
       source: 'player' | 'feed';
       /**
        * Format: uuid
-       * @description Required when source=feed (phase 3); must be a playable post of this track, else 422. Forbidden with source=player.
+       * @description Required when source=feed (phase 3); must be a post of this track playable for the caller (DATA_MODEL §9, viewer-dependent), else 422. Forbidden with source=player.
        */
       postId?: string;
     };
@@ -2399,6 +2466,85 @@ export interface operations {
       };
       400: components['responses']['BadRequest'];
       401: components['responses']['Unauthorized'];
+    };
+  };
+  listMyCloseFriends: {
+    parameters: {
+      query?: {
+        scope?: 'members' | 'followers';
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of users. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CloseFriendPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+    };
+  };
+  addCloseFriend: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
+        username: components['parameters']['Username'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Membership state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CloseFriendState'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['Unprocessable'];
+      429: components['responses']['TooManyRequests'];
+    };
+  };
+  removeCloseFriend: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
+        username: components['parameters']['Username'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Membership state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CloseFriendState'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
     };
   };
   listMyLikedPlaylists: {

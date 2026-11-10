@@ -2,6 +2,8 @@
 import type { ApiClient } from './client';
 import type {
   SearchResults,
+  CloseFriendPage,
+  CloseFriendState,
   CreatePlaylistRequest,
   FollowState,
   LikeState,
@@ -77,6 +79,13 @@ export function createWaveApi(client: ApiClient) {
         request<TrackPage>('GET', '/me/likes/tracks', { query: { ...page } }),
       likedPlaylists: (page: PageParams = {}) =>
         request<PlaylistPage>('GET', '/me/likes/playlists', { query: { ...page } }),
+      // FB-18, ADR 012: the caller's single close-friends list.
+      closeFriends: (scope: 'members' | 'followers', page: PageParams = {}) =>
+        request<CloseFriendPage>('GET', '/me/close-friends', { query: { scope, ...page } }),
+      addCloseFriend: (username: string) =>
+        request<CloseFriendState>('PUT', `/me/close-friends/${enc(username)}`),
+      removeCloseFriend: (username: string) =>
+        request<CloseFriendState>('DELETE', `/me/close-friends/${enc(username)}`),
     },
     playlists: {
       create: (body: CreatePlaylistRequest) => request<Playlist>('POST', '/playlists', { body }),

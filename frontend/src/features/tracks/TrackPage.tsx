@@ -9,11 +9,12 @@ import {
   useUploadTrackCover,
 } from '@/api/queries/tracks';
 import { useUserArtists } from '@/api/queries/users';
-import type { Track, UpdateTrackRequest, Visibility } from '@/api/types';
+import type { Track, UpdateTrackRequest } from '@/api/types';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextField } from '@/components/ui/Field';
 import { AllowClipsField } from '@/features/tracks/AllowClipsField';
+import { AudienceField } from '@/features/tracks/AudienceField';
 import { ListPlusIcon, EditIcon, PauseIcon, PlayIcon, TrashIcon } from '@/components/ui/icons';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Avatar, Cover } from '@/components/ui/Media';
@@ -166,7 +167,8 @@ function OwnerPanel({ track, refetch }: { track: Track; refetch: () => unknown }
     title: track.title,
     genreId: track.genre.id,
     artistId: track.artist.id,
-    visibility: track.visibility as Visibility,
+    // Owner panel only: the owner always gets the real audience (null is for others).
+    visibility: track.visibility ?? 'public',
     allowClips: track.allowClips,
   });
   const { fields, message } = formErrors(update.error, [
@@ -229,15 +231,12 @@ function OwnerPanel({ track, refetch }: { track: Track; refetch: () => unknown }
             </option>
           ))}
         </SelectField>
-        <SelectField
-          label="Visibilité"
+        <AudienceField
           value={form.visibility}
-          onChange={(e) => setForm({ ...form, visibility: e.target.value as Visibility })}
-          error={fields.visibility}
-        >
-          <option value="public">Public</option>
-          <option value="private">Privé</option>
-        </SelectField>
+          initial={track.visibility ?? undefined}
+          onChange={(v) => setForm({ ...form, visibility: v })}
+        />
+        {fields.visibility && <p className="text-danger text-xs">{fields.visibility}</p>}
         <AllowClipsField
           visibility={form.visibility}
           checked={form.allowClips}

@@ -9,6 +9,7 @@ import type {
   StreamUrl,
   TrackPage,
   Violation,
+  Visibility,
 } from '@/api/types';
 import { GENRES, type MockTrack, type MockUser } from './fixtures';
 import {
@@ -54,6 +55,9 @@ import {
 } from './handlerUtils';
 
 const API = '*/api/v1';
+
+const VISIBILITIES: readonly Visibility[] = ['public', 'followers', 'close_friends', 'private'];
+const isVisibility = (v: unknown): v is Visibility => VISIBILITIES.includes(v as Visibility);
 
 function openSession(user: MockUser, status = 200, familyId: string = uuid7()) {
   const refresh = randomToken();
@@ -589,8 +593,7 @@ export const handlers = [
     if (typeof body.genreId !== 'string' || !findGenre(body.genreId))
       v.push(violation('genreId', 'Genre inconnu.'));
     const visibility = body.visibility ?? 'public';
-    if (visibility !== 'public' && visibility !== 'private')
-      v.push(violation('visibility', 'Visibilité invalide.'));
+    if (!isVisibility(visibility)) v.push(violation('visibility', 'Visibilité invalide.'));
     if (v.length) return invalid(v);
 
     const owned = db.state.artists.filter((a) => a.ownerId === user.id);
@@ -627,7 +630,7 @@ export const handlers = [
       durationMs: null,
       status: 'processing',
       failureReason: null,
-      visibility: visibility as 'public' | 'private',
+      visibility: visibility as Visibility,
       allowClips: body.allowClips !== false,
       moderation: 'visible',
       playCount: 0,
@@ -667,7 +670,7 @@ export const handlers = [
     if ('title' in body) checkLength(v, 'title', body.title, 1, 120, 'Le titre');
     if ('genreId' in body && (typeof body.genreId !== 'string' || !findGenre(body.genreId)))
       v.push(violation('genreId', 'Genre inconnu.'));
-    if ('visibility' in body && body.visibility !== 'public' && body.visibility !== 'private')
+    if ('visibility' in body && !isVisibility(body.visibility))
       v.push(violation('visibility', 'Visibilité invalide.'));
     if (v.length) return invalid(v);
     if ('artistId' in body) {
@@ -677,8 +680,7 @@ export const handlers = [
     }
     if (typeof body.title === 'string') tr.title = body.title.trim();
     if (typeof body.genreId === 'string') tr.genreId = body.genreId;
-    if (body.visibility === 'public' || body.visibility === 'private')
-      tr.visibility = body.visibility;
+    if (isVisibility(body.visibility)) tr.visibility = body.visibility;
     if (typeof body.allowClips === 'boolean') tr.allowClips = body.allowClips;
     persist();
     return json(toTrack(tr, user));

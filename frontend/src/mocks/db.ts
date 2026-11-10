@@ -23,9 +23,11 @@ import {
 } from './fixtures';
 import {
   seedFans,
+  seedCloseFriends,
   seedFollows,
   seedLikes,
   seedPlaylists,
+  type MockCloseFriend,
   type MockFollow,
   type MockLike,
   type MockPlaylist,
@@ -94,6 +96,7 @@ export interface MockState {
   trackLikes: MockLike[];
   playlistLikes: MockLike[];
   follows: MockFollow[];
+  closeFriends: MockCloseFriend[];
 }
 
 export const mockConfig = {
@@ -122,6 +125,7 @@ function seed(): MockState {
     trackLikes: likes.tracks,
     playlistLikes: likes.playlists,
     follows: seedFollows(),
+    closeFriends: seedCloseFriends(),
     users: [...seedUsers(), ...seedFans()],
     artists: seedArtists(),
     tracks: seedTracks(),
@@ -144,6 +148,7 @@ function load(): MockState {
     const state = JSON.parse(raw) as MockState;
     state.uploads ??= {};
     state.storedObjects ??= {};
+    state.closeFriends ??= [];
     // Blob URLs do not survive a reload.
     const unblob = (u: string | null) => (u?.startsWith('blob:') ? null : u);
     state.users.forEach((u) => (u.avatarUrl = unblob(u.avatarUrl)));
@@ -302,9 +307,27 @@ export const findArtistById = (id: string) => db.state.artists.find((a) => a.id 
 export const findTrack = (id: string) => db.state.tracks.find((tr) => tr.id === id);
 export const findGenre = (id: string) => GENRES.find((g) => g.id === id);
 
+export const isCloseFriend = (ownerId: string, friendId: string | undefined) =>
+  !!friendId && db.state.closeFriends.some((c) => c.ownerId === ownerId && c.friendId === friendId);
+
+/** FB-18 audience predicate (DATA_MODEL §6, ADR 012). */
+export function inAudience(tr: MockTrack, viewer: MockUser | null): boolean {
+  if (viewer && tr.ownerId === viewer.id) return true;
+  switch (tr.visibility) {
+    case 'public':
+      return true;
+    case 'followers':
+      return isFollowing(viewer?.id, tr.ownerId);
+    case 'close_friends':
+      return isCloseFriend(tr.ownerId, viewer?.id);
+    default:
+      return false;
+  }
+}
+
 export function trackVisibleTo(tr: MockTrack, viewer: MockUser | null): boolean {
   if (viewer && tr.ownerId === viewer.id) return true;
-  return tr.status === 'ready' && tr.visibility === 'public' && tr.moderation === 'visible';
+  return tr.status === 'ready' && tr.moderation === 'visible' && inAudience(tr, viewer);
 }
 
 export function artistVisibleTo(a: MockArtist, viewer: MockUser | null): boolean {
@@ -419,7 +442,8 @@ export function toTrack(tr: MockTrack, viewer: MockUser | null): Track {
     status: tr.status,
     // Contract enum lags FB-10 `no_audio`: the payload is what the backend will send.
     failureReason: tr.failureReason as FailureReason,
-    visibility: tr.visibility,
+    // ADR 012: the real audience for the owner only; others get public or null (undisclosed).
+    visibility: isOwner ? tr.visibility : tr.visibility === 'public' ? 'public' : null,
     allowClips: tr.allowClips,
     moderation: tr.moderation,
     playCount: tr.playCount,

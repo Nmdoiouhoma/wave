@@ -35,6 +35,7 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   upload_expired: 'L’envoi a expiré (plus de 2 heures). Relance l’import de ce fichier.',
   upload_incomplete: 'Le fichier n’est pas arrivé complètement. Relance l’import.',
   storage_rejected: 'Le stockage a refusé le fichier (lien expiré ou taille non conforme).',
+  not_a_follower: 'Cette personne ne te suit plus.',
   internal_error: 'Une erreur est survenue. Réessaie dans un instant.',
 };
 

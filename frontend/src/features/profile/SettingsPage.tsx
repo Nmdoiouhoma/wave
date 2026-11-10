@@ -10,7 +10,7 @@ import {
   useUploadMyAvatar,
 } from '@/api/queries/me';
 import { Alert } from '@/components/ui/Alert';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import { TextArea, TextField } from '@/components/ui/Field';
 import { LogoutIcon } from '@/components/ui/icons';
 import { ImageUploader } from '@/components/ui/ImageUploader';
@@ -66,6 +66,15 @@ export function SettingsPage() {
 
       <Section title="Profil">
         <ProfileForm key={me.id} />
+      </Section>
+
+      <Section title="Amis proches">
+        <p className="text-muted mb-3 text-sm">
+          Les abonnés qui peuvent écouter tes morceaux réservés aux amis proches.
+        </p>
+        <ButtonLink to="/settings/close-friends" size="sm" variant="secondary">
+          Gérer mes amis proches
+        </ButtonLink>
       </Section>
 
       <Section title="Mot de passe">

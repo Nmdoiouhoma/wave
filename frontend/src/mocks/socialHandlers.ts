@@ -1,17 +1,28 @@
 // MSW handlers for phase 2: playlists, likes, follows, user search (openapi + W-27 rules).
 import { http } from 'msw';
-import type { FollowState, LikeState, PlaylistItem, Violation } from '@/api/types';
+import type {
+  CloseFriendItem,
+  CloseFriendState,
+  FollowState,
+  LikeState,
+  PlaylistItem,
+  Violation,
+} from '@/api/types';
 import type { MockTrack, MockUser } from './fixtures';
 import {
   db,
   findTrack,
+  findUserById,
   findUserByUsername,
   followersCount,
+  isCloseFriend,
+  isFollowing,
   isoNow,
   persist,
   playlistVisibleTo,
   tick,
   toPlaylist,
+  toSummary,
   toTrack,
   toUserListItem,
   trackVisibleTo,
@@ -102,10 +113,15 @@ function toggleFollow(follow: boolean) {
     );
     if (follow && !has)
       db.state.follows.push({ followerId: user.id, followeeId: target.id, at: isoNow() });
-    if (!follow && has)
+    if (!follow && has) {
       db.state.follows = db.state.follows.filter(
         (f) => !(f.followerId === user.id && f.followeeId === target.id),
       );
+      // FK ON DELETE CASCADE (ADR 012): unfollowing leaves the target's close friends.
+      db.state.closeFriends = db.state.closeFriends.filter(
+        (c) => !(c.ownerId === target.id && c.friendId === user.id),
+      );
+    }
     persist();
     return json({
       following: follow,
@@ -137,7 +153,7 @@ function searchTracks(viewer: MockUser, q: string) {
       (t) =>
         t.status === 'ready' &&
         t.moderation === 'visible' &&
-        (t.visibility === 'public' || t.ownerId === viewer.id) &&
+        trackVisibleTo(t, viewer) &&
         !db.state.users.find((u) => u.id === t.ownerId)?.suspended,
     )
     .map((t) => {
@@ -354,6 +370,54 @@ export const socialHandlers = [
       .filter((x): x is MockUser => !!x)
       .map((x) => toUserListItem(x, viewer));
     return json(paginate(items, request));
+  }),
+
+  // ───────────── close friends (FB-18, ADR 012) ─────────────
+  http.get(`${API}/me/close-friends`, ({ request }) => {
+    const user = requireUser(request);
+    const scope = new URL(request.url).searchParams.get('scope') ?? 'members';
+    if (scope !== 'members' && scope !== 'followers') return problem(400, 'malformed_request');
+    const active = (id: string) => {
+      const u = findUserById(id);
+      return u && !u.suspended ? u : undefined;
+    };
+    const items: CloseFriendItem[] =
+      scope === 'members'
+        ? db.state.closeFriends
+            .filter((c) => c.ownerId === user.id)
+            .sort(byDateDesc)
+            .map((c) => active(c.friendId))
+            .filter((u): u is MockUser => !!u)
+            .map((u) => ({ ...toSummary(u), isCloseFriend: true }))
+        : db.state.follows
+            .filter((f) => f.followeeId === user.id)
+            .sort(byDateDesc)
+            .map((f) => active(f.followerId))
+            .filter((u): u is MockUser => !!u)
+            .map((u) => ({ ...toSummary(u), isCloseFriend: isCloseFriend(user.id, u.id) }));
+    return json(paginate(items, request));
+  }),
+
+  http.put(`${API}/me/close-friends/:username`, ({ request, params }) => {
+    const user = requireUser(request);
+    const target = findUserByUsername(String(params.username));
+    if (!target || target.suspended) return problem(404, 'not_found');
+    if (!isFollowing(target.id, user.id)) return problem(422, 'not_a_follower');
+    if (!isCloseFriend(user.id, target.id))
+      db.state.closeFriends.push({ ownerId: user.id, friendId: target.id, at: isoNow() });
+    persist();
+    return json({ isCloseFriend: true } satisfies CloseFriendState);
+  }),
+
+  http.delete(`${API}/me/close-friends/:username`, ({ request, params }) => {
+    const user = requireUser(request);
+    const target = findUserByUsername(String(params.username));
+    if (!target) return problem(404, 'not_found');
+    db.state.closeFriends = db.state.closeFriends.filter(
+      (c) => !(c.ownerId === user.id && c.friendId === target.id),
+    );
+    persist();
+    return json({ isCloseFriend: false } satisfies CloseFriendState);
   }),
 
   // ───────────── search (phase 2: users W-27, tracks W-29a) ─────────────

@@ -8,6 +8,7 @@ import { RegisterPage } from '@/features/auth/RegisterPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
 import { FeedStubPage } from '@/features/feed/FeedStubPage';
+import { CloseFriendsPage } from '@/features/profile/CloseFriendsPage';
 import { PostComposerStubPage, PostViewerStubPage } from '@/features/posts/PostStubPages';
 import { LibraryPage } from '@/features/playlists/LibraryPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
@@ -32,6 +33,7 @@ const appChildren: RouteObject[] = [
   { path: 'me/artists', element: <MyArtistsPage /> },
   { path: 'me/artists/new', element: <CreateArtistPage /> },
   { path: 'settings', element: <SettingsPage /> },
+  { path: 'settings/close-friends', element: <CloseFriendsPage /> },
   { path: 'u/:username', element: <ProfilePage /> },
   { path: 'u/:username/followers', element: <FollowListPage which="followers" /> },
   { path: 'u/:username/following', element: <FollowListPage which="following" /> },

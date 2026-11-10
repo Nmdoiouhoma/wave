@@ -315,5 +315,18 @@ export function seedTracks(now = Date.now()): MockTrack[] {
       createdAt: t('2026-10-12T07:00:00Z'),
       audio: 'tone-a',
     }),
+    // FB-18: Léa follows Kenji, so she sees it (visibility null for her); Nour does not.
+    track({
+      ...base,
+      id: '0192f3a2-0000-7000-8000-00000000000b',
+      title: 'Pour mes abonnés',
+      artistId: kw,
+      ownerId: USER_IDS.kenji,
+      genreId: 'lofi',
+      playCount: 3,
+      visibility: 'followers',
+      createdAt: t('2026-10-11T07:00:00Z'),
+      audio: 'tone-b',
+    }),
   ];
 }
