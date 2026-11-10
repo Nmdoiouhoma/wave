@@ -48,7 +48,7 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 ## En cours (non commité)
 
-- Revue qa de la vague 2 (Opus) lancée le 10/11 → `docs/handoff/phase3-v2-qa.md`. Si absente à la reprise : relancer la revue (commits `2438da2`..`b346595`).
+- Rien. Revue qa vague 2 faite : élevé 1 (URL du visuel dérivable) et moyen 1 (débit Pour toi) corrigés ; bas 1-5 pour la phase 5 (`docs/handoff/phase3-v2-qa.md`). Visuels déjà traités en dev gardent leur ancienne clé.
 
 - Rien. Front, points ouverts : feuille d'ajout limitée à 20 playlists, pas de bouton Suivre sur le créateur d'une playlist, glisser-déposer à tester sur mobile.
 
@@ -56,7 +56,7 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 1. Retest par l'utilisateur (like, ajout depuis une playlist, genre groupé) ; reste non testé : écoute complète et compteur, vidéos avec et sans son, glisser-déposer sur mobile. Revue qa du lot fb-1109 faite : 0 critique/élevé, 367 tests backend.
 2. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
-3. **Reprise** : lire `docs/handoff/phase3-v2-qa.md`, faire corriger critique/élevé/moyen par les propriétaires, verif.sh seul, commit. Puis test utilisateur combiné : audiences (lot 1b, 4 étapes à 2 comptes) ; la vague 2 n'a pas d'écran. Puis vague 3 : W-33∥W-34∥W-35∥W-45. Point ouvert W-32 : `findPageByAuthor` garde une condition « jouable » écrite à la main.
+3. **Reprise** : test utilisateur combiné : audiences (lot 1b, 4 étapes à 2 comptes) ; la vague 2 n'a pas d'écran. Puis vague 3 : W-33∥W-34∥W-35∥W-45. Point ouvert W-32 : `findPageByAuthor` garde une condition « jouable » écrite à la main.
 3bis. ~~Avant la vague 2~~ (fait) : test de la vague 1 par l'utilisateur, et sa décision sur les posts d'un morceau privé (qa : acceptable si avertissement à la création, si repasser en privé ne retire pas les posts et si le `TrackView` exposé est réduit, `PostMapper.php:66`). Briefs vague 2 : W-32 doit vérifier que le post est jouable pour une écoute avec `postId` (moyen 3) ; W-31 purge l'objet si le post a été supprimé pendant le traitement (bas 3). Phase 5 : bas 1 (verrou du morceau à la suppression), bas 2 (ordre des verrous des hashtags), bas 5 (onglet courant ne ferme pas le lecteur), 3 index redondants avec les clés primaires (`post_hashtag`, `post_like`, `post_view`).
 4. Phase 3 : posts courts, feed vertical, commentaires, signalement, notifications in-app (FB-16 : W-45, W-46). Lots : ~~W-38∥W-30~~ → ~~lot 1b~~ → ~~W-31∥W-32∥W-39~~ → W-33∥W-34∥W-35∥W-45 → W-36∥W-46 → W-37.
 5. Phase 4 : mesurer avec EXPLAIN sur ~100 k morceaux si l'index trigramme de la recherche de morceaux sert (moyen de la revue fb-1109, W-41), recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
