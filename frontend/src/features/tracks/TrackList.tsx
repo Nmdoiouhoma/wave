@@ -108,10 +108,16 @@ function TrackRow({
         <TrackStatusBadge track={track} />
       </span>
       <div
-        className="text-faint hidden w-16 text-right text-xs tabular-nums sm:block"
-        title="Écoutes"
+        className="text-faint hidden w-16 items-center justify-end gap-1 text-xs tabular-nums sm:flex"
+        title={`${track.playCount} écoute${track.playCount > 1 ? 's' : ''}`}
       >
-        {track.status === 'ready' ? formatCount(track.playCount) : ''}
+        {track.status === 'ready' && (
+          <>
+            <PlayIcon size={12} aria-hidden />
+            <span>{formatCount(track.playCount)}</span>
+            <span className="sr-only">écoutes</span>
+          </>
+        )}
       </div>
       <div className="text-muted hidden w-12 text-right text-sm tabular-nums min-[400px]:block">
         {formatDuration(track.durationMs)}
@@ -122,6 +128,7 @@ function TrackRow({
           id={track.id}
           title={track.title}
           server={{ liked: track.likedByMe, likeCount: track.likeCount }}
+          showCount
         />
       )}
       <IconButton
