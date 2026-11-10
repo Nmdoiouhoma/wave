@@ -45,6 +45,49 @@ final class PostSecurityTest extends SecurityTestCase
         self::assertSame(4, (int) $this->em()->getConnection()->fetchOne('SELECT COUNT(*) FROM post'), 'nothing deleted');
     }
 
+    /**
+     * qa phase 3 v1: a clip token (`k=c`) issued while the post was visible answers exactly like
+     * the token of a deleted post once the post, its track or its author becomes invisible.
+     */
+    public function testClipTokenOfAnInvisiblePostAnswersLikeADeletedPost(): void
+    {
+        $alice = $this->createUser('alice');
+        $bob = $this->createUser('bob');
+        $carol = $this->createUser('carol');
+        $conn = $this->em()->getConnection();
+        $artist = $this->createArtist($alice);
+        $paths = [];
+        foreach (['deleted', 'hidden post', 'track made private', 'track hidden', 'clips withdrawn', 'author suspended'] as $i => $case) {
+            $author = 'author suspended' === $case ? $this->createUser('dave') : $bob;
+            $post = $this->post($author, $this->createTrack($this->managed($artist), "T{$i}"));
+            $this->em()->clear();
+            $r = $this->as($carol, 'GET', '/api/v1/posts/'.$post->getId().'/stream-url');
+            self::assertSame(200, $r->getStatusCode(), $case.(string) $r->getContent());
+            $path = (string) parse_url((string) json_decode((string) $r->getContent(), true)['url'], \PHP_URL_PATH);
+            self::assertSame(200, $this->raw('GET', $path)->getStatusCode(), "$case before");
+            $id = $post->getId()->toRfc4122();
+            $trackId = $post->getTrack()->getId()->toRfc4122();
+            match ($case) {
+                'deleted' => $conn->executeStatement('DELETE FROM post WHERE id = :id', ['id' => $id]),
+                'hidden post' => $conn->executeStatement("UPDATE post SET moderation = 'hidden' WHERE id = :id", ['id' => $id]),
+                'track made private' => $conn->executeStatement("UPDATE track SET visibility = 'private' WHERE id = :id", ['id' => $trackId]),
+                'track hidden' => $conn->executeStatement("UPDATE track SET moderation = 'hidden' WHERE id = :id", ['id' => $trackId]),
+                'clips withdrawn' => $conn->executeStatement('UPDATE track SET allow_clips = false WHERE id = :id', ['id' => $trackId]),
+                'author suspended' => $conn->executeStatement('UPDATE app_user SET suspended_at = now() WHERE id = :id', ['id' => $author->getId()->toRfc4122()]),
+            };
+            $paths[$case] = $path;
+        }
+        $this->em()->clear();
+
+        foreach (['GET', 'HEAD'] as $method) {
+            $reference = self::fingerprint($this->raw($method, $paths['deleted']));
+            self::assertStringStartsWith('404', $reference);
+            foreach ($paths as $case => $path) {
+                self::assertSame($reference, self::fingerprint($this->raw($method, $path)), "$method $case");
+            }
+        }
+    }
+
     public function testCreatePostOnAnInvisibleTrackAnswersLikeAnUnknownTrack(): void
     {
         $alice = $this->createUser('alice');
