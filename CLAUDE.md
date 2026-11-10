@@ -26,6 +26,13 @@ Monorepo : `backend/` Symfony 7.4 + API Platform + Postgres + Messenger · `fron
   chaque agent qui a écrit dans le périmètre. Un échec renvoie la sortie : corriger, ne jamais contourner.
 - Avant commit d'un lot : `make qa` complet (inclut test-media et audit, non lancés par le hook).
 - Migrations Doctrine : relues par le lead (SQL généré affiché) avant toute application.
+- Une migration exécutée quelque part (même en dev) ne se modifie plus : toute correction = nouvelle migration.
+- Tout agent qui écrit du code, qa-security compris (tests), lance `wave-verif` ciblé avant de rendre la main.
+- Retour utilisateur sur un affichage : localiser d'abord le composant qui affiche la donnée, avant API ou base.
+
+## Organisation
+- Tâche de moins de ~15 appels : le lead la fait lui-même, sans agent (le coût fixe d'un agent domine).
+- Une vague de lots se termine par un test manuel de l'utilisateur avant la vague suivante.
 - Revue qa-security : diff + fichiers touchés + handoff ; ouvrir les fichiers voisins (voters, `security:` des
   opérations API Platform, config). Vérifier surtout ce qui n'est pas testé (accès refusé, entrée invalide, erreurs).
 
