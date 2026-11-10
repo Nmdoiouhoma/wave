@@ -64,7 +64,7 @@ composer: ## Composer with registry access: make composer c="install"
 	$(TOOLS) run --rm composer $(c)
 
 test: ## Backend test suite
-	$(EXEC_PHP) php vendor/bin/phpunit $(c)
+	$(EXEC_PHP) flock /tmp/phpunit.lock php vendor/bin/phpunit $(c)
 
 test-media: ## Media tests with real ffmpeg (worker image)
 	$(COMPOSE) run --rm --no-deps -T --entrypoint php worker vendor/bin/phpunit tests/Media $(c)
