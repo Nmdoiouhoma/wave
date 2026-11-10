@@ -30,6 +30,38 @@ final readonly class ListenGrantRepository
     }
 
     /**
+     * Same upsert for every clip of one response (DATA_MODEL §9: one multi-row upsert per
+     * response). Pairs are deduplicated per track (the longest reference wins), since one
+     * INSERT … ON CONFLICT cannot touch a row twice.
+     *
+     * @param array<string, int> $referenceMsByTrackId track id (RFC 4122) => reference in ms
+     */
+    public function grantMany(Uuid $userId, array $referenceMsByTrackId): void
+    {
+        if ([] === $referenceMsByTrackId) {
+            return;
+        }
+        $values = [];
+        $params = ['u' => $userId->toRfc4122()];
+        $i = 0;
+        foreach ($referenceMsByTrackId as $trackId => $referenceMs) {
+            $values[] = "(CAST(:t{$i} AS uuid), CAST(:s{$i} AS double precision))";
+            $params["t{$i}"] = (string) $trackId;
+            $params["s{$i}"] = ($referenceMs + ListenRules::GRANT_SLACK_MS) / 1000;
+            ++$i;
+        }
+        $this->db->executeStatement(
+            'WITH refs (track_id, stale) AS (VALUES '.implode(', ', $values).')
+             INSERT INTO listen_grant (user_id, track_id, issued_at)
+             SELECT :u, refs.track_id, clock_timestamp() FROM refs
+             ON CONFLICT (user_id, track_id) DO UPDATE SET issued_at = clock_timestamp()
+             WHERE listen_grant.issued_at < clock_timestamp()
+                 - make_interval(secs => (SELECT r.stale FROM refs r WHERE r.track_id = listen_grant.track_id))',
+            $params,
+        );
+    }
+
+    /**
      * Consumes the grant (`DELETE … RETURNING`, which also serialises concurrent reports of the pair).
      *
      * @return int|null age of the grant in ms, null when there was none

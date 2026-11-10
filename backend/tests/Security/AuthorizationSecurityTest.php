@@ -38,6 +38,7 @@ final class AuthorizationSecurityTest extends SecurityTestCase
             'createTrackUpload' => ['POST', '/api/v1/tracks/uploads', ['json' => ['filename' => 's.mp3', 'size' => 128, 'contentType' => 'audio/mpeg']]],
             'createTrack' => ['POST', '/api/v1/tracks', ['json' => ['uploadId' => '0192f5a4-6b1e-7cc0-9a5e-3f1a2b3c4d5e', 'title' => 'x', 'genreId' => 'pop']]],
             'uploadTrackCover' => ['POST', '/api/v1/tracks/'.$track->getId().'/cover', ['extra' => ['files' => $png()]]],
+            'createPost' => ['POST', '/api/v1/posts', ['extra' => ['parameters' => ['trackId' => (string) $track->getId(), 'clipStartMs' => '0', 'clipDurationMs' => '30000']]]],
         ];
         foreach ($calls as $op => [$method, $url, $options]) {
             $this->assertProblem($this->api($method, $url, $carol, $options), 403, 'email_not_verified');

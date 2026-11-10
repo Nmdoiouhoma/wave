@@ -14,6 +14,7 @@ use App\Entity\Track;
 use App\Http\JsonInputDecoder;
 use App\Mapper\TrackMapper;
 use App\Message\PurgeObjects;
+use App\Post\PostCleanup;
 use App\Problem\ApiProblemException;
 use App\Repository\ArtistRepository;
 use App\Repository\GenreRepository;
@@ -42,6 +43,7 @@ final readonly class TrackProcessor implements ProcessorInterface
         private EntityManagerInterface $em,
         private MessageBusInterface $bus,
         private TrackMapper $mapper,
+        private PostCleanup $postCleanup,
         private PlaylistRepository $playlists,
     ) {
     }
@@ -104,6 +106,9 @@ final readonly class TrackProcessor implements ProcessorInterface
             // Playlists keep exact item_count and contiguous positions (DATA_MODEL §7);
             // like_count dies with the track, listens/likes go by cascade.
             $this->playlists->detachTrackEverywhere($track->getId());
+            // DATA_MODEL §9: every post on the track (anyone's) goes with hashtag counts,
+            // reports and stored objects cleaned, before the FK cascade.
+            $this->postCleanup->beforeTrackDeletion($track->getId());
             $this->em->remove($track);
             $this->em->flush();
             foreach ([StorageArea::Private->value => $private, StorageArea::Public->value => $public] as $area => $keys) {

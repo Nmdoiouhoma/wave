@@ -11,8 +11,8 @@ use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * DATA_MODEL §11: counted listens only (App\Listen\ListenRecorder). `post_id` gets its FK
- * to `post` with W-30 (phase 3); until then it is always null (source=player only).
+ * DATA_MODEL §11: counted listens only (App\Listen\ListenRecorder). `post_id` (FK SET NULL since
+ * W-30) is written by feed listens (W-32); player listens leave it null.
  */
 #[ORM\Entity(readOnly: true)]
 #[ORM\Table(name: 'listen')]
@@ -25,8 +25,9 @@ class Listen
     #[ORM\Column(type: UuidType::NAME)]
     private Uuid $id;
 
-    #[ORM\Column(type: UuidType::NAME, nullable: true)]
-    private ?Uuid $postId = null;
+    #[ORM\ManyToOne(targetEntity: Post::class)]
+    #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
+    private ?Post $post = null;
 
     #[ORM\Column(type: Types::DATETIMETZ_IMMUTABLE)]
     private \DateTimeImmutable $createdAt;
@@ -74,7 +75,7 @@ class Listen
 
     public function getPostId(): ?Uuid
     {
-        return $this->postId;
+        return $this->post?->getId();
     }
 
     public function getCreatedAt(): \DateTimeImmutable

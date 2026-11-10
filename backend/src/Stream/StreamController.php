@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Stream;
 
+use App\Entity\Post;
 use App\Entity\Track;
 use App\Entity\User;
 use App\Enum\MediaStatus;
 use App\Problem\ApiProblemException;
-use App\Problem\ProblemCode;
+use App\Repository\PostRepository;
 use App\Repository\TrackRepository;
 use App\Repository\UserRepository;
 use App\Storage\ObjectStorage;
@@ -26,6 +27,7 @@ final readonly class StreamController
     public function __construct(
         private StreamTokenSigner $signer,
         private TrackRepository $tracks,
+        private PostRepository $posts,
         private UserRepository $users,
         private ObjectStorage $storage,
     ) {
@@ -38,8 +40,8 @@ final readonly class StreamController
 
         $audioKey = match ($grant->kind) {
             StreamTokenSigner::KIND_TRACK => $this->trackAudio($grant),
-            // Post clips arrive with W-30 (phase 3).
-            default => throw new ApiProblemException(ProblemCode::NotFound),
+            StreamTokenSigner::KIND_CLIP => $this->clipAudio($grant),
+            default => throw ApiProblemException::notFound(),
         };
 
         $response = new Response('', Response::HTTP_OK, [
@@ -61,5 +63,18 @@ final readonly class StreamController
         }
 
         return $track->getAudioKey();
+    }
+
+    /** Post clip (W-30): visibility of the post re-checked for the token's viewer on every request (DATA_MODEL §9). */
+    private function clipAudio(StreamGrant $grant): string
+    {
+        $post = $this->posts->findWithRelations($grant->id);
+        $viewer = $this->users->find($grant->viewerId);
+        if (!$post instanceof Post || !$viewer instanceof User || $viewer->isSuspended()
+            || MediaStatus::Ready !== $post->getStatus() || null === $post->getClipKey() || !$post->isVisibleTo($viewer)) {
+            throw ApiProblemException::notFound();
+        }
+
+        return $post->getClipKey();
     }
 }

@@ -11,7 +11,7 @@ use Doctrine\DBAL\Connection;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * Track and playlist likes (DATA_MODEL §8): `INSERT … ON CONFLICT DO NOTHING`, counters moved
+ * Track, playlist and post likes (DATA_MODEL §8): `INSERT … ON CONFLICT DO NOTHING`, counters moved
  * only if a row changed, atomic SQL in the caller's transaction.
  */
 final readonly class LikeRepository
@@ -19,6 +19,7 @@ final readonly class LikeRepository
     private const array TARGETS = [
         'track' => ['table' => 'track_like', 'column' => 'track_id', 'counter' => 'track'],
         'playlist' => ['table' => 'playlist_like', 'column' => 'playlist_id', 'counter' => 'playlist'],
+        'post' => ['table' => 'post_like', 'column' => 'post_id', 'counter' => 'post'],
     ];
 
     public function __construct(private Connection $db)
@@ -26,7 +27,7 @@ final readonly class LikeRepository
     }
 
     /**
-     * @param 'track'|'playlist' $kind
+     * @param 'track'|'playlist'|'post' $kind
      *
      * @return array{bool, int} [changed, like_count]
      */
@@ -42,7 +43,7 @@ final readonly class LikeRepository
     }
 
     /**
-     * @param 'track'|'playlist' $kind
+     * @param 'track'|'playlist'|'post' $kind
      *
      * @return int like_count after the operation
      */
@@ -61,7 +62,7 @@ final readonly class LikeRepository
      * Removes the user's own like whatever the target's visibility (W-26 F14): having liked
      * it, the user already knows it exists.
      *
-     * @param 'track'|'playlist' $kind
+     * @param 'track'|'playlist'|'post' $kind
      *
      * @return int|null like_count after the removal, null when the user had no such like
      */
@@ -79,8 +80,8 @@ final readonly class LikeRepository
     /**
      * Which of $ids the viewer likes — one query for a whole page (no N+1).
      *
-     * @param 'track'|'playlist' $kind
-     * @param list<Uuid>         $ids
+     * @param 'track'|'playlist'|'post' $kind
+     * @param list<Uuid>                $ids
      *
      * @return array<string, true>
      */

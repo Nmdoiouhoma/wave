@@ -7,6 +7,7 @@ namespace App\ApiResource;
 use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
+use App\State\Provider\PostStreamUrlProvider;
 use App\State\Provider\TrackStreamUrlProvider;
 
 /** `StreamUrl` schema (ADR 001). */
@@ -18,6 +19,12 @@ use App\State\Provider\TrackStreamUrlProvider;
             uriVariables: ['trackId'],
             name: 'getTrackStreamUrl',
             provider: TrackStreamUrlProvider::class,
+        ),
+        new Get(
+            uriTemplate: '/posts/{postId}/stream-url',
+            uriVariables: ['postId'],
+            name: 'getPostStreamUrl',
+            provider: PostStreamUrlProvider::class,
         ),
     ],
 )]

@@ -44,6 +44,8 @@ final readonly class RateLimitListener
         'uploadTrackCover' => [['image_upload_user', self::BY_USER]],
         'createTrackUpload' => [['track_upload_hour_user', self::BY_USER], ['track_upload_day_user', self::BY_USER]],
         'getTrackStreamUrl' => [['stream_url_user', self::BY_USER]],
+        'getPostStreamUrl' => [['stream_url_user', self::BY_USER]],
+        'createPost' => [['post_create_user', self::BY_USER]],
         'followUser' => [['social_write_user', self::BY_USER]],
         'likeTrack' => [['social_write_user', self::BY_USER]],
         'likePlaylist' => [['social_write_user', self::BY_USER]],
