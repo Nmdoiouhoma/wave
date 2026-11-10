@@ -10,9 +10,9 @@ namespace App\Media;
 final readonly class Probe
 {
     /**
-     * @param list<string>                                                           $formatNames  demuxer names, e.g. ['mov','mp4','m4a',...]
-     * @param list<array{codec: string, duration: float|null}>                       $audioStreams
-     * @param list<array{codec: string, width: int, height: int, attachedPic: bool}> $videoStreams
+     * @param list<string>                                                                            $formatNames  demuxer names, e.g. ['mov','mp4','m4a',...]
+     * @param list<array{codec: string, duration: float|null}>                                        $audioStreams
+     * @param list<array{codec: string, width: int, height: int, attachedPic: bool, fps: float|null}> $videoStreams
      */
     public function __construct(
         public array $formatNames,
@@ -56,6 +56,7 @@ final readonly class Probe
                     'width' => \is_int($stream['width'] ?? null) ? $stream['width'] : 0,
                     'height' => \is_int($stream['height'] ?? null) ? $stream['height'] : 0,
                     'attachedPic' => 1 === ($disposition['attached_pic'] ?? 0),
+                    'fps' => self::frameRate($stream),
                 ];
             }
         }
@@ -67,6 +68,28 @@ final readonly class Probe
             $video,
             \count($streams),
         );
+    }
+
+    /**
+     * Highest of avg/r_frame_rate ("30000/1001"), null when unknown (0/0): the cap must hold for either.
+     *
+     * @param array<array-key, mixed> $stream
+     */
+    private static function frameRate(array $stream): ?float
+    {
+        $best = null;
+        foreach (['avg_frame_rate', 'r_frame_rate'] as $field) {
+            $value = $stream[$field] ?? null;
+            if (!\is_string($value) || 1 !== preg_match('#^(\d{1,9})/(\d{1,9})$#', $value, $m) || 0 === (int) $m[2]) {
+                continue;
+            }
+            $fps = (int) $m[1] / (int) $m[2];
+            if ($fps > 0.0 && (null === $best || $fps > $best)) {
+                $best = $fps;
+            }
+        }
+
+        return $best;
     }
 
     /** True for the ISO-BMFF family (MP4/M4A/MOV/3GP), whatever the file name. */

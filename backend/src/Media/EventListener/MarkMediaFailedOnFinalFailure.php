@@ -8,6 +8,9 @@ use App\Entity\Track;
 use App\Enum\FailureReason;
 use App\Enum\MediaStatus;
 use App\Media\LockedFind;
+use App\Media\PostMediaFailure;
+use App\Message\GenerateClip;
+use App\Message\ProcessPostVisual;
 use App\Message\ProcessTrack;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -19,6 +22,8 @@ use Symfony\Component\Uid\Uuid;
  * A ProcessTrack that exhausted its retries (ffmpeg crash, storage outage...)
  * must not leave the track `processing` forever: mark it `processing_error`.
  * Rejected uploads were already marked failed by the handler (no-op here).
+ * Same for the post handlers GenerateClip / ProcessPostVisual (W-31): the post becomes `failed`
+ * and its other handler then skips.
  */
 #[AsEventListener]
 final class MarkMediaFailedOnFinalFailure
@@ -32,7 +37,15 @@ final class MarkMediaFailedOnFinalFailure
     public function __invoke(WorkerMessageFailedEvent $event): void
     {
         $message = $event->getEnvelope()->getMessage();
-        if ($event->willRetry() || !$message instanceof ProcessTrack || !Uuid::isValid($message->trackId)) {
+        if ($event->willRetry()) {
+            return;
+        }
+        if ($message instanceof GenerateClip || $message instanceof ProcessPostVisual) {
+            $this->markPostFailed($message->postId, $message::class);
+
+            return;
+        }
+        if (!$message instanceof ProcessTrack || !Uuid::isValid($message->trackId)) {
             return;
         }
         $trackId = Uuid::fromString($message->trackId);
@@ -53,6 +66,24 @@ final class MarkMediaFailedOnFinalFailure
             });
         } catch (\Throwable $e) {
             $this->logger->error('ProcessTrack: could not mark track failed after final failure', ['trackId' => $message->trackId, 'exception' => $e]);
+        }
+    }
+
+    private function markPostFailed(string $postId, string $message): void
+    {
+        if (!Uuid::isValid($postId)) {
+            return;
+        }
+        if (!$this->em->isOpen()) {
+            $this->logger->error($message.': entity manager closed, post left processing', ['postId' => $postId]);
+
+            return;
+        }
+
+        try {
+            new PostMediaFailure($this->em)->mark(Uuid::fromString($postId), FailureReason::ProcessingError);
+        } catch (\Throwable $e) {
+            $this->logger->error($message.': could not mark post failed after final failure', ['postId' => $postId, 'exception' => $e]);
         }
     }
 }

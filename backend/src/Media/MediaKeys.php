@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Media;
 
 use App\Message\ProcessImage;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Object keys of DATA_MODEL §14 produced by the media handlers.
@@ -25,6 +26,28 @@ final class MediaKeys
     public static function trackAudio(string $trackId): string
     {
         return \sprintf('audio/tracks/%s.m4a', strtolower($trackId));
+    }
+
+    public static function postClip(string $postId): string
+    {
+        return \sprintf('audio/clips/%s.m4a', strtolower($postId));
+    }
+
+    /**
+     * Deterministic per post (a post's visual never changes): a redelivery overwrites, never orphans.
+     *
+     * @return array{image: string, video: string, poster: string}
+     */
+    public static function postVisual(string $postId): array
+    {
+        $id = strtolower($postId);
+        $version = Uuid::v5(Uuid::fromString($id), 'post-visual')->toRfc4122();
+
+        return [
+            'image' => \sprintf('images/posts/%s/%s.webp', $id, $version),
+            'video' => \sprintf('videos/posts/%s/%s.mp4', $id, $version),
+            'poster' => \sprintf('images/posts/%s/%s-poster.webp', $id, $version),
+        ];
     }
 
     /**

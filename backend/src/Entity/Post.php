@@ -124,6 +124,20 @@ class Post
         $this->visualRawKey = null;
     }
 
+    /**
+     * Media contract: call under a row lock after setClipKey()/setVisual(). `processing` → `ready` once the
+     * clip exists and, if the post has a visual, its processed key too (whatever the completion order).
+     */
+    public function markReadyIfComplete(): bool
+    {
+        if (MediaStatus::Processing !== $this->status || null === $this->clipKey || (null !== $this->visualType && null === $this->visualKey)) {
+            return false;
+        }
+        $this->status = MediaStatus::Ready;
+
+        return true;
+    }
+
     /** Media contract: any handler failure. The quarantine object is kept (swept by CleanupQuarantine). */
     public function markFailed(FailureReason $reason): void
     {

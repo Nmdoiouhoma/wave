@@ -23,6 +23,8 @@ use Symfony\Component\Process\Process;
 final class FfmpegRunner
 {
     public const AUDIO_DEMUXERS = ['mp3', 'mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2', 'aac'];
+    /** Post visual video: MP4/MOV family only (the sniffer already refuses anything else). */
+    public const VIDEO_DEMUXERS = ['mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2'];
     public const IMAGE_DEMUXERS = ['image2', 'png_pipe', 'jpeg_pipe', 'webp_pipe'];
 
     private const PROBE_TIMEOUT_SECONDS = 30.0;

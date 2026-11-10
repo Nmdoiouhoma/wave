@@ -9,3 +9,6 @@ parameters:
         containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml
     doctrine:
         objectManagerLoader: tests/object-manager.php
+    # The php container is capped at 512 MB: unbounded workers get OOM-killed.
+    parallel:
+        maximumNumberOfProcesses: 2

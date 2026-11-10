@@ -6,8 +6,10 @@ namespace App\Tests\Media\Support;
 
 use App\Entity\Artist;
 use App\Entity\Genre;
+use App\Entity\Post;
 use App\Entity\Track;
 use App\Entity\User;
+use App\Enum\VisualType;
 use App\Storage\FlysystemObjectStorage;
 use App\Storage\StorageArea;
 use Aws\S3\S3Client;
@@ -36,6 +38,8 @@ final class HandlerTestKit
     private array $entities = [];
     /** @var list<object> */
     public array $dispatched = [];
+    /** @var array<class-string, int> class => number of find() calls that still succeed, then null (entity "deleted meanwhile") */
+    public array $vanishAfter = [];
 
     public function __construct(EntityManagerInterface&Stub $em)
     {
@@ -45,7 +49,13 @@ final class HandlerTestKit
         $s3 = new S3Client(['region' => 'us-east-1', 'version' => 'latest', 'endpoint' => 'http://127.0.0.1:9', 'use_path_style_endpoint' => true, 'credentials' => ['key' => 'test', 'secret' => 'test']]);
         $this->storage = new FlysystemObjectStorage($this->private, $this->public, 'http://localhost:8090/media', $s3, 'wave-private', 'http://localhost:8090/upload');
 
-        $em->method('find')->willReturnCallback(fn (string $class, mixed $id): ?object => $this->entities[$class.'#'.(string) $id] ?? null);
+        $em->method('find')->willReturnCallback(function (string $class, mixed $id): ?object {
+            if (isset($this->vanishAfter[$class]) && $this->vanishAfter[$class]-- <= 0) {
+                return null;
+            }
+
+            return $this->entities[$class.'#'.(string) $id] ?? null;
+        });
         $em->method('wrapInTransaction')->willReturnCallback(fn (callable $fn): mixed => $fn($em));
         $em->method('isOpen')->willReturn(true);
         $this->em = $em;
@@ -101,6 +111,24 @@ final class HandlerTestKit
         $this->persist($track, $id);
 
         return $track;
+    }
+
+    /** A processing post by a user on a ready track (processed audio of $audioFile stored), with a visual in quarantine if given. */
+    public function post(string $audioFile, int $startMs, int $durationMs, ?string $visualFile = null, ?VisualType $type = null): Post
+    {
+        $track = $this->track($audioFile);
+        $audioKey = 'audio/tracks/'.$track->getId()->toRfc4122().'.m4a';
+        $this->putPrivate($audioKey, $audioFile);
+        $track->markReady($audioKey, 20_000);
+        $post = new Post($track->getArtist()->getOwner(), $track, $startMs, $durationMs, null);
+        if (null !== $visualFile && null !== $type) {
+            $rawKey = 'quarantine/posts/'.$post->getId()->toRfc4122().'/visual';
+            $this->putPrivate($rawKey, $visualFile);
+            $post->attachRawVisual($type, $rawKey);
+        }
+        $this->persist($post, $post->getId());
+
+        return $post;
     }
 
     public function putPrivate(string $key, string $file): void
