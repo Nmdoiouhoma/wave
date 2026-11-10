@@ -13,7 +13,7 @@ import { useDebounced } from '@/lib/useDebounced';
 export const SEARCH_DEBOUNCE_MS = 300;
 export const SEARCH_MIN_CHARS = 2;
 
-/** W-28: people search (phase 2 = users only). `?q=` keeps the query in the URL (back button). */
+/** W-28, mounted on `/discover` since W-38: people search (phase 2 = users only). `?q=` keeps the query in the URL (back button). */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const input = params.get('q') ?? '';
@@ -24,7 +24,7 @@ export function SearchPage() {
 
   return (
     <div className="mx-auto max-w-xl">
-      <h1 className="text-2xl font-bold tracking-tight">Rechercher</h1>
+      <h1 className="text-2xl font-bold tracking-tight">Découvrir</h1>
       <form role="search" onSubmit={(e) => e.preventDefault()} className="relative mt-4">
         <label htmlFor="search-input" className="sr-only">
           Rechercher une personne

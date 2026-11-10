@@ -237,3 +237,11 @@ export function ListPlusIcon(p: IconProps) {
     </svg>
   );
 }
+export function CompassIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m15.5 8.5-2 5-5 2 2-5z" />
+    </svg>
+  );
+}

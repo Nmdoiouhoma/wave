@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { useSession } from '@/stores/session';
 import { WaveLogo } from '@/components/ui/icons';
+import { safeNext } from '@/features/auth/safeNext';
 
 export function Splash() {
   return (
@@ -32,7 +33,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
 export function GuestOnly({ children }: { children: ReactNode }) {
   const status = useSession((s) => s.status);
+  const location = useLocation();
   if (status === 'unknown') return <Splash />;
-  if (status === 'authenticated') return <Navigate to="/" replace />;
+  if (status === 'authenticated') {
+    // Already signed in: go to `next` when it is a same-app path, otherwise to Pour toi.
+    const next = new URLSearchParams(location.search).get('next');
+    return <Navigate to={safeNext(next)} replace />;
+  }
   return children;
 }

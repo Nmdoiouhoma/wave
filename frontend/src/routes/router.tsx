@@ -7,6 +7,8 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
+import { FeedStubPage } from '@/features/feed/FeedStubPage';
+import { PostComposerStubPage, PostViewerStubPage } from '@/features/posts/PostStubPages';
 import { LibraryPage } from '@/features/playlists/LibraryPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { SearchPage } from '@/features/search/SearchPage';
@@ -16,11 +18,16 @@ import { TrackPage } from '@/features/tracks/TrackPage';
 import { UploadPage } from '@/features/tracks/UploadPage';
 import { AppLayout } from './AppLayout';
 import { GuestOnly, RequireAuth } from './guards';
-import { HomePage } from './HomePage';
 import { NotFoundPage } from './NotFoundPage';
+import { SearchRedirect } from './SearchRedirect';
 
+// Route map and active tab: see ./navigation.ts (W-38).
 const appChildren: RouteObject[] = [
-  { index: true, element: <HomePage /> },
+  { index: true, element: <FeedStubPage which="for-you" /> },
+  { path: 'following', element: <FeedStubPage which="following" /> },
+  { path: 'posts/new', element: <PostComposerStubPage /> },
+  { path: 'posts/:id', element: <PostViewerStubPage /> },
+  { path: 'discover', element: <SearchPage /> },
   { path: 'upload', element: <UploadPage /> },
   { path: 'me/artists', element: <MyArtistsPage /> },
   { path: 'me/artists/new', element: <CreateArtistPage /> },
@@ -32,9 +39,11 @@ const appChildren: RouteObject[] = [
   // dnd-kit only loads with the playlist page.
   {
     path: 'p/:id',
-    lazy: async () => ({ Component: (await import('@/features/playlists/PlaylistPage')).PlaylistPage }),
+    lazy: async () => ({
+      Component: (await import('@/features/playlists/PlaylistPage')).PlaylistPage,
+    }),
   },
-  { path: 'search', element: <SearchPage /> },
+  { path: 'search', element: <SearchRedirect /> },
   { path: 'a/:slug', element: <ArtistPage /> },
   { path: 't/:id', element: <TrackPage /> },
   { path: '*', element: <NotFoundPage /> },

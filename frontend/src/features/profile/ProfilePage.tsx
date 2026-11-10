@@ -44,9 +44,15 @@ export function ProfilePage() {
           <p className="text-faint mt-1 text-xs">Membre depuis {formatMonthYear(u.createdAt)}</p>
         </div>
         {u.isMe ? (
-          <ButtonLink to="/settings" variant="secondary" size="sm">
-            <EditIcon size={16} /> Modifier le profil
-          </ButtonLink>
+          // Settings and "Mes artistes" live here since the rail lost them (W-38).
+          <div className="flex flex-wrap justify-center gap-2">
+            <ButtonLink to="/settings" variant="secondary" size="sm">
+              <EditIcon size={16} /> Modifier le profil
+            </ButtonLink>
+            <ButtonLink to="/me/artists" variant="secondary" size="sm">
+              <MicIcon size={16} /> Mes artistes
+            </ButtonLink>
+          </div>
         ) : (
           <FollowButton
             username={u.username}

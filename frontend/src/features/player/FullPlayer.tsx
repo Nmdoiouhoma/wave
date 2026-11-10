@@ -29,12 +29,12 @@ export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => vo
   const jumpTo = usePlayer((s) => s.jumpTo);
   const removeAt = usePlayer((s) => s.removeAt);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
+    // Non-modal (W-38): the tab bar below stays reachable, so no focus trap.
     const onKey = (e: KeyboardEvent) => {
       // A sheet opened over the player handles its own Escape.
       if (
@@ -43,20 +43,6 @@ export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => vo
         !uiStore.getState().trackActions
       )
         onClose();
-      if (e.key !== 'Tab' || !dialogRef.current) return;
-      // Simple focus trap.
-      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), a[href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last?.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first?.focus();
-      }
     };
     document.addEventListener('keydown', onKey);
     const overflow = document.body.style.overflow;
@@ -76,11 +62,10 @@ export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <div
-      ref={dialogRef}
       role="dialog"
-      aria-modal="true"
       aria-label="Lecteur en plein écran"
-      className="bg-bg fixed inset-0 z-50 flex flex-col overflow-y-auto"
+      // Sheet that never covers the tab bar (mobile) nor the rail (desktop).
+      className="bg-bg fixed inset-x-0 top-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-50 flex flex-col overflow-y-auto md:bottom-0 md:left-60"
     >
       <div
         aria-hidden
