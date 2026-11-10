@@ -169,11 +169,15 @@ describe('navigation shell (mobile)', () => {
     await user.click(await screen.findByRole('button', { name: /Ouvrir le lecteur/ }));
     expect(screen.getByRole('dialog', { name: 'Lecteur en plein écran' })).toBeInTheDocument();
     expect(mainNav()).toBeInTheDocument();
+    // Not modal: what the player covers leaves the tab order, the tabs do not.
+    expect(document.getElementById('main')).toHaveAttribute('inert');
+    expect(mainNav().closest('[inert]')).toBeNull();
     await user.click(within(mainNav()).getByRole('link', { name: 'Découvrir' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/discover'));
     expect(
       screen.queryByRole('dialog', { name: 'Lecteur en plein écran' }),
     ).not.toBeInTheDocument();
+    expect(document.getElementById('main')).not.toHaveAttribute('inert');
   });
 
   it('hides the mini player on / but shows it elsewhere', async () => {

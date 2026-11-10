@@ -219,9 +219,14 @@ export function AppLayout() {
 
   return (
     <div className="min-h-dvh md:pl-60">
-      {desktop ? <Rail {...nav} /> : !feed && <TopBar />}
-      <VerifyEmailBanner />
+      {desktop && <Rail {...nav} />}
+      {/* The full player is not modal (the tabs stay usable): what it covers leaves the tab order. */}
+      <div inert={fullOpen}>
+        {!desktop && !feed && <TopBar />}
+        <VerifyEmailBanner />
+      </div>
       <main
+        inert={fullOpen}
         id="main"
         className={cx(
           feed
@@ -238,7 +243,11 @@ export function AppLayout() {
         <Outlet />
       </main>
       <div className="fixed inset-x-0 bottom-0 z-40 md:left-60">
-        {showMini && <MiniPlayer onExpand={() => setFullOn(pathname)} />}
+        {showMini && (
+          <div inert={fullOpen}>
+            <MiniPlayer onExpand={() => setFullOn(pathname)} />
+          </div>
+        )}
         {!desktop && <TabBar {...nav} />}
       </div>
       <FullPlayer open={fullOpen} onClose={closeFull} />
