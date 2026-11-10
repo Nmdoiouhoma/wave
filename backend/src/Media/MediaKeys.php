@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Media;
 
 use App\Message\ProcessImage;
-use Symfony\Component\Uid\Uuid;
 
 /**
  * Object keys of DATA_MODEL §14 produced by the media handlers.
@@ -35,13 +34,17 @@ final class MediaKeys
 
     /**
      * Deterministic per post (a post's visual never changes): a redelivery overwrites, never orphans.
+     * The version is an HMAC of the id with the app secret, so the public URL cannot be derived
+     * from a post id by someone outside the track's audience (phase3-v2 QA, high 1).
      *
      * @return array{image: string, video: string, poster: string}
      */
-    public static function postVisual(string $postId): array
+    public static function postVisual(string $postId, string $secret): array
     {
         $id = strtolower($postId);
-        $version = Uuid::v5(Uuid::fromString($id), 'post-visual')->toRfc4122();
+        $h = hash_hmac('sha256', 'post-visual|'.$id, $secret);
+        // Same uuid shape as the other versioned keys (parsers rely on it), but not derivable.
+        $version = \sprintf('%s-%s-%s-%s-%s', substr($h, 0, 8), substr($h, 8, 4), substr($h, 12, 4), substr($h, 16, 4), substr($h, 20, 12));
 
         return [
             'image' => \sprintf('images/posts/%s/%s.webp', $id, $version),

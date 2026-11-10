@@ -357,7 +357,7 @@ final class PostMediaHandlersTest extends TestCase
     {
         $runner = $this->runner();
 
-        return new ProcessPostVisualHandler($this->kit->em, $this->kit->storage, new PostVisualProcessor($runner, new ImageProcessor($runner)), new PostMediaFailure($this->kit->em), new NullLogger());
+        return new ProcessPostVisualHandler($this->kit->em, $this->kit->storage, new PostVisualProcessor($runner, new ImageProcessor($runner)), new PostMediaFailure($this->kit->em), new NullLogger(), 'test-secret');
     }
 
     private function runner(): FfmpegRunner

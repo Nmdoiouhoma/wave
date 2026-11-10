@@ -19,6 +19,7 @@ use App\Storage\ObjectStorage;
 use App\Storage\StorageArea;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Uid\Uuid;
 
@@ -38,6 +39,8 @@ final class ProcessPostVisualHandler
         private readonly PostVisualProcessor $visuals,
         private readonly PostMediaFailure $failure,
         private readonly LoggerInterface $logger,
+        #[Autowire('%kernel.secret%')]
+        private readonly string $secret,
     ) {
     }
 
@@ -80,7 +83,7 @@ final class ProcessPostVisualHandler
             return;
         }
 
-        $keys = MediaKeys::postVisual($postId->toRfc4122());
+        $keys = MediaKeys::postVisual($postId->toRfc4122(), $this->secret);
         /** @var list<string> $written public keys written by this delivery */
         $written = [];
         $visualKey = VisualType::Image === $type ? $keys['image'] : $keys['video'];

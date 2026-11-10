@@ -54,4 +54,15 @@ final class MediaKeysTest extends TestCase
         self::assertSame(self::V1, MediaKeys::imageVersion('images/covers/x/'.self::V1.'.webp'));
         self::assertNull(MediaKeys::imageVersion(null));
     }
+
+    public function testPostVisualKeysCannotBeDerivedFromThePostIdAlone(): void
+    {
+        $id = '0192aaaa-0000-7000-8000-000000000001';
+        $a = MediaKeys::postVisual($id, 'secret-a');
+
+        self::assertSame($a, MediaKeys::postVisual(strtoupper($id), 'secret-a'), 'deterministic per post');
+        self::assertNotSame($a['video'], MediaKeys::postVisual($id, 'secret-b')['video'], 'depends on the secret');
+        self::assertMatchesRegularExpression('#^videos/posts/'.$id.'/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.mp4$#', $a['video']);
+        self::assertStringNotContainsString(\Symfony\Component\Uid\Uuid::v5(\Symfony\Component\Uid\Uuid::fromString($id), 'post-visual')->toRfc4122(), $a['video']);
+    }
 }

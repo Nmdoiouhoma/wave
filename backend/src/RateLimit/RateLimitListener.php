@@ -52,6 +52,7 @@ final readonly class RateLimitListener
         'likePlaylist' => [['social_write_user', self::BY_USER]],
         'likePost' => [['social_write_user', self::BY_USER]],
         'createComment' => [['comment_minute_user', self::BY_USER], ['comment_day_user', self::BY_USER]],
+        'getForYouFeed' => [['feed_for_you_user', self::BY_USER]],
         'reportPostViews' => [['post_view_user', self::BY_USER]],
         'createPlaylist' => [['playlist_write_user', self::BY_USER]],
         'addPlaylistItem' => [['playlist_write_user', self::BY_USER]],

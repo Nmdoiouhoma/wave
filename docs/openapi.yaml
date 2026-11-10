@@ -1475,6 +1475,7 @@ paths:
     get:
       tags: [feed]
       operationId: getForYouFeed
+      x-rate-limit: 60 per minute per user
       summary: Get for you feed
       description: |
         Ranked by `FeedRanker`: phase 3 = `SimpleFeedRanker` (ADR 011: followed authors, liked genres, recent popular posts), phase 4 = ADR 005 ranker (W-40), same contract.
@@ -1495,6 +1496,7 @@ paths:
               schema: { $ref: '#/components/schemas/PostPage' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /feed/following:
     get:
