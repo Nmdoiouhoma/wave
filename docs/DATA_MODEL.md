@@ -24,7 +24,7 @@ Source of truth for the PostgreSQL 16 schema. API shapes live in `openapi.yaml`;
 | Enum | Values |
 |---|---|
 | `MediaStatus` | `processing`, `ready`, `failed` |
-| `Visibility` | `public`, `private` |
+| `Visibility` | `public`, `followers`, `close_friends`, `private` (FB-18, ADR 012; `private` = owner only) |
 | `Moderation` | `visible`, `hidden` |
 | `FailureReason` | `invalid_media` (unreadable/disguised), `no_audio` (no audio stream, e.g. silent video), `unsupported_codec`, `too_long`, `too_large`, `processing_error` |
 | `VisualType` | `image`, `video` |
@@ -134,7 +134,7 @@ The migration is the source of truth for display names.
 | size_bytes | int | no | real object size read from storage at creation; ≤ 209 715 200 (MP4) / 31 457 280 (other), enforced again by the worker |
 | status | varchar(16) | no | `MediaStatus`, default processing |
 | failure_reason | varchar(32) | yes | `FailureReason`, only when failed |
-| visibility | varchar(16) | no | default public |
+| visibility | varchar(16) | no | `Visibility`, default public; audience of the track and of its owner's posts (FB-18, ADR 012) |
 | allow_clips | bool | no | default true (D5) |
 | moderation | varchar(16) | no | default visible |
 | play_count | int | no | counter (counted Listen) |
@@ -146,7 +146,10 @@ The migration is the source of truth for display names.
 
 Indexes: (artist_id, created_at DESC, id DESC), (owner_id, created_at DESC, id DESC), (genre_id), partial (trending_score DESC, id DESC) WHERE status='ready' AND visibility='public' AND moderation='visible', GIN(search_vector), GIN trgm on `wave_unaccent(lower(title))`.
 
-**Track is "public-visible"** ⇔ status=ready ∧ visibility=public ∧ moderation=visible. Anyone else sees only public-visible tracks; anything else → 404. The owner always sees own tracks (with `status`, `failureReason`, `moderation`). Moderators see everything.
+**Track is "public-visible"** ⇔ status=ready ∧ visibility=public ∧ moderation=visible. Used only where the result is the same for every viewer: `artist.track_count`, the trending index, phase-4 discovery (trending, Découvrir, recommendations).
+**Viewer v is in the audience of track t** (FB-18, ADR 012) ⇔ v = t.owner ∨ t.visibility=public ∨ (t.visibility=followers ∧ a `follow` row (v → t.owner) exists) ∨ (t.visibility=close_friends ∧ a `close_friend` row (t.owner, v) exists). `private` = owner only.
+**Track visible to v** ⇔ moderator ∨ v = t.owner ∨ (status=ready ∧ moderation=visible ∧ v in the audience of t). Everything else → 404 `not_found`, identical to an unknown id, on every route (read, like, stream-url, listens, playlist add, post create, report). This one rule serves the track lists (`/users/{u}/tracks`, `/artists/{slug}/tracks`, `/me/likes/tracks`), search, playlist items and covers, likes, stream-url, listens, `/stream` track tokens (re-checked per request, so an unfollow cuts playback at the next Range request), reports and notifications. The owner sees own tracks with `status`, `failureReason`, `moderation`, `visibility`; others get `visibility` = `public` or null (ADR 012 §7). Moderators see everything.
+SQL form (hot queries, ADR 012 §8) — one shared fragment, never re-typed per repository: `t.visibility = 'public' OR t.owner_id = :v OR (t.visibility = 'followers' AND t.owner_id IN (SELECT followed_id FROM follow WHERE follower_id = :v)) OR (t.visibility = 'close_friends' AND t.owner_id IN (SELECT owner_id FROM close_friend WHERE friend_id = :v))` (uncorrelated `IN` → hashed SubPlans computed once per query).
 
 ## 6b. TrackUpload — `track_upload` (ADR 009)
 
@@ -183,7 +186,7 @@ Indexes: (user_id, status), (status, created_at). Consume = `UPDATE track_upload
 | search_vector | tsvector | no | trigger: name (A) + description (B) |
 | created_at, updated_at | timestamptz | no | updated_at bumps on item add/remove/reorder |
 
-Indexes: (owner_id, created_at DESC, id DESC), GIN(search_vector). Visible to others ⇔ is_public ∧ moderation=visible, else 404. Max 500 items (409 `playlist_full`). Max 200 playlists per owner (409 `playlist_limit_reached`, counted under a `SELECT … FOR UPDATE` of the owner's `app_user` row, same as the artist limit). No cover upload in v1: `coverUrl` = cover of the first available item.
+Indexes: (owner_id, created_at DESC, id DESC), GIN(search_vector). Visible to others ⇔ is_public ∧ moderation=visible, else 404. Max 500 items (409 `playlist_full`). Max 200 playlists per owner (409 `playlist_limit_reached`, counted under a `SELECT … FOR UPDATE` of the owner's `app_user` row, same as the artist limit). No cover upload in v1: `coverUrl` = cover of the first item visible to the viewer (§6).
 
 `playlist_item`
 | Column | Type | Null | Rules |
@@ -194,7 +197,7 @@ Indexes: (owner_id, created_at DESC, id DESC), GIN(search_vector). Visible to ot
 | position | int | no | 0-based, contiguous |
 | added_at | timestamptz | no | |
 
-Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFERRABLE INITIALLY DEFERRED** (reorder rewrites all positions in one transaction). Add = append at `item_count`. Remove = delete + `position = position - 1` for following items. Reorder = `PUT …/order` with the complete ordered list of trackIds (must equal the current set, else 409 `playlist_order_mismatch`). Only ready tracks visible to the adder can be added. Items whose track later becomes invisible to a viewer: owner gets them with `trackId` and `track: null`; non-owners do not get them at all (filtered in SQL, positions may show gaps). `trackIds` of a reorder must be a JSON list, else 422.
+Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFERRABLE INITIALLY DEFERRED** (reorder rewrites all positions in one transaction). Add = append at `item_count`. Remove = delete + `position = position - 1` for following items. Reorder = `PUT …/order` with the complete ordered list of trackIds (must equal the current set, else 409 `playlist_order_mismatch`). Only ready tracks visible to the adder can be added (a follower may add a `followers` track to their public playlist; other viewers simply do not get that item). Items whose track is or later becomes invisible to a viewer (audience change, unfollow, removal from close friends): owner gets them with `trackId` and `track: null`; non-owners do not get them at all (filtered in SQL, positions may show gaps). `trackIds` of a reorder must be a JSON list, else 422.
 
 ## 8. Social graph and likes
 
@@ -206,6 +209,16 @@ Constraints: UNIQUE(playlist_id, track_id); UNIQUE(playlist_id, position) **DEFE
 | `post_like` | user_id, post_id, created_at | PK(user_id, post_id) | CASCADE both | (post_id), (user_id, created_at DESC) | post.like_count |
 
 Like/follow writes are idempotent: `INSERT … ON CONFLICT DO NOTHING RETURNING` and increment only if a row was inserted; delete increments −1 only if a row was deleted. Liking own content is allowed. A user can like/follow only what they can see (else 404). Unlike: an existing like of the caller is deleted whatever the target's visibility; without one, an invisible target → 404 (no existence oracle). Unfollow: any existing user, suspended included (W-26 F14). Inserted follows/likes write a notification and unfollow/unlike remove the actor from it (§8b, phase 3). Suspended users (`suspended_at` not null) are excluded from followers/following lists by a join on `app_user`; counters keep counting them until phase 5 moderation.
+Unfollow also removes the follower from the followed user's close friends (`close_friend` below, FK cascade, same statement).
+
+`close_friend` (FB-18, ADR 012) — one list per user, applies to all their `close_friends` tracks
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| owner_id | uuid FK → app_user | no | CASCADE; the list owner |
+| friend_id | uuid FK → app_user | no | CASCADE; must follow the owner |
+| created_at | timestamptz | no | |
+
+PK(owner_id, friend_id); CHECK owner_id ≠ friend_id; **FK (friend_id, owner_id) → follow(follower_id, followed_id) ON DELETE CASCADE** (members are followers, enforced by the DB; unfollow removes the membership; re-following does not restore it). Index (friend_id, owner_id) (audience subquery + cascade on unfollow). No counter, no notification, no size limit beyond the follower count. Add = `INSERT … ON CONFLICT DO NOTHING`; a non-follower (or the FK firing because of a concurrent unfollow, SQLSTATE 23503) → 422 `not_a_follower`. Visible only to its owner through `/me/close-friends*`; suspended members are left out of the list (join on `app_user`), their row stays.
 
 ## 8b. Notification — `notification`, `notification_actor` (FB-16, phase 3, W-45)
 
@@ -263,11 +276,11 @@ Read-time filters (list and unread count use the same query): recipient = caller
 | created_at | timestamptz | no | |
 
 Indexes: (author_id, created_at DESC, id DESC), (track_id), partial (created_at DESC, id DESC) WHERE status='ready' AND moderation='visible', partial (trending_score DESC, id DESC) same predicate.
-**All phase-3 tables** (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view`, `report`, `notification`, `notification_actor` §8b) are created by one W-30 migration, so W-32, W-33 and W-39 add behaviour without migrations.
+**All phase-3 tables** (`post`, `hashtag`, `post_hashtag`, `post_like`, `comment`, `post_view`, `report`, `notification`, `notification_actor` §8b) are created by one W-30 migration, so W-32, W-33 and W-39 add behaviour without migrations. Exception FB-18 (W-47): a **new** migration (W-30's is already applied in dev, never edited) replaces the `track.visibility` CHECK with the 4 values and creates `close_friend` with its PK, CHECK, both `app_user` FKs, the composite FK to `follow` and the `(friend_id, owner_id)` index; `down` refuses (or maps `followers`/`close_friends` → `private`) before restoring the 2-value CHECK.
 
-Creation rule (D5): track must be ready, moderation=visible and either `track.owner_id = author_id` or (`visibility = public` ∧ `allow_clips`).
-Creation errors (W-30, no existence oracle): track unknown or invisible to the caller (others' private/processing/failed/hidden track) → 404 `not_found`, identical to an unknown id; others' public-visible track with `allow_clips = false` → 422 `clips_not_allowed`; own track hidden by moderation → 422 `clips_not_allowed`; own track processing or failed → 409 `track_not_ready`; range → 422 `clip_out_of_range`.
-**Post is "playable"** ⇔ status=ready ∧ post.moderation=visible ∧ track.moderation=visible ∧ author.suspended_at IS NULL ∧ (author = track.owner ∨ (track.visibility=public ∧ track.allow_clips)). Non-playable posts are 404 for everyone except the author (who sees them with their status) and moderators; they are excluded from feeds, hashtag pages and profiles.
+Creation rule (D5): track must be ready, moderation=visible and either `track.owner_id = author_id` (any visibility: the post gets the track's audience) or (`visibility = public` ∧ `allow_clips`).
+Creation errors (W-30, no existence oracle): track unknown or invisible to the caller (others' private/processing/failed/hidden track) → 404 `not_found`, identical to an unknown id; others' track visible to the caller but not (public ∧ `allow_clips`) — `allow_clips = false`, or a `followers`/`close_friends` track the caller is in the audience of → 422 `clips_not_allowed`; own track hidden by moderation → 422 `clips_not_allowed`; own track processing or failed → 409 `track_not_ready`; range → 422 `clip_out_of_range`.
+**Post is "playable" for viewer v** (FB-18: viewer-dependent) ⇔ status=ready ∧ post.moderation=visible ∧ track.moderation=visible ∧ author.suspended_at IS NULL ∧ ((track.visibility=public ∧ track.allow_clips) ∨ (author = track.owner ∧ v in the audience of the track, §6)). A post on the owner's own `followers` / `close_friends` / `private` track therefore has exactly the track's audience, and changing the track's visibility (or an unfollow, or a close-friends edit) applies to it at the next request; nothing is rewritten. Playable for v ⇒ track visible to v. Posts not playable for v are 404 for v except for the author (who sees them with their status) and moderators; they are excluded from v's feeds, hashtag pages and profile lists.
 **Post visible to a caller** ⇔ moderator ∨ playable ∨ (caller = author ∧ track visible to the caller, §6). A post whose track the caller cannot see is 404 even for its author (the track's metadata must not leak); the author can still `DELETE` it (removing one's own content works whatever the visibility, as for likes, W-26 F14). A suspended author's own requests are already refused at authentication.
 `Post.clip` is non-null only when status=ready and the post is visible to the caller. Issuing it (embedded in any Post payload or via `GET /posts/{id}/stream-url`) writes the listen grant of (caller, post.track) (§11), one multi-row upsert per response.
 **Post deletion** (author, moderator, or cascade from track/user deletion): in the same transaction `hashtag.post_count − 1` for each of its hashtags, delete `report` rows targeting the post and its comments, dispatch `PurgeObjects` for clip (private) and visual/poster (public) keys. Track deletion (phase 1 processor) now runs this for every post on the track before the cascade.
@@ -336,7 +349,7 @@ PK(user_id, track_id). Written on each successful `GET /tracks/{id}/stream-url` 
 | first_seen_at, last_seen_at | timestamptz | no | |
 
 PK(user_id, post_id); index (post_id); index (user_id, last_seen_at, post_id) (for-you fallback, ADR 011). Upsert `INSERT … ON CONFLICT (user_id, post_id) DO UPDATE SET watched_ms = greatest(…), completed = post_view.completed OR excluded.completed, last_seen_at = now() RETURNING (xmax = 0)`; first insert → `post.view_count + 1` in the same transaction. Reported `watchedMs` is clamped to `clip_duration_ms`; duplicate ids in one batch are merged (max). Views of one's own posts and of posts not visible-and-playable for the caller are ignored silently (no row, no counter). Any row = "seen" for for-you (ADR 011).
-Feed listens (`source=feed`, W-32): same rules as player listens with reference = `post.clip_duration_ms`; `postId` must be a playable post of this track (else 422 `validation_failed`, also for unknown/invisible ids); the grant comes from clip issuance (§9).
+Feed listens (`source=feed`, W-32): same rules as player listens with reference = `post.clip_duration_ms`; `postId` must be a post of this track **playable for the caller** (§9, viewer-dependent; else 422 `validation_failed`, also for unknown/invisible ids), checked instead of the track visibility; the grant comes from clip issuance (§9).
 
 ## 12. UserAffinity — `user_affinity`
 
@@ -380,7 +393,7 @@ Allowed actions: content targets `hide`/`dismiss` (`suspend` → 422 `validation
 1. Collect every storage key: user avatar; avatars of owned artists; raw/audio/cover keys of owned tracks; clip/visual/poster keys of posts authored by the user **and** of other users' posts using the user's tracks (they are deleted with the track, decision D5 follow-up).
 2. Fix counters on rows that survive, with set-based SQL: `followers_count`/`following_count` of the other side of each follow; `like_count` of tracks/playlists/posts the user liked; `comment_count` of posts the user commented (visible comments only); `item_count` of others' playlists containing the user's tracks (then compact `position`); `post_count` of hashtags of deleted posts. `play_count` is **not** decremented (aggregate, not personal data).
 3. Delete `report` rows whose target is any deleted row (polymorphic); reports filed by the user go by cascade; `handled_by_id` → NULL by FK.
-4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, listens, listen grants, post views, affinity, account tokens, reports filed). Then `DELETE FROM notification n WHERE NOT EXISTS (SELECT 1 FROM notification_actor a WHERE a.notification_id = n.id)` (items whose only actors were the user, §8b). Refresh tokens deleted by `username = id`.
+4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, close-friend rows on both sides, listens, listen grants, post views, affinity, account tokens, reports filed). Then `DELETE FROM notification n WHERE NOT EXISTS (SELECT 1 FROM notification_actor a WHERE a.notification_id = n.id)` (items whose only actors were the user, §8b). Refresh tokens deleted by `username = id`.
 5. Dispatch `PurgeObjects` (batches of ≤ 500 keys) and `SendAccountDeletedEmail` inside the same transaction.
 Username and email are free for re-registration immediately. Backups keep the data until their rotation (documented in the README prod checklist; 30 days). Synchronous; target < 5 s for 100 tracks / 500 posts; move to an async `DeleteAccount` message if it ever exceeds that.
 

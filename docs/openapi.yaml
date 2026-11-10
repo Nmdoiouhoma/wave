@@ -13,7 +13,8 @@ info:
     - Errors are RFC 7807 `application/problem+json` with a stable `code` (see `ProblemCode`); `type` = `urn:wave:problem:{code}`.
     - Lists use cursor pagination: `?cursor=&limit=` (limit default 20, max 50 unless stated); response `{items, nextCursor}`; `nextCursor: null` = last page. Cursors are opaque; a tampered cursor → 400 `invalid_cursor`.
     - Every endpoint requires `Authorization: Bearer <access JWT>` unless it declares `security: []`. Access JWT TTL 15 min.
-    - Visibility: a resource the caller may not see (private track/playlist of someone else, hidden by moderation, not ready and not owned, non-playable post) answers **404 `not_found`**, never 403. 403 is only for resources the caller can see but may not mutate.
+    - Track audiences (FB-18, ADR 012, DATA_MODEL §6): `visibility` ∈ `public`, `followers`, `close_friends` (the owner's list, `/me/close-friends`), `private` (owner only). A track outside the caller's audience is invisible (404, same bytes as an unknown id); posts on the owner's own track share the track's audience (`playable` is viewer-dependent, DATA_MODEL §9). Unfollowing or leaving a close-friends list takes effect at the next request.
+    - Visibility: a resource the caller may not see (track of someone else outside the caller's audience, hidden by moderation, not ready and not owned, non-playable post) answers **404 `not_found`**, never 403. 403 is only for resources the caller can see but may not mutate.
     - Rate-limited routes declare `x-rate-limit` and may answer 429 with `Retry-After` (seconds).
     - Unverified accounts (`emailVerified: false`) may browse, stream, like, follow, manage playlists; operations tagged `x-requires-verified-email: true` answer 403 `email_not_verified` for them.
     - Unsupported method on an existing path (405) is answered as 404 `not_found`, so the route map is not disclosed.
@@ -327,7 +328,7 @@ paths:
       tags: [me]
       operationId: listMyLikedTracks
       summary: List my liked tracks
-      description: Ordered by like date desc. Tracks no longer visible to me are omitted.
+      description: Ordered by like date desc. Tracks no longer visible to me are omitted (audience change, unfollow, removal from close friends included).
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -339,6 +340,64 @@ paths:
               schema: { $ref: '#/components/schemas/TrackPage' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me/close-friends:
+    get:
+      tags: [me]
+      operationId: listMyCloseFriends
+      summary: List my close friends, or my followers with their close-friend flag
+      description: |
+        FB-18, ADR 012. The caller's own list only (no route reads another user's list).
+        `scope=members` (default): members, newest addition first, keyset on (addedAt, id).
+        `scope=followers`: every follower of the caller (picker of the track form), newest follow first, keyset on (follow createdAt, id), each with `isCloseFriend`.
+        Suspended users are omitted in both scopes. The cursor is bound to `scope` (reused with the other → 400 `invalid_cursor`); unknown `scope` value → 400 `malformed_request`.
+      parameters:
+        - name: scope
+          in: query
+          schema: { type: string, enum: [members, followers], default: members }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of users.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CloseFriendPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me/close-friends/{username}:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    put:
+      tags: [me]
+      operationId: addCloseFriend
+      summary: Add a follower to my close friends
+      description: Idempotent. Unknown or suspended username → 404 `not_found`. The user must follow the caller (yourself included, since you cannot follow yourself) → else 422 `not_a_follower`, also when a concurrent unfollow wins. Applies at once to every `close_friends` track of the caller and their posts.
+      x-rate-limit: shared bucket `social_write`
+      responses:
+        '200':
+          description: Membership state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CloseFriendState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [me]
+      operationId: removeCloseFriend
+      summary: Remove a user from my close friends
+      description: Idempotent (200 with `isCloseFriend` false when not a member). Works on a suspended user too; 404 only for an unknown username. Access to the caller's `close_friends` tracks and their posts ends at the removed user's next request.
+      responses:
+        '200':
+          description: Membership state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CloseFriendState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /me/likes/playlists:
     get:
@@ -511,7 +570,7 @@ paths:
       tags: [users]
       operationId: listUserTracks
       summary: List user tracks
-      description: All artists of the user, newest first. Others see public-visible tracks only; the owner sees every own track (any status/visibility/moderation).
+      description: All artists of the user, newest first. Others see the tracks visible to them (ready, not hidden, caller in the track's audience, DATA_MODEL §6); the owner sees every own track (any status/visibility/moderation).
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -1222,10 +1281,11 @@ paths:
       description: |
         Multipart. Returns 202 `status: processing`; clip (and visual) produced by the worker; poll `GET /posts/{id}`.
         Rules (D4, D5, DATA_MODEL §9), in this order: `trackId` unknown or not visible to the caller → 404 `not_found` (same body as an unknown id);
-        others' track with `allowClips: false`, or own track hidden by moderation → 422 `clips_not_allowed`; own track processing/failed → 409 `track_not_ready`;
+        others' track visible to the caller but not public with `allowClips: true` (clips off, or a `followers`/`close_friends` track), or own track hidden by moderation → 422 `clips_not_allowed`; own track processing/failed → 409 `track_not_ready`;
         `clipStartMs + clipDurationMs ≤ track.durationMs` else 422 `clip_out_of_range`. The visual is checked (413/415) before the post row is created.
         Visual optional: image ≤ 5 MB (jpg/png/webp) or video MP4 ≤ 15 MB, ≤ 60 s (any audio stream is stripped). Oversize → 413, other type → 415.
         Hashtags are extracted from the caption (max 10, `#Lo_Fi #lofi` → `lo_fi`, `lofi`).
+        A post on the caller's own non-public track is playable only by that track's audience, now and after any later audience change (FB-18); the client warns before submitting.
       x-rate-limit: 30 per day per user (bucket `post_create`)
       x-body-limit: 32M (nginx)
       requestBody:
@@ -1258,7 +1318,7 @@ paths:
       tags: [posts]
       operationId: getPost
       summary: Get post
-      description: Non-playable posts → 404 except for the author and moderators. A post whose track the caller cannot see → 404, author included (DATA_MODEL §9).
+      description: Posts not playable for the caller (DATA_MODEL §9, viewer-dependent since FB-18) → 404 except for the author and moderators. A post whose track the caller cannot see → 404, author included (DATA_MODEL §9).
       responses:
         '200':
           description: Post.
@@ -1466,7 +1526,7 @@ paths:
         `SearchProvider` v1 = PostgreSQL FTS (`simple` + unaccent, prefix match on every token) + pg_trgm similarity.
         **Phase 2 (W-27, FB-07; W-29a, FB-15)**: only `type=users` and `type=tracks` are implemented; `type` is then required and any other value (or none) → 422 `validation_failed`. Phase 4 adds the other types and the no-`type` overview without changing this shape.
         **Users**: matches `username` and `displayName`, case- and accent-insensitive (`wave_unaccent(lower(...))`), a user matches if either field starts with `q` (prefix, also per word of displayName) or trigram similarity ≥ 0.3. Ranking: exact username match first, then prefix match, then `greatest(similarity(username), similarity(displayName))` desc, then `followersCount` desc, then id. Suspended users and the caller are excluded. Items carry `isFollowedByMe` for inline follow buttons.
-        **Tracks** (FB-15, W-29a): only tracks the caller can see **and** play: `status=ready` ∧ `moderation=visible` ∧ (`visibility=public` ∨ owner = caller) ∧ owner not suspended. Others' private, processing, failed or hidden tracks, the caller's own processing/failed/hidden tracks and every track of a suspended owner are never returned (stricter than `GET /tracks/{id}` for suspended owners, F18). A track matches if its title or its artist name starts with `q` (also per word) or has trigram similarity ≥ 0.3, with the same normalisation as users. Ranking: tracks owned by the caller first, then tracks liked by the caller, then exact title match, prefix match, `greatest(similarity(title), similarity(artist name))` desc, `playCount` desc, id. No extra parameter: the caller's own and liked tracks surface first by this ranking (they are already known to the caller, so no oracle). Items are full `Track` objects (`likedByMe`, `isOwner`, `canClip` without N+1).
+        **Tracks** (FB-15, W-29a): only tracks the caller can see **and** play: `status=ready` ∧ `moderation=visible` ∧ caller in the track's audience (owner, public, follower of a `followers` track, member of the owner's close friends for a `close_friends` track; DATA_MODEL §6) ∧ owner not suspended. Others' tracks outside the caller's audience, processing, failed or hidden tracks, the caller's own processing/failed/hidden tracks and every track of a suspended owner are never returned (stricter than `GET /tracks/{id}` for suspended owners, F18). A track matches if its title or its artist name starts with `q` (also per word) or has trigram similarity ≥ 0.3, with the same normalisation as users. Ranking: tracks owned by the caller first, then tracks liked by the caller, then exact title match, prefix match, `greatest(similarity(title), similarity(artist name))` desc, `playCount` desc, id. No extra parameter: the caller's own and liked tracks surface first by this ranking (they are already known to the caller, so no oracle). Items are full `Track` objects (`likedByMe`, `isOwner`, `canClip` without N+1).
         Without `type` (phase 4): every section present with ≤ 5 items (a section's `nextCursor` can be reused with `type=`).
         With `type`: only that section, paginated (`limit` default 20, max 50, at most 200 results reachable); the cursor is bound to `q` and `type` (reused with another one → 400 `invalid_cursor`).
         Only content visible to the caller is returned.
@@ -1819,6 +1879,7 @@ components:
         - clip_out_of_range          # 422
         - cannot_follow_self         # 422
         - cannot_report_own          # 422
+        - not_a_follower             # 422 (close friends, FB-18)
         - rate_limited               # 429
         - internal_error             # 500
     Problem:
@@ -1864,7 +1925,8 @@ components:
       description: '`invalid_media` = unreadable or disguised file; `no_audio` = readable file without any audio stream (e.g. a silent video); `processing_error` = internal failure after retries.'
     Visibility:
       type: string
-      enum: [public, private]
+      enum: [public, followers, close_friends, private]
+      description: 'Track audience (FB-18, ADR 012): `followers` = users following the owner; `close_friends` = the owner''s list (`/me/close-friends`), all followers; `private` = owner only.'
     Moderation:
       type: string
       enum: [visible, hidden]
@@ -1880,6 +1942,24 @@ components:
       properties:
         following: { type: boolean }
         followersCount: { type: integer, description: Followers of the target user. }
+    CloseFriendState:
+      type: object
+      required: [isCloseFriend]
+      properties:
+        isCloseFriend: { type: boolean }
+    CloseFriendItem:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          required: [isCloseFriend]
+          properties:
+            isCloseFriend: { type: boolean, description: Always true with `scope=members`. }
+    CloseFriendPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/CloseFriendItem' } }
+        nextCursor: { type: [string, 'null'] }
     StreamUrl:
       type: object
       required: [url, expiresAt]
@@ -2064,7 +2144,11 @@ components:
         durationMs: { type: [integer, 'null'], description: Null while processing. }
         status: { $ref: '#/components/schemas/MediaStatus' }
         failureReason: { $ref: '#/components/schemas/FailureReason' }
-        visibility: { $ref: '#/components/schemas/Visibility' }
+        visibility:
+          oneOf:
+            - $ref: '#/components/schemas/Visibility'
+            - type: 'null'
+          description: 'Real audience for the owner and moderators. Anyone else gets `public`, or null for a restricted track they are allowed to see (the audience is not disclosed, ADR 012).'
         allowClips: { type: boolean }
         moderation: { $ref: '#/components/schemas/Moderation' }
         playCount: { type: integer }
@@ -2121,7 +2205,7 @@ components:
       properties:
         listenedMs: { type: integer, minimum: 0, maximum: 3600000, description: 'Actual audio time played (not wall clock, seeks excluded).' }
         source: { type: string, enum: [player, feed] }
-        postId: { type: string, format: uuid, description: 'Required when source=feed (phase 3); must be a playable post of this track, else 422. Forbidden with source=player.' }
+        postId: { type: string, format: uuid, description: 'Required when source=feed (phase 3); must be a post of this track playable for the caller (DATA_MODEL §9, viewer-dependent), else 422. Forbidden with source=player.' }
     ListenResult:
       type: object
       required: [counted, playCount]
