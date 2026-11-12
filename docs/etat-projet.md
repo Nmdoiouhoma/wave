@@ -1,4 +1,4 @@
-# État du projet Wave — 10/11/2026
+# État du projet Wave — 12/11/2026 (phase 3 terminée)
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
@@ -37,30 +37,28 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **Phase 2** (W-20 à W-25, W-27, W-28) : playlists avec glisser-déposer, abonnements, likes, écoutes, recherche d'utilisateurs. Commits `38af9ba`..`4f92612`, poussés. Symfony 7.4.22 (CVE-2026-45070).
 - **Skills projet** (`.claude/skills/wave-*`) : stack, verif, commit, lot, retour, etat, ameliorer ; chacun apprend via son `lessons.md`.
 - **Correctifs W-26** (F10-F17, revue sécurité phase 2 + re-revue) : commits `741829c`..HEAD, poussés. Symfony 7.4.23 (CVE-2026-118513..118516), table `listen_grant`, suites de sécurité sociale et concurrence. F18 (suspendu visible comme propriétaire/artiste) reporté en phase 5.
-- **Dernière vérification** (`verif.sh`, 10/11) : 382 tests backend (62 ignorés), 55 tests audio, 121 tests frontend, PHPStan propre, audit propre.
-
 - **Test phase 2 + lot fb-1109** (09/11) : FB-13 like en 500 (table `lock_keys` absente de la base dev seulement, recréée ; like/écoute ne dépendent plus du recalcul d'affinité), FB-14 genre groupé dès 2 fichiers, FB-15 recherche de morceaux avancée (W-29a/b) et ajout depuis la page playlist. Commits `73c615b`..`7d817af`. verif.sh : 341 tests backend (62 ignorés), 55 audio, 85 frontend, audit OK.
 
 - **Phase 3, vague 1** (10/11) : W-38 navigation (`ca66be5`), W-30 posts + migration unique des tables phase 3 (`3849acd`, appliquée en dev), revue qa 0 critique/élevé (`docs/handoff/phase3-v1-qa.md`), correctifs moyen 1 (upload borné, `b969551`) et moyen 2 + bas 4 (`719f28b`). verif.sh : 382 tests backend (62 ignorés), 55 audio, 121 frontend, audit OK.
 
 - **Phase 3, lot 1b audiences FB-18** (10/11) : ADR 012 (`42d0166`), W-48 front (`a26b74c`), W-47 back (`0732061`), revue qa 0 critique/élevé, moyen 1 couvert par le test de désabonnement + règle CLAUDE.md (`28d0de8`, `docs/handoff/lot1b-qa.md`).
-- **Phase 3, vague 2** (10/11) : W-31 média des posts (`2438da2`), W-39 Pour toi (`bc58185`), W-32 interactions + fil Abonnements (`b346595`). verif.sh : 443 tests backend (84 ignorés dont 22 média), 77 média, audit OK. `make test` sous flock, PHPStan à 2 processus.
+- **Phase 3, vague 2** (10/11) : W-31 média des posts (`2438da2`), W-39 Pour toi (`bc58185`), W-32 interactions + fil Abonnements (`b346595`). `make test` sous flock, PHPStan à 2 processus.
+- **Phase 3, vague 3** (12/11) : W-33∥W-34∥W-35∥W-45 (`020f492`, `3bbd119`), correctifs revue qa (`56969b9` : `updatedAt` des notifications en microsecondes comparé exactement, signalements supprimés avec leur cible).
+- **Phase 3, vague 4** (12/11) : W-36 commentaires + signalement (`fbe4d81`), W-46 cloche de notifications (`3895cc2`).
+- **Phase 3, revue finale W-37** (12/11, `docs/handoff/phase3-w37-qa.md`) : 0 critique/élevé/moyen, 6 bas ; F19, F22, F23, F24 corrigés (`e076704`, `f3b487e`).
+- **Test utilisateur du fil** (12/11, FB-24, `38e0eaf`) : défilement molette/touches sans focus, cœur aimé visible, retour au fil sur le même post (session gardée 10 min). Entrée sur /login bloquée par une extension, pas par l'appli.
+- **Dernière vérification** (`verif.sh`, 12/11) : 479 tests backend (84 ignorés), 78 média, 219 frontend, PHPStan propre, audit propre. Tout est poussé.
 
 ## En cours (non commité)
 
-- Rien. Revue qa vague 2 faite : élevé 1 (URL du visuel dérivable) et moyen 1 (débit Pour toi) corrigés ; bas 1-5 pour la phase 5 (`docs/handoff/phase3-v2-qa.md`). Visuels déjà traités en dev gardent leur ancienne clé.
-
-- Rien. Front, points ouverts : feuille d'ajout limitée à 20 playlists, pas de bouton Suivre sur le créateur d'une playlist, glisser-déposer à tester sur mobile.
+- Rien.
 
 ## Prochaines étapes
 
-1. Retest par l'utilisateur (like, ajout depuis une playlist, genre groupé) ; reste non testé : écoute complète et compteur, vidéos avec et sans son, glisser-déposer sur mobile. Revue qa du lot fb-1109 faite : 0 critique/élevé, 367 tests backend.
-2. Création de l'EC2 par l'utilisateur (prompt Claude for Chrome fourni), puis premier déploiement avec `infra/deploy/`.
-3. **Reprise** : test utilisateur combiné : audiences (lot 1b, 4 étapes à 2 comptes) ; la vague 2 n'a pas d'écran. Puis vague 3 : W-33∥W-34∥W-35∥W-45. Point ouvert W-32 : `findPageByAuthor` garde une condition « jouable » écrite à la main.
-3bis. ~~Avant la vague 2~~ (fait) : test de la vague 1 par l'utilisateur, et sa décision sur les posts d'un morceau privé (qa : acceptable si avertissement à la création, si repasser en privé ne retire pas les posts et si le `TrackView` exposé est réduit, `PostMapper.php:66`). Briefs vague 2 : W-32 doit vérifier que le post est jouable pour une écoute avec `postId` (moyen 3) ; W-31 purge l'objet si le post a été supprimé pendant le traitement (bas 3). Phase 5 : bas 1 (verrou du morceau à la suppression), bas 2 (ordre des verrous des hashtags), bas 5 (onglet courant ne ferme pas le lecteur), 3 index redondants avec les clés primaires (`post_hashtag`, `post_like`, `post_view`).
-4. Phase 3 : posts courts, feed vertical, commentaires, signalement, notifications in-app (FB-16 : W-45, W-46). Lots : ~~W-38∥W-30~~ → ~~lot 1b~~ → ~~W-31∥W-32∥W-39~~ → W-33∥W-34∥W-35∥W-45 → W-36∥W-46 → W-37.
-5. Phase 4 : mesurer avec EXPLAIN sur ~100 k morceaux si l'index trigramme de la recherche de morceaux sert (moyen de la revue fb-1109, W-41), recommandations, onglet Découvrir, catalogue Deezer, recherche complète, données de démo.
-6. Phase 5 : durcissement, bas niveau de la revue fb-1109 (`docs/handoff/fb-1109-qa.md` : TOCTOU à l'hydratation, erreurs 404/422 génériques, morceau de suspendu proposé dans la feuille d'ajout, demande d'affinité perdue si le process meurt), modération, suppression de compte, F18 (suspendus visibles comme propriétaires/artistes), vrais e-mails (FB-01), README et checklist de mise en prod.
+1. Utilisateur : vérifier le fil à 390 px sur un vrai téléphone (A6 de FB-24) ; commentaires, signalement et cloche pas encore testés à l'écran.
+2. Création de l'EC2 par l'utilisateur, puis premier déploiement avec `infra/deploy/`.
+3. Phase 4 (présenter plan + tickets, attendre son feu vert) : recommandations, onglet Découvrir, catalogue Deezer, recherche complète (EXPLAIN de l'index trigramme sur ~100 k morceaux, W-41), données de démo.
+4. Phase 5 : durcissement et bas niveau reportés — revue fb-1109 (`docs/handoff/fb-1109-qa.md`), vague 1 (verrou du morceau à la suppression, ordre des verrous des hashtags, index redondants `post_hashtag`/`post_like`/`post_view`), vague 2 (`phase3-v2-qa.md` bas 1-5), W-37 : F20 regex des hashtags sans `\p{M}` (décision architecte), F21 `dismiss` non définitif (décision), F18 posts d'un propriétaire suspendu encore jouables, un modérateur ne doit pas pouvoir suspendre un admin ; modération, suppression de compte (`ReportRepository::deleteForUserContent` prêt), vrais e-mails (FB-01), README et checklist de mise en prod.
 
 ## Points d'attention
 
@@ -70,3 +68,4 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **Push** : `gh auth switch -u Nmdoiouhoma`, `git push origin main`, puis revenir sur `nakib-m` (compte de l'utilisateur pour ses autres projets).
 - **/tmp du conteneur php** (tmpfs 64 Mo) : saturé le 07/11 par des fichiers de test (corrigé) ; si « No space left on device », `docker compose restart php`.
 - **Ne pas lancer verif.sh pendant qu'un agent fait tourner PHPUnit** : `doctrine:database:drop` échoue.
+- **Tests navigateur** : couper le son avant d'ouvrir `/` (le fil lit tout seul) ; le front doit tourner sur 8090 (médias en `Cross-Origin-Resource-Policy: same-origin`).
