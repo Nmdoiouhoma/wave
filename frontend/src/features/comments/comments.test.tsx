@@ -6,6 +6,7 @@ import type { Comment } from '@/api/types';
 import { USER_IDS } from '@/mocks/fixtures';
 import { json, problem } from '@/mocks/handlerUtils';
 import { server } from '@/mocks/server';
+import { sessionStore } from '@/stores/session';
 import { toastStore } from '@/stores/toast';
 import { loginAs, renderRoute } from '@/test/utils';
 import { setClipAudioFactory, type ClipAudio } from '@/features/feed/feedPlayback';
@@ -140,6 +141,17 @@ describe('comments (W-36)', () => {
     await waitFor(() => expect(screen.queryByText('Commentaire 1')).toBeNull());
     expect(delta).toHaveBeenCalledWith(-1);
     await waitFor(() => expect(toasts()).toContain('Commentaire supprimé'));
+  });
+
+  it('offers no report before the session user is known (W-37 F24)', async () => {
+    sessionStore.setState({ user: null });
+    // The profile never arrives: the window where the author check cannot run yet.
+    server.use(http.get(`${API}/me`, () => new Promise<Response>(() => {})));
+    serveComments([[makeComment(1)]]);
+    renderRoute(<CommentsPanel postId={POST.id} onCountDelta={vi.fn()} onReport={vi.fn()} />);
+
+    expect(await screen.findByText('Commentaire 1')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Options du commentaire de Kenji' })).toBeNull();
   });
 
   it('restores a comment whose deletion fails', async () => {

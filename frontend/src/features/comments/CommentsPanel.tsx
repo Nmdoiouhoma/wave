@@ -104,17 +104,17 @@ function Composer({ postId, onCountDelta }: { postId: string; onCountDelta: (d: 
 
 function CommentRow({
   comment,
-  mine,
+  canReport,
   onDelete,
   onReport,
 }: {
   comment: Comment;
-  mine: boolean;
+  /** False until the session is known, and on one's own comment (the API answers 422). */
+  canReport: boolean;
   onDelete: () => void;
   onReport: () => void;
 }) {
   const [menu, setMenu] = useState(false);
-  const canReport = !mine;
   const hasActions = comment.canDelete || canReport;
   const a = comment.author;
   const profile = `/u/${encodeURIComponent(a.username)}`;
@@ -255,7 +255,7 @@ export function CommentsPanel({
               <CommentRow
                 key={c.id}
                 comment={c}
-                mine={meId !== null && c.author.id === meId}
+                canReport={meId !== null && c.author.id !== meId}
                 onDelete={() => remove.mutate(c)}
                 onReport={() => onReport(c)}
               />
