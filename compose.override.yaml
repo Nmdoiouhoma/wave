@@ -13,6 +13,11 @@ services:
     # var/log tmpfs of the prod-shaped base filled up during test runs.
     tmpfs: !override
       - /tmp:size=64m,mode=1777
+    # Dev only: the full PHPUnit suite runs here and its real-process concurrency
+    # tests peaked at 511.6 MiB under the 512M prod-shaped limit (OOM kill 137, 12/11).
+    deploy:
+      resources:
+        limits: { memory: 1G }
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
       # Dev is plain HTTP on localhost: a Secure cookie would never be sent back.
