@@ -28,6 +28,7 @@ import { currentTrack, playerStore, usePlayer } from '@/stores/player';
 import { LikeButton } from '@/features/social/LikeButton';
 import { uiStore } from '@/stores/ui';
 import { TrackStatusBadge } from './TrackStatusBadge';
+import { ReportButton } from '@/features/reports/ReportButton';
 
 export function TrackPage() {
   const { id = '' } = useParams();
@@ -121,6 +122,9 @@ function TrackView({ track, refetch }: { track: Track; refetch: () => unknown })
                   Ajouter à une playlist
                 </Button>
               </>
+            )}
+            {!track.isOwner && (
+              <ReportButton target={{ type: 'track', id: track.id }} className="size-12" />
             )}
             {track.isOwner && (
               <Button

@@ -8,6 +8,7 @@ import { EmptyState, ErrorState } from '@/components/ui/States';
 import { formatCount, hueOf } from '@/lib/format';
 import { MultiUploader } from '@/features/tracks/MultiUploader';
 import { PlayAllButton, TrackList } from '@/features/tracks/TrackList';
+import { ReportButton } from '@/features/reports/ReportButton';
 
 export function ArtistPage() {
   const { slug = '' } = useParams();
@@ -67,6 +68,7 @@ export function ArtistPage() {
             Ajouter des morceaux
           </Button>
         )}
+        {!a.isOwner && <ReportButton target={{ type: 'artist', id: a.id }} />}
         {a.isOwner && (
           <ButtonLink to={`/me/artists?edit=${a.slug}`} variant="ghost">
             <EditIcon size={16} /> Modifier

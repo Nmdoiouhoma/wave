@@ -62,3 +62,11 @@ export type PostPage = S['PostPage'];
 export type PostViewsRequest = S['PostViewsRequest'];
 export type PostViewReport = PostViewsRequest['views'][number];
 export type FeedSource = 'for-you' | 'following';
+
+// W-36 (comments and reports)
+export type Comment = S['Comment'];
+export type CommentPage = S['CommentPage'];
+export type ReportTargetType = S['ReportTargetType'];
+export type ReportReason = S['ReportReason'];
+export type CreateReportRequest = S['CreateReportRequest'];
+export type ReportReceipt = S['ReportReceipt'];

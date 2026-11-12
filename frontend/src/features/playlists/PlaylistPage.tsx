@@ -52,6 +52,7 @@ import { currentTrack, isPlayable, playerStore, usePlayer } from '@/stores/playe
 import { toast } from '@/stores/toast';
 import { AddTracksSheet } from './AddTracksSheet';
 import { PlaylistForm } from './PlaylistForm';
+import { ReportButton } from '@/features/reports/ReportButton';
 
 export const ORDER_CONFLICT_MESSAGE =
   'La playlist a été modifiée ailleurs : l’ordre a été rechargé, recommence ton déplacement.';
@@ -144,6 +145,9 @@ function PlaylistView({
                 server={{ liked: playlist.likedByMe, likeCount: playlist.likeCount }}
                 showCount
               />
+            )}
+            {!owner && (
+              <ReportButton target={{ type: 'playlist', id: playlist.id }} className="size-12" />
             )}
             {owner && (
               <Button

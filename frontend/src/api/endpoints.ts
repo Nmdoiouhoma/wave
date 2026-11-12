@@ -1,6 +1,10 @@
 // One function per phase-1 operation of docs/openapi.yaml. UI-agnostic.
 import type { ApiClient, UploadOptions } from './client';
 import type {
+  Comment,
+  CommentPage,
+  CreateReportRequest,
+  ReportReceipt,
   SearchResults,
   CloseFriendPage,
   CloseFriendState,
@@ -120,6 +124,17 @@ export function createWaveApi(client: ApiClient) {
       /** Batched views (≤ 50), `keepalive` on page hide. */
       reportViews: (views: PostViewReport[], opts: { keepalive?: boolean } = {}) =>
         request<undefined>('POST', '/post-views', { body: { views }, keepalive: opts.keepalive }),
+    },
+    // W-36: comments (newest first) and reports.
+    comments: {
+      list: (postId: string, page: PageParams = {}) =>
+        request<CommentPage>('GET', `/posts/${enc(postId)}/comments`, { query: { ...page } }),
+      create: (postId: string, body: string) =>
+        request<Comment>('POST', `/posts/${enc(postId)}/comments`, { body: { body } }),
+      remove: (id: string) => request<undefined>('DELETE', `/comments/${enc(id)}`),
+    },
+    reports: {
+      create: (body: CreateReportRequest) => request<ReportReceipt>('POST', '/reports', { body }),
     },
     feed: {
       page: (source: FeedSource, page: PageParams = {}) =>

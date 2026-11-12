@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type SVGProps } from 'react';
+import { useCallback, useEffect, useRef, useState, type SVGProps } from 'react';
 import { Link } from 'react-router';
 import type { LikeState } from '@/api/types';
 import { cx } from '@/components/ui/cx';
@@ -10,6 +10,7 @@ import { formatCount } from '@/lib/format';
 import { toast } from '@/stores/toast';
 import { feedApi, type Post } from './feedApi';
 import type { ClipStatus } from './feedPlayback';
+import { CommentsSheet, PostMenuSheet } from './PostSheets';
 
 /** Second tap within this delay = double tap (like); otherwise the tap toggles playback. */
 const DOUBLE_TAP_MS = 250;
@@ -134,6 +135,11 @@ export function FeedItem({
   onTogglePlay: () => void;
 }) {
   const like = usePostLike(post);
+  // W-36: optimistic comment count (+1 on post, −1 on delete, reverted on error).
+  const [commentDelta, setCommentDelta] = useState(0);
+  const [sheet, setSheet] = useState<'comments' | 'menu' | null>(null);
+  const closeSheet = useCallback(() => setSheet(null), []);
+  const onCommentDelta = useCallback((d: number) => setCommentDelta((n) => n + d), []);
   const tapTimer = useRef<number | null>(null);
   const [burst, setBurst] = useState(0);
   useEffect(
@@ -239,22 +245,31 @@ export function FeedItem({
           <button
             type="button"
             aria-label="Commentaires"
-            onClick={() => toast('Les commentaires arrivent bientôt.')}
+            aria-haspopup="dialog"
+            onClick={() => setSheet('comments')}
             className="flex flex-col items-center gap-0.5 text-xs font-semibold"
           >
             <CommentIcon />
-            <span>{formatCount(post.commentCount)}</span>
+            <span>{formatCount(Math.max(0, post.commentCount + commentDelta))}</span>
           </button>
           <button
             type="button"
             aria-label="Plus d’options"
-            onClick={() => toast('Le signalement arrive bientôt.')}
+            aria-haspopup="dialog"
+            onClick={() => setSheet('menu')}
             className="flex size-8 items-center justify-center"
           >
             <MoreIcon size={24} />
           </button>
         </div>
       </div>
+      <CommentsSheet
+        post={post}
+        open={sheet === 'comments'}
+        onClose={closeSheet}
+        onCountDelta={onCommentDelta}
+      />
+      <PostMenuSheet post={post} open={sheet === 'menu'} onClose={closeSheet} />
     </article>
   );
 }

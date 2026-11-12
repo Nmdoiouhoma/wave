@@ -272,3 +272,11 @@ export function GlobeIcon(p: IconProps) {
     </svg>
   );
 }
+
+export function FlagIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M5 21V4h11l-1.5 4L16 12H5" />
+    </svg>
+  );
+}

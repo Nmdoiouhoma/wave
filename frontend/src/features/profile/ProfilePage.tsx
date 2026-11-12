@@ -15,6 +15,7 @@ import { PageSpinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
 import { formatCount, formatMonthYear } from '@/lib/format';
 import { PlayAllButton, TrackList } from '@/features/tracks/TrackList';
+import { ReportButton } from '@/features/reports/ReportButton';
 
 type Tab = 'tracks' | 'playlists' | 'artists';
 
@@ -54,7 +55,8 @@ export function ProfilePage() {
             </ButtonLink>
           </div>
         ) : (
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center gap-2">
+            <ReportButton target={{ type: 'user', id: u.id }} />
             <FollowButton
               username={u.username}
               displayName={u.displayName}
