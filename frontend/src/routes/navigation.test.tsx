@@ -34,6 +34,7 @@ describe('activeTab (route map of W-38)', () => {
     ['/me/artists/new', 'profile'],
     ['/posts/new', 'create'],
     ['/upload', 'create'],
+    ['/notifications', null],
     ['/nowhere', null],
   ];
   it.each(table)('%s → %s', (path, tab) => {

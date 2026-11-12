@@ -40,6 +40,7 @@ import {
 } from './db';
 import { socialHandlers } from './socialHandlers';
 import { feedHandlers } from './feedHandlers';
+import { notificationHandlers } from './notificationHandlers';
 
 import {
   problem,
@@ -177,6 +178,7 @@ function checkLength(
 export const handlers = [
   ...socialHandlers,
   ...feedHandlers,
+  ...notificationHandlers,
   // ───────────── auth ─────────────
   http.post(`${API}/auth/register`, async ({ request }) => {
     tick();

@@ -5,6 +5,8 @@ import { CompassIcon } from '@/components/ui/icons';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
 import { errorMessage } from '@/lib/errorMessages';
+import { DESKTOP_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 import type { FeedSource } from './feedApi';
 import { FeedViewer } from './FeedViewer';
 import { useFeedSession } from './useFeedSession';
@@ -15,6 +17,8 @@ const TABS = [
 ] as const;
 
 function FeedTabs({ which }: { which: FeedSource }) {
+  // W-46: on mobile the bell sits top right of this header (the desktop rail has its own).
+  const desktop = useMediaQuery(DESKTOP_QUERY);
   return (
     <nav
       aria-label="Fils"
@@ -35,6 +39,9 @@ function FeedTabs({ which }: { which: FeedSource }) {
           </Link>
         ))}
       </div>
+      {!desktop && (
+        <NotificationBell className="pointer-events-auto absolute top-[max(0.25rem,calc(env(safe-area-inset-top)-0.5rem))] right-2 text-white" />
+      )}
     </nav>
   );
 }

@@ -15,6 +15,8 @@ import { Toaster } from '@/components/ui/Toaster';
 import { Avatar } from '@/components/ui/Media';
 import { TrackSheets } from '@/features/playlists/TrackSheets';
 import { VerifyEmailBanner } from '@/features/auth/VerifyEmailBanner';
+import { BellIcon, NotificationBell, UnreadBadge } from '@/features/notifications/NotificationBell';
+import { useBellLabel, useUnreadCount } from '@/features/notifications/queries';
 import { FullPlayer } from '@/features/player/FullPlayer';
 import { MiniPlayer } from '@/features/player/MiniPlayer';
 import { usePlayer } from '@/stores/player';
@@ -52,6 +54,7 @@ function useEntries(): Entry[] {
 
 interface NavProps {
   active: TabId | null;
+  notificationsOn: boolean;
   createOpen: boolean;
   onCreate: () => void;
   createRef: React.RefObject<HTMLButtonElement | null>;
@@ -68,8 +71,9 @@ function Logo() {
   );
 }
 
-function Rail({ active, createOpen, onCreate, createRef }: NavProps) {
+function Rail({ active, notificationsOn, createOpen, onCreate, createRef }: NavProps) {
   const entries = useEntries();
+  const bellLabel = useBellLabel();
   const item = (on: boolean) =>
     cx(
       'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
@@ -106,6 +110,17 @@ function Rail({ active, createOpen, onCreate, createRef }: NavProps) {
           );
         })}
       </nav>
+      {/* W-46: not a tab (no tab is active on /notifications): its own entry, outside the main nav. */}
+      <Link
+        to="/notifications"
+        aria-label={bellLabel}
+        aria-current={notificationsOn ? 'page' : undefined}
+        className={item(notificationsOn)}
+      >
+        <BellIcon size={20} />
+        <span className="flex-1">Notifications</span>
+        <UnreadBadge />
+      </Link>
       {MOCKS_ENABLED && (
         <Link
           to="/dev/mailbox"
@@ -164,7 +179,7 @@ function TabBar({ active, createOpen, onCreate, createRef }: NavProps) {
   );
 }
 
-function TopBar() {
+function TopBar({ bell }: { bell: boolean }) {
   const me = useCurrentUser();
   return (
     <header className="border-line/60 bg-bg/85 sticky top-0 z-30 flex h-14 items-center justify-between border-b px-4 backdrop-blur">
@@ -175,6 +190,7 @@ function TopBar() {
             Mails démo
           </Link>
         )}
+        {bell && <NotificationBell />}
         <Link to="/settings" aria-label="Paramètres">
           <Avatar
             url={me.avatarUrl}
@@ -196,6 +212,9 @@ export function AppLayout() {
   const active = activeTab(pathname, me.username);
   const hasTrack = usePlayer((s) => s.index >= 0);
   const showMini = hasTrack && !feed;
+  const notificationsOn = pathname === '/notifications';
+  // W-46: the single unread-count poller of the app (the bells only read the cache).
+  useUnreadCount({ poll: true });
 
   // Each overlay remembers the path it was opened on: any navigation (a tab, a link in the
   // player) closes the full player and the + menu without an effect.
@@ -209,6 +228,7 @@ export function AppLayout() {
 
   const nav: NavProps = {
     active,
+    notificationsOn,
     createOpen,
     createRef,
     onCreate: () => {
@@ -222,7 +242,7 @@ export function AppLayout() {
       {desktop && <Rail {...nav} />}
       {/* The full player is not modal (the tabs stay usable): what it covers leaves the tab order. */}
       <div inert={fullOpen}>
-        {!desktop && !feed && <TopBar />}
+        {!desktop && !feed && <TopBar bell={active === 'profile'} />}
         <VerifyEmailBanner />
       </div>
       <main

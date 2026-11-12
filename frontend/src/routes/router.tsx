@@ -9,6 +9,7 @@ import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
 import { FeedPage } from '@/features/feed/FeedPage';
 import { PostPage } from '@/features/feed/PostPage';
+import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { CloseFriendsPage } from '@/features/profile/CloseFriendsPage';
 import { PostComposerPage } from '@/features/posts/PostComposerPage';
 import { LibraryPage } from '@/features/playlists/LibraryPage';
@@ -33,6 +34,7 @@ const appChildren: RouteObject[] = [
   { path: 'upload', element: <UploadPage /> },
   { path: 'me/artists', element: <MyArtistsPage /> },
   { path: 'me/artists/new', element: <CreateArtistPage /> },
+  { path: 'notifications', element: <NotificationsPage /> },
   { path: 'settings', element: <SettingsPage /> },
   { path: 'settings/close-friends', element: <CloseFriendsPage /> },
   { path: 'u/:username', element: <ProfilePage /> },
