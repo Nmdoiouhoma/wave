@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Wave quality gate: one line per step, log tail only on failure.
 # Usage: verif.sh [front|back|all]   (default: detect from git status)
+# Whole body in one brace group: bash parses it before running, so editing this file mid-run is safe.
+{
 set -u
 cd "$(git rev-parse --show-toplevel)" || exit 2
 export NO_COLOR=1
@@ -71,3 +73,4 @@ for n in $failed; do
 done
 [ $fail -eq 0 ] && echo "VERDICT OK" || echo "VERDICT FAIL"
 exit $fail
+}

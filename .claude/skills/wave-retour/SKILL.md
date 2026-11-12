@@ -7,6 +7,7 @@ argument-hint: "<description du retour>"
 # Retour de test Wave
 
 1. **Comprendre avant d'écrire** : reproduire si possible (logs bornés : `docker compose logs --tail=50 <service>`, `tail -n 80 backend/var/log/dev.log` ; fichier fourni → `ffprobe -hide_banner -loglevel error -show_streams`). Dire en 2-3 lignes la cause réelle, sans jargon.
+   Test navigateur : **son coupé avant d'ouvrir `/`** (le fil lit tout seul ; il est souvent en réunion). Un formulaire qui ignore Entrée ou une frappe → d'abord un test Vitest `{Enter}` : une extension de remplissage peut annuler la touche.
 2. **Qualifier** : bug (contraire au contrat ou au BRIEF) / incohérence d'interface / fonctionnalité manquante. Une fonctionnalité déjà planifiée → citer la phase et le ticket au lieu d'en créer un.
 3. **Décision nécessaire ?** S'il y a un vrai choix produit (limite, comportement), poser **une** question à choix avec mon option recommandée en premier et une option « comme l'existant ». Donner mon avis quand il le demande.
 4. **Consigner** : nouvelle ligne dans le tableau de `docs/FEEDBACK.md` — `FB-<n+1>`, date du jour (AAAA-MM-JJ), retour reformulé en anglais avec la décision prise, propriétaire(s), cible (lot de retours en cours, phase N, avant prod).
