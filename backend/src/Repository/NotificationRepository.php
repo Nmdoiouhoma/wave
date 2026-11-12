@@ -212,14 +212,14 @@ final readonly class NotificationRepository
 
     /**
      * `POST /me/notifications/read`: unread items of the recipient whose wire `updatedAt`
-     * (second precision, CONVENTIONS §4) is ≤ $upTo.
+     * (microsecond precision, `DateFormat::formatMicros`) is ≤ $upTo, compared exactly.
      */
     public function markRead(User $recipient, \DateTimeImmutable $upTo): int
     {
         return (int) $this->db->executeStatement(
-            "UPDATE notification SET read_at = clock_timestamp()
-             WHERE recipient_id = :r AND read_at IS NULL AND date_trunc('second', updated_at) <= :upTo",
-            ['r' => $recipient->getId()->toRfc4122(), 'upTo' => $upTo->format('Y-m-d H:i:sP')],
+            'UPDATE notification SET read_at = clock_timestamp()
+             WHERE recipient_id = :r AND read_at IS NULL AND updated_at <= :upTo',
+            ['r' => $recipient->getId()->toRfc4122(), 'upTo' => $upTo->format('Y-m-d H:i:s.uP')],
         );
     }
 

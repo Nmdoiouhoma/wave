@@ -89,7 +89,7 @@ final readonly class NotificationListProvider implements ProviderInterface
                 max($row['actor_count'], \count($actors)),
                 $target,
                 $row['read'],
-                DateFormat::format(new \DateTimeImmutable($row['at'])),
+                DateFormat::formatMicros(new \DateTimeImmutable($row['at'])),
             );
         }
 

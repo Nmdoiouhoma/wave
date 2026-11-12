@@ -37,7 +37,7 @@ final readonly class PostCleanup
         $this->db->executeStatement("DELETE FROM report WHERE target_type = 'track' AND target_id = :t", ['t' => $trackId->toRfc4122()]);
     }
 
-    /** For `DELETE /me` (phase 5): the user's posts and every post on the tracks they own. */
+    /** For `DELETE /me` (phase 5): the user's posts and every post on the tracks they own; pair with `ReportRepository::deleteForUserContent`. */
     public function beforeUserDeletion(Uuid $userId): void
     {
         $this->purge('author_id = :v OR track_id IN (SELECT id FROM track WHERE owner_id = :v)', $userId);

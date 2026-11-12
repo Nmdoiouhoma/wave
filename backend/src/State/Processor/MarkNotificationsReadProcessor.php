@@ -15,7 +15,8 @@ use Symfony\Component\HttpFoundation\Request;
 
 /**
  * `POST /me/notifications/read` (204, idempotent): the caller's unread items whose `updatedAt`
- * (as sent on the wire, second precision) is ≤ `upTo`; an event arriving meanwhile stays unread.
+ * (as sent on the wire, microsecond precision) is ≤ `upTo`, compared exactly (a date without
+ * fraction is accepted and means `.000000`); an event arriving meanwhile stays unread.
  *
  * @implements ProcessorInterface<mixed, null>
  */

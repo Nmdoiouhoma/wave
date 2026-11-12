@@ -9,6 +9,7 @@ use App\Entity\Track;
 use App\Entity\User;
 use App\Enum\Visibility;
 use App\Repository\PostRepository;
+use App\Repository\ReportRepository;
 use App\Tests\Functional\WaveApiTestCase;
 use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Uid\Uuid;
@@ -299,6 +300,30 @@ final class ReportTest extends WaveApiTestCase
         $this->assertProblem($this->api('POST', '/api/v1/admin/report-targets/user/'.$bobId.'/decision', $mod, ['json' => ['action' => 'suspend']]), 422, 'validation_failed');
         self::assertSame(200, $this->api('POST', '/api/v1/admin/report-targets/user/'.$bobId.'/decision', $mod, ['json' => ['action' => 'dismiss']])->getStatusCode());
         self::assertNotNull($this->counterRaw('app_user', 'suspended_at', $bobId));
+    }
+
+    /**
+     * `DELETE /me` (phase 5) cleanup hook: reports on the user and on everything the FK cascade
+     * removes with them go; reports on other users' content stay.
+     */
+    public function testDeleteForUserContentLeavesNoOrphanReport(): void
+    {
+        $alice = $this->createUser('alice');
+        $bob = $this->createUser('bob');
+        $reporter = $this->createUser('rep');
+        $artist = $this->createArtist($alice, 'A', 'a-artist');
+        $track = $this->createTrack($artist);
+        $bobTrack = $this->createTrack($this->createArtist($bob, 'B', 'b-artist'));
+        $playlist = $this->createPlaylist($alice);
+        $comment = $this->comment($this->makePost($bob, $bobTrack), $alice, 'hi');
+        foreach ([['user', (string) $alice->getId()], ['track', (string) $track->getId()], ['playlist', (string) $playlist->getId()], ['artist', (string) $artist->getId()], ['comment', $comment], ['track', (string) $bobTrack->getId()], ['user', (string) $bob->getId()]] as [$type, $id]) {
+            $this->seedReport($reporter, $type, $id, 'spam', '2026-01-01T10:00:00Z');
+        }
+
+        $deleted = static::getContainer()->get(ReportRepository::class)->deleteForUserContent($alice->getId());
+
+        self::assertSame(5, $deleted);
+        self::assertEqualsCanonicalizing([(string) $bobTrack->getId(), (string) $bob->getId()], $this->db()->fetchFirstColumn('SELECT target_id FROM report'));
     }
 
     // ------------------------------------------------------------- helpers ---

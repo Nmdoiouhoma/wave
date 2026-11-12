@@ -38,6 +38,36 @@ final class ReportRepository extends ServiceEntityRepository
         $this->db()->executeQuery('SELECT pg_advisory_xact_lock(hashtext(:k))', ['k' => $type->value.':'.$id->toRfc4122()]);
     }
 
+    /**
+     * Deletes every report on one target (polymorphic, no FK, DATA_MODEL §13): call in the
+     * target's deletion transaction so no orphan stays in the moderation queue.
+     */
+    public function deleteForTarget(ReportTargetType $type, Uuid $id): int
+    {
+        return (int) $this->db()->executeStatement(
+            'DELETE FROM report WHERE target_type = :tt AND target_id = :ti',
+            ['tt' => $type->value, 'ti' => $id->toRfc4122()],
+        );
+    }
+
+    /**
+     * For `DELETE /me` (phase 5), in its transaction before the user row goes: reports on the
+     * user and on what the FK cascade removes with them (playlists, artists, tracks, comments).
+     * Reports on posts (and their comments) go with `PostCleanup::beforeUserDeletion`; reports
+     * filed by the user go by FK cascade on `reporter_id`.
+     */
+    public function deleteForUserContent(Uuid $userId): int
+    {
+        return (int) $this->db()->executeStatement(
+            "DELETE FROM report WHERE (target_type = 'user' AND target_id = :u)
+                OR (target_type = 'playlist' AND target_id IN (SELECT id FROM playlist WHERE owner_id = :u))
+                OR (target_type = 'artist' AND target_id IN (SELECT id FROM artist WHERE owner_id = :u))
+                OR (target_type = 'track' AND target_id IN (SELECT id FROM track WHERE owner_id = :u))
+                OR (target_type = 'comment' AND target_id IN (SELECT id FROM comment WHERE author_id = :u))",
+            ['u' => $userId->toRfc4122()],
+        );
+    }
+
     /** Inserts an open report; false when this reporter already reported the target (unique key). */
     public function insertOpen(Report $report): bool
     {

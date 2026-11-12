@@ -375,7 +375,7 @@ export interface paths {
     put?: never;
     /**
      * Mark my notifications read
-     * @description Marks read every unread notification of the caller with `updatedAt ≤ upTo` (the client sends the `updatedAt` of the newest item it displayed, so an event arriving meanwhile stays unread). Idempotent; no id in the request, so nothing about other users can be probed. Unknown JSON field → 422.
+     * @description Marks read every unread notification of the caller with `updatedAt ≤ upTo` (the client sends back, unchanged, the `updatedAt` string of the newest item it displayed, so an event arriving meanwhile stays unread). Notification `updatedAt` carries microseconds (e.g. `2026-11-12T10:19:20.006574+00:00`) and the comparison is exact, so the client must not parse and re-serialize it (a JS `Date` would truncate to milliseconds). Idempotent; no id in the request, so nothing about other users can be probed. Unknown JSON field → 422.
      */
     post: operations['markMyNotificationsRead'];
     delete?: never;
@@ -1854,6 +1854,10 @@ export interface components {
       actorCount: number;
       target: components['schemas']['NotificationTarget'] | null;
       read: boolean;
+      /**
+       * @description Microsecond precision (unlike other dates, which are to the second); send it back unchanged as `upTo` of `POST /me/notifications/read`.
+       * @example 2026-11-12T10:19:20.006574+00:00
+       */
       updatedAt: components['schemas']['DateTime'];
     };
     NotificationPage: {
@@ -1864,6 +1868,10 @@ export interface components {
       unreadCount: number;
     };
     MarkNotificationsReadRequest: {
+      /**
+       * @description `updatedAt` (microsecond precision) of the newest item displayed, sent back unchanged; compared exactly. A date with 0 to 6 decimals is accepted.
+       * @example 2026-11-12T10:19:20.006574+00:00
+       */
       upTo: components['schemas']['DateTime'];
     };
     /** @enum {string} */

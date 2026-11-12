@@ -13,11 +13,13 @@ use App\Artist\ArtistCreator;
 use App\Artist\ArtistLookup;
 use App\Dto\Input\CreateArtistInput;
 use App\Entity\Artist;
+use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\ArtistMapper;
 use App\Message\PurgeObjects;
 use App\Problem\ApiProblemException;
 use App\Problem\ProblemCode;
+use App\Repository\ReportRepository;
 use App\Repository\TrackRepository;
 use App\Security\CurrentUser;
 use App\Storage\StorageArea;
@@ -41,6 +43,7 @@ final readonly class ArtistProcessor implements ProcessorInterface
         private EntityManagerInterface $em,
         private ArtistMapper $mapper,
         private MessageBusInterface $bus,
+        private ReportRepository $reports,
     ) {
     }
 
@@ -89,6 +92,8 @@ final readonly class ArtistProcessor implements ProcessorInterface
                 throw new ApiProblemException(ProblemCode::ArtistHasTracks, 'Delete or move the tracks of this artist first.');
             }
             $avatar = $artist->getAvatarKey();
+            // Reports are polymorphic (no FK): removed with the artist, never left in the queue.
+            $this->reports->deleteForTarget(ReportTargetType::Artist, $artist->getId());
             $this->em->remove($artist);
             $this->em->flush();
             if (null !== $avatar) {

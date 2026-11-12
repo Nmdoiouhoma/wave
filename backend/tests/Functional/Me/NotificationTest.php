@@ -46,7 +46,7 @@ final class NotificationTest extends WaveApiTestCase
         self::assertSame(['type' => 'track', 'id' => (string) $track->getId(), 'label' => 'Night', 'imageUrl' => null], $like['target']);
         self::assertSame(1, $like['actorCount']);
         self::assertFalse($like['read']);
-        self::assertMatchesRegularExpression('/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/', $like['updatedAt']);
+        self::assertMatchesRegularExpression('/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}\+00:00$/', $like['updatedAt']);
         self::assertSame('post', $comment['target']['type']);
         self::assertSame('Night', $comment['target']['label']); // no caption → track title
         self::assertSame(['unreadCount' => 3], $this->json($this->api('GET', self::COUNT, $alice)));
@@ -210,10 +210,15 @@ final class NotificationTest extends WaveApiTestCase
             "UPDATE notification SET updated_at = '2026-01-01 10:00:00.700+00' WHERE track_id = ?",
             [$tracks[0]->getId()->toRfc4122()],
         );
+        // Exact comparison at the microsecond: 1 µs before the wire updatedAt marks nothing, the exact
+        // value marks it; a date without fraction or with milliseconds is still accepted.
         self::assertSame(204, $this->api('POST', self::READ, $alice, ['json' => ['upTo' => '2026-01-01T10:00:00Z']])->getStatusCode());
+        self::assertSame(204, $this->api('POST', self::READ, $alice, ['json' => ['upTo' => '2026-01-01T10:00:00.699999+00:00']])->getStatusCode());
+        self::assertSame(['unreadCount' => 3], $this->json($this->api('GET', self::COUNT, $alice)));
+        self::assertSame(204, $this->api('POST', self::READ, $alice, ['json' => ['upTo' => '2026-01-01T10:00:00.700000+00:00']])->getStatusCode());
         self::assertSame(['unreadCount' => 2], $this->json($this->api('GET', self::COUNT, $alice)));
         self::assertSame(['unreadCount' => 1], $this->json($this->api('GET', self::COUNT, $bob)));
-        self::assertSame(204, $this->api('POST', self::READ, $alice, ['json' => ['upTo' => '2026-01-01T10:00:00Z']])->getStatusCode());
+        self::assertSame(204, $this->api('POST', self::READ, $alice, ['json' => ['upTo' => '2026-01-01T10:00:00.700Z']])->getStatusCode());
         foreach ([['upTo' => '2026-01-01T10:00:00Z', 'id' => 'x'], [], ['upTo' => 'yesterday'], ['upTo' => '2026-02-30T10:00:00Z'], ['upTo' => 12]] as $bad) {
             $this->assertProblem($this->api('POST', self::READ, $alice, ['json' => $bad]), 422, 'validation_failed');
         }
