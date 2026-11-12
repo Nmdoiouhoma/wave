@@ -30,14 +30,14 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <header className="flex flex-col items-center gap-4 text-center sm:flex-row sm:items-center sm:text-left">
+      <header className="flex flex-col items-center gap-4 text-center sm:flex-row sm:flex-wrap sm:items-center sm:text-left">
         <Avatar
           url={u.avatarUrl}
           name={u.displayName}
           seed={u.id}
-          className="ring-surface-2 size-28 text-3xl ring-4"
+          className="ring-surface-2 size-28 shrink-0 text-3xl ring-4"
         />
-        <div className="min-w-0 flex-1">
+        <div className="w-full min-w-0 sm:w-auto sm:min-w-56 sm:flex-1">
           <h1 className="text-3xl font-bold tracking-tight break-words">{u.displayName}</h1>
           <p className="text-muted">@{u.username}</p>
           <FollowCounts user={u} />
@@ -45,7 +45,7 @@ export function ProfilePage() {
         </div>
         {u.isMe ? (
           // Settings and "Mes artistes" live here since the rail lost them (W-38).
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="flex shrink-0 flex-wrap justify-center gap-2">
             <ButtonLink to="/settings" variant="secondary" size="sm">
               <EditIcon size={16} /> Modifier le profil
             </ButtonLink>
@@ -54,12 +54,14 @@ export function ProfilePage() {
             </ButtonLink>
           </div>
         ) : (
-          <FollowButton
-            username={u.username}
-            displayName={u.displayName}
-            server={{ following: u.isFollowedByMe, followersCount: u.followersCount }}
-            size="md"
-          />
+          <div className="shrink-0">
+            <FollowButton
+              username={u.username}
+              displayName={u.displayName}
+              server={{ following: u.isFollowedByMe, followersCount: u.followersCount }}
+              size="md"
+            />
+          </div>
         )}
       </header>
       {u.bio && <p className="text-fg/85 mt-4 text-sm whitespace-pre-line">{u.bio}</p>}

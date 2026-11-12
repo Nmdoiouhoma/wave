@@ -68,7 +68,9 @@ export function useToggleFollow() {
     onError: (_e, { username }, ctx) =>
       socialStore.getState().set('follows', username, ctx?.previous),
     onSuccess: (state, { username }) => socialStore.getState().set('follows', username, state),
-    onSettled: () => {
+    onSettled: (_d, _e, { username }) => {
+      // Tracks/artists/playlists visible on that profile depend on the follow (audiences).
+      void qc.invalidateQueries({ queryKey: keys.user(username) });
       // My "following" list and count changed.
       const me = qc.getQueryData<{ username: string }>(keys.me());
       if (me) {

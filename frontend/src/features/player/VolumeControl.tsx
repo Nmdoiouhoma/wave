@@ -9,17 +9,17 @@ export function VolumeControl() {
   const toggleMute = usePlayer((s) => s.toggleMute);
   const effective = muted ? 0 : volume;
   return (
-    <div className="flex w-full items-center gap-1">
+    <div className="flex w-full min-w-28 items-center gap-1">
       <IconButton
         label={muted ? 'Réactiver le son' : 'Couper le son'}
         onClick={toggleMute}
-        className="size-9"
+        className="size-9 shrink-0"
       >
         <VolumeIcon size={18} muted={muted || volume === 0} />
       </IconButton>
       <input
         type="range"
-        className="range"
+        className="range min-w-0 flex-1"
         min={0}
         max={100}
         value={Math.round(effective * 100)}

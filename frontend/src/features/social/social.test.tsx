@@ -116,6 +116,22 @@ describe('follow (W-25)', () => {
     expect(screen.getByRole('link', { name: /22 abonnés/ })).toBeInTheDocument();
   });
 
+  it('refetches the profile tracks after follow (FB-23)', async () => {
+    await loginAs('nour@wave.local');
+    let trackCalls = 0;
+    server.events.on('request:start', ({ request }) => {
+      if (new URL(request.url).pathname.endsWith('/users/kenji/tracks')) trackCalls++;
+    });
+    const user = userEvent.setup();
+    renderRoute(<ProfilePage />, { path: '/u/:username', url: '/u/kenji' });
+    const btn = await screen.findByRole('button', { name: 'Suivre Kenji Sato' });
+    await waitFor(() => expect(trackCalls).toBe(1));
+    const before = trackCalls;
+    await user.click(btn);
+    await waitFor(() => expect(trackCalls).toBeGreaterThan(before));
+    server.events.removeAllListeners();
+  });
+
   it('own profile has no follow button; followers list scrolls by pages', async () => {
     await loginAs('lea@wave.local');
     const user = userEvent.setup();
@@ -162,6 +178,17 @@ describe('user search (W-28)', () => {
     expect(seen.map((s) => s.q)).toEqual(['kenj']);
     expect(results).toHaveTextContent('Kenji Sato');
     expect(screen.getByRole('button', { name: 'Ne plus suivre Kenji Sato' })).toBeInTheDocument(); // Léa follows Kenji
+  });
+
+  it('keeps every character typed fast and the URL follows (FB-21)', async () => {
+    await loginAs('lea@wave.local');
+    const user = userEvent.setup({ delay: null });
+    renderRoute(<SearchPage />, { path: '/search' });
+    const input = screen.getByRole('searchbox', { name: 'Rechercher une personne' });
+    await user.type(input, 'Lettre à Maman');
+    expect(input).toHaveValue('Lettre à Maman');
+    await act(() => new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 100)));
+    expect(input).toHaveValue('Lettre à Maman');
   });
 
   it('cancels the previous request when the query changes', async () => {

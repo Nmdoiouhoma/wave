@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isApiError } from '@/api/errors';
 import { useUserSearch } from '@/api/queries/social';
@@ -16,8 +17,13 @@ export const SEARCH_MIN_CHARS = 2;
 /** W-28, mounted on `/discover` since W-38: people search (phase 2 = users only). `?q=` keeps the query in the URL (back button). */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
-  const input = params.get('q') ?? '';
-  const q = useDebounced(input.trim(), SEARCH_DEBOUNCE_MS);
+  // The field owns the text while typing; the URL only follows (debounced) and never rewrites it.
+  const [input, setInput] = useState(() => params.get('q') ?? '');
+  const debouncedInput = useDebounced(input, SEARCH_DEBOUNCE_MS);
+  const q = debouncedInput.trim();
+  useEffect(() => {
+    setParams(debouncedInput ? { q: debouncedInput } : {}, { replace: true });
+  }, [debouncedInput, setParams]);
   const search = useUserSearch(q);
   const users = search.data?.pages.flatMap((p) => p.items) ?? [];
   const tooShort = q.length < SEARCH_MIN_CHARS;
@@ -42,9 +48,7 @@ export function SearchPage() {
           maxLength={100}
           placeholder="Nom ou @pseudo"
           value={input}
-          onChange={(e) =>
-            setParams(e.target.value ? { q: e.target.value } : {}, { replace: true })
-          }
+          onChange={(e) => setInput(e.target.value)}
           aria-describedby="search-hint"
           className="bg-surface-2 ring-line placeholder:text-faint focus:ring-accent h-12 w-full rounded-full pr-4 pl-12 ring-1 focus:ring-2 focus:outline-none"
         />
@@ -72,7 +76,10 @@ export function SearchPage() {
           )
         ) : users.length ? (
           <>
-            <p className="sr-only">{users.length} résultats affichés</p>
+            <p className="sr-only">
+              {users.length} résultat{users.length > 1 ? 's' : ''} affiché
+              {users.length > 1 ? 's' : ''}
+            </p>
             <UserList users={users} label={`Résultats pour « ${q} »`} />
             <InfiniteSentinel
               hasMore={!!search.hasNextPage}

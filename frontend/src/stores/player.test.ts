@@ -37,6 +37,13 @@ describe('player store', () => {
     });
   });
 
+  it('restarts at an audible volume when a click starts playback at volume 0 (FB-19)', () => {
+    playerStore.setState({ volume: 0, muted: true });
+    playerStore.getState().playTracks(tracks(), 0);
+    expect(playerStore.getState()).toMatchObject({ volume: 0.9, muted: false });
+    expect(engine.setVolume).toHaveBeenCalledWith(0.9, false);
+  });
+
   it('previous restarts the track after 3 s, otherwise goes back', () => {
     playerStore.getState().playTracks(tracks(), 1);
     playerStore.setState({ positionMs: 10_000 });

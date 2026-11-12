@@ -57,6 +57,8 @@ export interface PlayerState {
   _ended(): void;
 }
 
+const DEFAULT_VOLUME = 0.9;
+
 export const isPlayable = (t: Track) => t.status === 'ready';
 
 let engine: PlayerEngine | null = null;
@@ -85,7 +87,7 @@ export const playerStore = createStore<PlayerState>()(
         positionMs: 0,
         durationMs: 0,
         buffering: false,
-        volume: 0.9,
+        volume: DEFAULT_VOLUME,
         muted: false,
         error: null,
 
@@ -93,6 +95,12 @@ export const playerStore = createStore<PlayerState>()(
           const start = tracks[startIndex];
           const queue = tracks.filter(isPlayable);
           if (!queue.length) return;
+          // A persisted volume of 0 would make a click on a track silent with no way to notice:
+          // restart at the default audible level. (Muted with volume > 0 stays: the icon shows it.)
+          if (get().volume === 0) {
+            set({ volume: DEFAULT_VOLUME, muted: false });
+            engine?.setVolume(DEFAULT_VOLUME, false);
+          }
           const index = start ? Math.max(0, queue.indexOf(start)) : 0;
           set({ queue });
           loadIndex(index);
