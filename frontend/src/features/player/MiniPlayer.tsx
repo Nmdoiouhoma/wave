@@ -47,7 +47,7 @@ export function MiniPlayer({ onExpand }: { onExpand: () => void }) {
           <IconButton label="Titre suivant" onClick={next} disabled={!hasNext}>
             <NextIcon size={18} />
           </IconButton>
-          <div className="hidden w-36 shrink-0 lg:block">
+          <div className="hidden w-28 shrink-0 md:block lg:w-36">
             <VolumeControl />
           </div>
         </div>
