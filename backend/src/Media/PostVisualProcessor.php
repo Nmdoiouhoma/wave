@@ -128,6 +128,8 @@ final class PostVisualProcessor
     {
         try {
             $this->ffmpeg->ffmpeg([
+                // Same cap as the encode: default frame threads (one per core) exhaust the prlimit --as on a many-core host.
+                '-threads', (string) self::THREADS,
                 ...FfmpegRunner::inputOptions($videoPath, FfmpegRunner::VIDEO_DEMUXERS),
                 '-map', '0:v:0', '-frames:v', '1',
                 '-map_metadata', '-1',

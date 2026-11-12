@@ -8,7 +8,7 @@ TOOLS := $(COMPOSE) --profile tools
 
 .PHONY: help env up down stop restart build pull ps logs sh console composer \
         init qa test test-media audit audit-php audit-symfony audit-composer audit-npm \
-        fpm-config db-tunnel minio-init reset
+        fpm-config db-tunnel minio-init reset seed
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -89,6 +89,10 @@ minio-init: ## Re-run bucket/policy bootstrap
 
 reset: ## DANGER: remove containers AND volumes (db, objects, caches)
 	$(COMPOSE) --profile tools down -v --remove-orphans
+
+seed: ## DEV ONLY: wipe dev DB + MinIO, then 10 demo accounts, 43 tracks, posts (see docs/handoff/seed-1112.md)
+	@if [ "$${APP_ENV:-dev}" != "dev" ]; then echo "make seed refused: APP_ENV=$$APP_ENV"; exit 1; fi
+	$(COMPOSE) exec -T worker php bin/console app:seed
 
 # ADR 006: non-zero exit if any check fails (all checks run, then report).
 audit: ## Security audit: PHP >= 8.4.27, security-http >= 7.4.23, composer + npm audit
