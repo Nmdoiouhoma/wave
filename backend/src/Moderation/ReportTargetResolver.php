@@ -98,6 +98,12 @@ final readonly class ReportTargetResolver
         return $target;
     }
 
+    /** Asks the database, not the identity map: a row deleted by another request is gone. */
+    public function exists(ReportTargetType $type, Uuid $id): bool
+    {
+        return $this->em->getRepository(self::CLASSES[$type->value])->count(['id' => $id]) > 0;
+    }
+
     private function visibleArtist(Uuid $id): Artist
     {
         $artist = $this->em->find(Artist::class, $id);

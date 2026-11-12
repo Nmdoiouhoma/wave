@@ -48,6 +48,19 @@ final class PostInteractionTest extends WaveApiTestCase
         self::assertSame($unknown->getContent(false), $hidden->getContent(false));
     }
 
+    /** F22: a body of invisible format characters only (zero-width, word joiner, BOM) is empty. */
+    public function testInvisibleOnlyCommentBodyIsEmpty(): void
+    {
+        $alice = $this->createUser('alice');
+        $bob = $this->createUser('bob');
+        $uri = '/api/v1/posts/'.$this->makePost($alice, $this->createTrack($this->createArtist($alice)))->getId().'/comments';
+
+        foreach (["\u{200B}", "\u{200C}\u{200D}", " \u{2060}\u{FEFF}\u{00A0}\u{200B}\n"] as $bad) {
+            $this->assertProblem($this->api('POST', $uri, $bob, ['json' => ['body' => $bad]]), 422, 'validation_failed');
+        }
+        self::assertSame("o\u{200B}k", $this->json($this->api('POST', $uri, $bob, ['json' => ['body' => "\u{FEFF}\u{200B}o\u{200B}k\u{2060}"]]))['body']);
+    }
+
     public function testCreateCommentValidatesAndCounts(): void
     {
         $alice = $this->createUser('alice');

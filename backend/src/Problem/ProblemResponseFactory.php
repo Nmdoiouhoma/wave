@@ -30,7 +30,11 @@ final readonly class ProblemResponseFactory
             );
         }
 
-        $response = new JsonResponse($body, $code->status(), $headers);
+        // Invalid UTF-8 in any echoed value is substituted (U+FFFD): a problem response is
+        // always encodable, never turned into a 500 by the listener itself (W-37 F19).
+        $response = new JsonResponse(null, $code->status(), $headers);
+        $response->setEncodingOptions(JsonResponse::DEFAULT_ENCODING_OPTIONS | \JSON_INVALID_UTF8_SUBSTITUTE);
+        $response->setData($body);
         $response->headers->set('Content-Type', 'application/problem+json');
         $response->headers->set('Cache-Control', 'no-store, private');
 

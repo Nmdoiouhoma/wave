@@ -12,6 +12,7 @@ use App\Entity\Comment;
 use App\Enum\NotificationType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\CommentMapper;
+use App\Post\VisibleText;
 use App\Problem\ApiProblemException;
 use App\Repository\CommentRepository;
 use App\Repository\NotificationRepository;
@@ -48,8 +49,8 @@ final readonly class CreateCommentProcessor implements ProcessorInterface
         $request = $context['request'];
         $input = $this->decoder->decode($request, CreateCommentInput::class);
 
-        // Unicode whitespace (incl. NBSP and other separators) at both ends.
-        $body = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', (string) $input->body);
+        // Unicode whitespace, separators and invisible format characters at both ends (F22).
+        $body = VisibleText::trim((string) $input->body);
         $length = mb_strlen($body);
         if ($length < 1 || $length > Comment::BODY_MAX) {
             throw ApiProblemException::validation('body', 'The comment must contain 1 to '.Comment::BODY_MAX.' characters.');

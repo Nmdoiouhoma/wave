@@ -11,6 +11,8 @@ use App\Enum\Visibility;
 use App\Repository\PostRepository;
 use App\Repository\ReportRepository;
 use App\Tests\Functional\WaveApiTestCase;
+use Doctrine\ORM\Event\PostFlushEventArgs;
+use Doctrine\ORM\Events;
 use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Uid\Uuid;
 
@@ -275,6 +277,38 @@ final class ReportTest extends WaveApiTestCase
         $this->assertProblem($this->api('POST', '/api/v1/admin/report-targets/user/'.$mod->getId().'/decision', $mod, ['json' => ['action' => 'suspend']]), 422, 'validation_failed');
         $this->assertProblem($this->api('POST', '/api/v1/admin/report-targets/track/'.self::UNKNOWN.'/decision', $mod, ['json' => ['action' => 'hide']]), 404, 'not_found');
         $this->assertProblem($this->api('POST', '/api/v1/admin/report-targets/song/'.self::UNKNOWN.'/decision', $mod, ['json' => ['action' => 'hide']]), 404, 'not_found');
+    }
+
+    /**
+     * F23: the target is deleted between the decision's writes and the reload for the response
+     * (simulated by a postFlush listener inside the decision's transaction): the same 404 as an
+     * unknown id, never a 500.
+     */
+    public function testTargetDeletedBeforeTheReloadIsA404(): void
+    {
+        $mod = $this->moderator();
+        $alice = $this->createUser('alice');
+        $post = $this->makePost($alice, $this->createTrack($this->createArtist($alice)));
+        $comment = $this->comment($post, $alice, 'rude');
+        $listener = new class($comment) {
+            public function __construct(private readonly string $id)
+            {
+            }
+
+            public function postFlush(PostFlushEventArgs $args): void
+            {
+                $args->getObjectManager()->getConnection()->executeStatement('DELETE FROM comment WHERE id = ?', [$this->id]);
+            }
+        };
+        $events = $this->em()->getEventManager();
+        $events->addEventListener(Events::postFlush, $listener);
+        try {
+            $r = $this->api('POST', '/api/v1/admin/report-targets/comment/'.$comment.'/decision', $mod, ['json' => ['action' => 'hide']]);
+        } finally {
+            $events->removeEventListener(Events::postFlush, $listener);
+        }
+        $this->assertProblem($r, 404, 'not_found');
+        self::assertFalse($this->db()->fetchOne('SELECT 1 FROM comment WHERE id = ?', [$comment]));
     }
 
     public function testSuspendRevokesSessionsAndTheStillValidJwt(): void

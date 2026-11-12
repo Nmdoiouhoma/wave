@@ -20,6 +20,7 @@ use App\Mapper\PostMapper;
 use App\Message\GenerateClip;
 use App\Message\ProcessPostVisual;
 use App\Post\HashtagExtractor;
+use App\Post\VisibleText;
 use App\Post\VisualSniffer;
 use App\Problem\ApiProblemException;
 use App\Problem\ProblemCode;
@@ -122,12 +123,12 @@ final readonly class CreatePostProcessor implements ProcessorInterface
         }
         foreach (array_keys($fields) as $name) {
             if (!\in_array($name, self::FIELDS, true)) {
-                throw ApiProblemException::validation((string) $name, 'Unknown field.');
+                throw ApiProblemException::validation(self::echoableName($name), 'Unknown field.');
             }
         }
         foreach (array_keys($files) as $name) {
             if ('visual' !== $name) {
-                throw ApiProblemException::validation((string) $name, 'Unknown field.');
+                throw ApiProblemException::validation(self::echoableName($name), 'Unknown field.');
             }
         }
         foreach ($fields as $name => $value) {
@@ -146,12 +147,24 @@ final readonly class CreatePostProcessor implements ProcessorInterface
             throw ApiProblemException::validation('clipDurationMs', \sprintf('Must be between %d and %d.', Post::MIN_CLIP_MS, Post::MAX_CLIP_MS));
         }
         $caption = $fields['caption'] ?? null;
-        $caption = \is_string($caption) && '' !== trim($caption) ? $caption : null;
+        // Same emptiness rule as a comment body (F22): only blanks or invisible characters → none.
+        $caption = \is_string($caption) && '' !== VisibleText::trim($caption) ? $caption : null;
         if (null !== $caption && mb_strlen($caption) > Post::CAPTION_MAX) {
             throw ApiProblemException::validation('caption', \sprintf('At most %d characters.', Post::CAPTION_MAX));
         }
 
         return [$trackId, $clipStartMs, $clipDurationMs, $caption];
+    }
+
+    /**
+     * An unknown field name is echoed in the 422 only if it is clean text; otherwise (invalid
+     * UTF-8, control characters) it is replaced, never reflected raw (W-37 F19).
+     */
+    private static function echoableName(int|string $name): string
+    {
+        $name = (string) $name;
+
+        return RequestEncodingListener::isCleanText($name) ? $name : '(invalid field name)';
     }
 
     /** @param array<array-key, mixed> $fields */

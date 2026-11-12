@@ -20,6 +20,7 @@ use App\Problem\ApiProblemException;
 use App\Repository\ReportRepository;
 use App\Security\CurrentUser;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\EntityNotFoundException;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
@@ -83,8 +84,17 @@ final readonly class ModerationDecisionProcessor implements ProcessorInterface
             $this->reports->closeOpen($type, $id, $status, $moderator, $note);
         });
 
-        // The writes were native SQL: reload the target for the response.
-        $this->em->refresh($target);
+        // The writes were native SQL: reload the target for the response, read again by id.
+        // Deleted meanwhile (by its author, or a cascade, once the lock is released): refresh()
+        // keeps the stale state or throws; either way the same 404 as an unknown id (F23).
+        try {
+            $this->em->refresh($target);
+        } catch (EntityNotFoundException) {
+            throw ApiProblemException::notFound();
+        }
+        if (!$this->targets->exists($type, $id)) {
+            throw ApiProblemException::notFound();
+        }
         $row = $this->reports->findTarget($type, $id, $status);
         $now = new \DateTimeImmutable();
 

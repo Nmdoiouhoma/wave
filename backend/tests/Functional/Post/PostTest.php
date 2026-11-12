@@ -114,6 +114,10 @@ final class PostTest extends WaveApiTestCase
         $this->assertProblem($this->createPost($alice, ['status' => 'ready'] + $this->fields($own)), 422, 'validation_failed');
         $this->assertProblem($this->createPost($alice, ['caption' => str_repeat('a', 301)] + $this->fields($own)), 422, 'validation_failed');
         $this->assertProblem($this->createPost($alice, ['caption' => "a\0b"] + $this->fields($own)), 422, 'validation_failed');
+        // F22: a caption of blanks or invisible format characters only is no caption.
+        $invisible = $this->createPost($alice, ['caption' => " \u{200B}\u{2060}\u{FEFF}\u{00A0}"] + $this->fields($own));
+        self::assertSame(202, $invisible->getStatusCode(), $invisible->getContent(false));
+        self::assertNull($this->json($invisible)['caption']);
         $this->assertProblem($this->createPost($alice, ['trackId' => 'nope'] + $this->fields($own)), 422, 'validation_failed');
         $this->assertProblem($this->createPost($alice, $this->fields($own), ['other' => $this->file(self::PNG, 'a.png', 'image/png')['visual']]), 422, 'validation_failed');
 
