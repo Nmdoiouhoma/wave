@@ -19,6 +19,8 @@ Je suis le lead : les agents ne se parlent pas, je relaie tout et je suis seul �
 5. **Vérifier puis commiter** : skill `wave-verif`, puis `wave-commit`. Ne jamais relayer un chiffre d'agent sans l'avoir mesuré.
 6. **Revue** : `wave-qa-security` sur le lot commité (Opus si auth, autorisations, upload, FFmpeg ; sinon `model: sonnet`). Findings critique/élevé/moyen → correctifs par les propriétaires, re-vérif, re-revue ciblée. Bas niveau → noté pour la phase 5.
 7. **Fin de lot ou de phase** : skill `wave-ameliorer` (fin de phase seulement), skill `wave-etat`, puis résumé à l'utilisateur — ce qui marche, comment tester (URL, compte, parcours en 3-5 étapes), ce qui reste. Notification push seulement si j'ai besoin de lui (test navigateur, décision).
+8. **Fin de vague** : après `wave-etat`, terminer le message par ces étapes, toujours écrites ainsi :
+   « Pour la suite : 1. tape `/clear` ; 2. tape `reprends Wave`. » (une session de lead par vague, économie de tokens).
 
 Mode `reprise` : `git status --short`, `ls docs/handoff/`, dernière section « En cours » de `docs/etat-projet.md`, puis reprendre à l'étape où le lot s'est arrêté.
 

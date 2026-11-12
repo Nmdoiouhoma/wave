@@ -32,7 +32,12 @@ Monorepo : `backend/` Symfony 7.4 + API Platform + Postgres + Messenger · `fron
 - Retour utilisateur sur un affichage : localiser d'abord le composant qui affiche la donnée, avant API ou base.
 
 ## Organisation
-- Tâche de moins de ~15 appels : le lead la fait lui-même, sans agent (le coût fixe d'un agent domine).
+- Tâche de moins de ~15 appels : le lead la fait lui-même, sans agent, **si son contexte est sous ~80 k tokens** ;
+  au-delà, le lead diagnostique et confie le correctif précis (fichiers, lignes) à un agent court (Sonnet si non sensible).
+- Une session de lead par vague : en fin de vague, état écrit et commité, puis l'utilisateur fait `/clear` et « reprends Wave ».
+- Modèles : Sonnet par défaut pour les écrans ; Opus pour auth, autorisations, upload, FFmpeg et revues qa. Essai phase 4 :
+  un écran Sonnet qui demande plus d'une série de correctifs après revue → ce type d'écran repasse sur Opus.
+- Tests navigateur : l'utilisateur les fait dans une autre session (prompt fourni) ; le lead ne fait qu'un contrôle ciblé.
 - Une vague de lots se termine par un test manuel de l'utilisateur avant la vague suivante.
 - Revue qa-security : diff + fichiers touchés + handoff ; ouvrir les fichiers voisins (voters, `security:` des
   opérations API Platform, config). Vérifier surtout ce qui n'est pas testé (accès refusé, entrée invalide, erreurs).
