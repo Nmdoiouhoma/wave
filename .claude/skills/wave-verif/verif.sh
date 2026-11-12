@@ -41,6 +41,9 @@ if has back backend/ || has back infra/; then
   done
   step phpstan  docker compose exec -T php php vendor/bin/phpstan analyse --memory-limit=1G --no-progress
   step cs-fixer docker compose exec -T php php vendor/bin/php-cs-fixer fix --dry-run --diff --using-cache=no
+  # Concurrency tests spawn PHP sub-processes that reuse the compiled test container:
+  # stale after a constructor change, every spawned request fails with a 500 (12/11).
+  docker compose exec -T php php bin/console cache:clear --env=test >/dev/null 2>&1 || true
   step phpunit  make -s test c=--no-progress
   step media    make -s test-media c=--no-progress
   ls backend/migrations/ | grep -q . && git status --porcelain backend/migrations | grep -q '^??' && \
