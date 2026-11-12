@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -209,6 +209,54 @@ describe('single post (W-34)', () => {
     expect(await screen.findByRole('article')).toHaveAccessibleName(/Morceau 7/);
     await waitFor(() => expect(playingAudio()?.src).toBe(post.clip!.url));
     expect(screen.queryByText('Tu as tout vu')).not.toBeInTheDocument();
+  });
+
+  it('navigates with keys whatever has the focus, except in a field (FB-24 A1)', async () => {
+    serveFeed('for-you', [{ items: [makePost(1), makePost(2), makePost(3)], nextCursor: null }]);
+    const user = userEvent.setup();
+    renderRoute(<FeedPage which="for-you" />);
+    await waitFor(() => expect(playingAudio()).not.toBeNull());
+    // Nothing focused yet (page just opened).
+    await user.keyboard('j');
+    expect(activeItem()).toHaveAccessibleName(/Morceau 2/);
+    // A click on the post focuses its play button, not the scroller.
+    within(activeItem())
+      .getByRole('button', { name: /Mettre en pause|Lire l’extrait/ })
+      .focus();
+    await user.keyboard('{ArrowDown}');
+    expect(activeItem()).toHaveAccessibleName(/Morceau 3/);
+    await user.keyboard('k');
+    expect(activeItem()).toHaveAccessibleName(/Morceau 2/);
+  });
+
+  it('moves one post per wheel gesture (FB-24 A1)', async () => {
+    serveFeed('for-you', [{ items: [makePost(1), makePost(2), makePost(3)], nextCursor: null }]);
+    renderRoute(<FeedPage which="for-you" />);
+    await waitFor(() => expect(playingAudio()).not.toBeNull());
+    const feed = screen.getByRole('feed');
+    act(() => {
+      fireEvent.wheel(feed, { deltaY: 120 });
+      fireEvent.wheel(feed, { deltaY: 120 });
+      fireEvent.wheel(feed, { deltaY: 80 });
+    });
+    expect(activeItem()).toHaveAccessibleName(/Morceau 2/);
+  });
+
+  it('comes back to the same post and session after leaving the feed (FB-24 A5)', async () => {
+    const asked = serveFeed('for-you', [
+      { items: [makePost(1), makePost(2), makePost(3)], nextCursor: null },
+    ]);
+    const user = userEvent.setup();
+    const { router } = renderRoute(<FeedPage which="for-you" />);
+    await waitFor(() => expect(playingAudio()).not.toBeNull());
+    await user.keyboard('jj');
+    expect(activeItem()).toHaveAccessibleName(/Morceau 3/);
+    await act(() => router.navigate('/u/nour'));
+    expect(screen.getByText('autre page')).toBeInTheDocument();
+    await act(() => router.navigate(-1));
+    expect(await screen.findByRole('feed')).toBeInTheDocument();
+    expect(activeItem()).toHaveAccessibleName(/Morceau 3/);
+    expect(asked).toEqual([null]);
   });
 
   it('says the post is gone on 404', async () => {

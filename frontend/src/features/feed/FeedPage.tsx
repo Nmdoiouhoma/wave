@@ -64,7 +64,8 @@ export function FeedPage({ which }: { which: FeedSource }) {
 }
 
 function FeedSessionView({ which }: { which: FeedSource }) {
-  const { session, posts, query, loadMore, restart } = useFeedSession(which);
+  const { session, initialIndex, setPosition, posts, query, loadMore, restart } =
+    useFeedSession(which);
   const header = <FeedTabs which={which} />;
 
   if (query.isPending || (query.isSuccess && !posts.length && query.hasNextPage))
@@ -117,6 +118,14 @@ function FeedSessionView({ which }: { which: FeedSource }) {
     );
 
   return (
-    <FeedViewer key={session} posts={posts} header={header} footer={footer} onNearEnd={loadMore} />
+    <FeedViewer
+      key={session}
+      posts={posts}
+      header={header}
+      footer={footer}
+      onNearEnd={loadMore}
+      initialIndex={initialIndex}
+      onActiveChange={setPosition}
+    />
   );
 }

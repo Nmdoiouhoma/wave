@@ -186,7 +186,7 @@ export function FeedItem({
             key={burst}
             filled
             size={96}
-            className="text-wave pointer-events-none absolute animate-ping [animation-iteration-count:1]"
+            className="text-accent-strong pointer-events-none absolute animate-ping [animation-iteration-count:1]"
           />
         )}
       </button>
@@ -238,7 +238,8 @@ export function FeedItem({
             <HeartIcon
               size={30}
               filled={like.state.liked}
-              className={cx(like.state.liked && 'text-wave')}
+              // `text-wave` is a gradient clipped to text: transparent on an SVG (FB-24 A2).
+              className={cx(like.state.liked && 'text-accent-strong')}
             />
             <span>{formatCount(like.state.likeCount)}</span>
           </button>

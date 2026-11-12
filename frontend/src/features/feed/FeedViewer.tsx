@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDownIcon } from '@/components/ui/icons';
 import { playerStore } from '@/stores/player';
 import { FeedItem } from './FeedItem';
@@ -9,6 +9,18 @@ const VIEW_TICK_MS = 1_000;
 const VIEW_FLUSH_MS = 10_000;
 /** Media elements stay mounted this many items around the active one. */
 const NEAR = 1;
+/** One wheel gesture (a trackpad flick fires dozens of events) moves one post. */
+const WHEEL_LOCK_MS = 700;
+const WHEEL_THRESHOLD = 20;
+
+/** Keys typed in a field or inside a sheet/dialog are not feed navigation. */
+function ownsKeys(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    !!target.closest('input, textarea, select, [role="dialog"], [role="menu"]')
+  );
+}
 
 function pauseGlobalPlayer() {
   const { status, pause } = playerStore.getState();
@@ -24,15 +36,20 @@ export function FeedViewer({
   header,
   footer,
   onNearEnd,
+  initialIndex = 0,
+  onActiveChange,
 }: {
   posts: Post[];
   header?: ReactNode;
   footer?: ReactNode;
   onNearEnd?: () => void;
+  /** Post shown first, without animation (back navigation, FB-24 A5). */
+  initialIndex?: number;
+  onActiveChange?: (index: number) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const playback = useRef<FeedPlayback | null>(null);
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState(() => Math.max(0, Math.min(initialIndex, posts.length - 1)));
   const [clip, setClip] = useState<{ postId: string; status: ClipStatus } | null>(null);
   const count = posts.length + (footer ? 1 : 0);
   const activePost = posts[active] ?? null;
@@ -92,15 +109,55 @@ export function FeedViewer({
     if (i !== active) setActive(i);
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'j') {
+  // Reopen on the saved post: jump there before paint (`active` is already set).
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && el.clientHeight > 0) el.scrollTop = active * el.clientHeight;
+    // Mount only: later moves go through `go` or the user's own scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // FB-24 A1: keys work as soon as the feed is on screen, wherever the focus is (a click on a
+  // post focuses its play button, not the scroller), except in fields and sheets.
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+    onActiveChange?.(active);
+  }, [active, onActiveChange]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || ownsKeys(e.target)) return;
+      let step = 0;
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'j') step = 1;
+      else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'k') step = -1;
+      if (!step) return;
       e.preventDefault();
-      go(active + 1);
-    } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'k') {
+      go(activeRef.current + step);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [go]);
+
+  // FB-24 A1: the wheel moves exactly one post per gesture instead of fighting the snap.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    let lockedUntil = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (ownsKeys(e.target) || Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
       e.preventDefault();
-      go(active - 1);
-    }
-  };
+      const now = performance.now();
+      if (now < lockedUntil || Math.abs(e.deltaY) < WHEEL_THRESHOLD) {
+        // Still the same gesture: keep the lock while its inertia lasts.
+        if (now < lockedUntil) lockedUntil = now + WHEEL_LOCK_MS;
+        return;
+      }
+      lockedUntil = now + WHEEL_LOCK_MS;
+      go(activeRef.current + Math.sign(e.deltaY));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [go]);
 
   return (
     <div className="relative h-full bg-black">
@@ -112,7 +169,6 @@ export function FeedViewer({
         aria-busy={false}
         tabIndex={0}
         onScroll={onScroll}
-        onKeyDown={onKeyDown}
         className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:mx-auto md:max-w-[min(100%,calc(100dvh*9/16))]"
       >
         {posts.map((post, i) => (

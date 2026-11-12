@@ -80,6 +80,14 @@ describe('login', () => {
     await user.click(screen.getByRole('button', { name: 'Se connecter' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/u/kenji'));
   });
+
+  it('submits with Enter in the password field (FB-24 A4)', async () => {
+    const user = userEvent.setup();
+    const { router } = renderRoute(<LoginPage />, { path: '/login', url: '/login' });
+    await user.type(screen.getByLabelText('Adresse e-mail'), 'lea@wave.local');
+    await user.type(screen.getByLabelText('Mot de passe'), 'motdepasse123{Enter}');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+  });
 });
 
 describe('forgot password', () => {

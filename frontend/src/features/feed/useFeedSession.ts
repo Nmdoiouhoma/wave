@@ -1,9 +1,14 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isApiError } from '@/api/errors';
 import { feedApi, type FeedSource, type Post } from './feedApi';
 
 export const FEED_PAGE_SIZE = 10;
+/** A left feed is kept this long, so going back to it lands on the same post (FB-24 A5). */
+export const FEED_RESUME_MS = 10 * 60_000;
+
+/** Last session and position per tab; only trusted while that session is still cached. */
+const lastPosition = new Map<FeedSource, { session: number; index: number }>();
 
 /**
  * One feed session (openapi `getForYouFeed` / `getFollowingFeed`): pages deduped by id, a short
@@ -11,7 +16,14 @@ export const FEED_PAGE_SIZE = 10;
  * `restart()` opens a new session.
  */
 export function useFeedSession(source: FeedSource) {
-  const [session, setSession] = useState(0);
+  const qc = useQueryClient();
+  const [resume] = useState(() => {
+    const saved = lastPosition.get(source);
+    return saved && qc.getQueryData(['feed', source, saved.session]) ? saved : null;
+  });
+  const [session, setSession] = useState(
+    () => resume?.session ?? (lastPosition.get(source)?.session ?? -1) + 1,
+  );
   const query = useInfiniteQuery({
     queryKey: ['feed', source, session],
     queryFn: async ({ pageParam }) => {
@@ -25,9 +37,9 @@ export function useFeedSession(source: FeedSource) {
     },
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
-    // A session is consumed once: never refetched behind the viewer's back, dropped on exit.
+    // A session is consumed once: never refetched behind the viewer's back, dropped a while after exit.
     staleTime: Infinity,
-    gcTime: 0,
+    gcTime: FEED_RESUME_MS,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -58,8 +70,16 @@ export function useFeedSession(source: FeedSource) {
       void fetchNextPage({ cancelRefetch: false });
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
+  const setPosition = useCallback(
+    (index: number) => lastPosition.set(source, { session, index }),
+    [source, session],
+  );
+
   return {
     session,
+    /** Post to reopen on (0 for a new session). */
+    initialIndex: resume?.session === session ? resume.index : 0,
+    setPosition,
     posts,
     query,
     loadMore,
