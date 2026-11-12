@@ -7,9 +7,10 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
-import { FeedStubPage } from '@/features/feed/FeedStubPage';
+import { FeedPage } from '@/features/feed/FeedPage';
+import { PostPage } from '@/features/feed/PostPage';
 import { CloseFriendsPage } from '@/features/profile/CloseFriendsPage';
-import { PostComposerStubPage, PostViewerStubPage } from '@/features/posts/PostStubPages';
+import { PostComposerPage } from '@/features/posts/PostComposerPage';
 import { LibraryPage } from '@/features/playlists/LibraryPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
 import { SearchPage } from '@/features/search/SearchPage';
@@ -24,10 +25,10 @@ import { SearchRedirect } from './SearchRedirect';
 
 // Route map and active tab: see ./navigation.ts (W-38).
 const appChildren: RouteObject[] = [
-  { index: true, element: <FeedStubPage which="for-you" /> },
-  { path: 'following', element: <FeedStubPage which="following" /> },
-  { path: 'posts/new', element: <PostComposerStubPage /> },
-  { path: 'posts/:id', element: <PostViewerStubPage /> },
+  { index: true, element: <FeedPage which="for-you" /> },
+  { path: 'following', element: <FeedPage which="following" /> },
+  { path: 'posts/new', element: <PostComposerPage /> },
+  { path: 'posts/:id', element: <PostPage /> },
   { path: 'discover', element: <SearchPage /> },
   { path: 'upload', element: <UploadPage /> },
   { path: 'me/artists', element: <MyArtistsPage /> },

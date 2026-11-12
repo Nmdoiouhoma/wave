@@ -52,3 +52,13 @@ export type LikeState = S['LikeState'];
 export type FollowState = S['FollowState'];
 export type UserListItem = S['UserListItem'];
 export type SearchResults = S['SearchResults'];
+
+// W-35 (composer)
+export type Post = S['Post'];
+export type PostVisual = S['PostVisual'];
+
+// W-34 (vertical feed)
+export type PostPage = S['PostPage'];
+export type PostViewsRequest = S['PostViewsRequest'];
+export type PostViewReport = PostViewsRequest['views'][number];
+export type FeedSource = 'for-you' | 'following';

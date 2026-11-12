@@ -8,12 +8,13 @@ import { keys } from './keys';
 export const TRACK_POLL_INTERVAL_MS = 3_000;
 export const TRACK_POLL_TIMEOUT_MS = 600_000;
 
-export function useTrack(id: string, options: { initialData?: Track } = {}) {
+export function useTrack(id: string, options: { initialData?: Track; enabled?: boolean } = {}) {
   const [startedAt] = useState(() => Date.now());
   return useQuery({
     queryKey: keys.track(id),
     queryFn: () => api.tracks.get(id),
     initialData: options.initialData,
+    enabled: options.enabled,
     refetchInterval: (query) =>
       query.state.data?.status === 'processing' && Date.now() - startedAt < TRACK_POLL_TIMEOUT_MS
         ? TRACK_POLL_INTERVAL_MS

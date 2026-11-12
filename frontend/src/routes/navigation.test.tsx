@@ -101,7 +101,7 @@ describe('navigation shell (mobile)', () => {
 
   it('shows the 5 tabs in order, with Pour toi active on /', async () => {
     renderApp('/');
-    expect(await screen.findByText('Le fil arrive bientôt')).toBeInTheDocument();
+    expect(await screen.findByText('Aucun extrait pour l’instant')).toBeInTheDocument();
     const items = within(mainNav()).getAllByRole('listitem');
     expect(items.map((li) => li.textContent)).toEqual([
       'Pour toi',
@@ -183,7 +183,7 @@ describe('navigation shell (mobile)', () => {
   it('hides the mini player on / but shows it elsewhere', async () => {
     playerStore.setState({ queue: [track], index: 0 });
     renderApp('/');
-    await screen.findByText('Le fil arrive bientôt');
+    await screen.findByText('Aucun extrait pour l’instant');
     expect(screen.queryByRole('region', { name: 'Lecteur' })).not.toBeInTheDocument();
     expect(mainNav()).toBeInTheDocument();
   });

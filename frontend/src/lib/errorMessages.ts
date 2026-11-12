@@ -35,6 +35,8 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   upload_expired: 'L’envoi a expiré (plus de 2 heures). Relance l’import de ce fichier.',
   upload_incomplete: 'Le fichier n’est pas arrivé complètement. Relance l’import.',
   storage_rejected: 'Le stockage a refusé le fichier (lien expiré ou taille non conforme).',
+  clips_not_allowed: 'Tu ne peux pas utiliser d’extrait de ce morceau.',
+  clip_out_of_range: 'L’extrait dépasse la fin du morceau : choisis un autre début.',
   not_a_follower: 'Cette personne ne te suit plus.',
   internal_error: 'Une erreur est survenue. Réessaie dans un instant.',
 };
@@ -88,4 +90,32 @@ export function failureMessage(reason: FailureReason | string, { video = false }
   const entry = reason ? FAILURES[reason as KnownFailureReason] : undefined;
   if (!entry) return 'Le traitement a échoué.';
   return typeof entry === 'function' ? entry(video) : entry;
+}
+
+/** W-35 `POST /posts`: 413/415 concern the visual, not a track file. */
+export function postErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.code === 'payload_too_large')
+      return 'Visuel trop lourd : 5 Mo maximum pour une image, 15 Mo pour une vidéo.';
+    if (error.code === 'unsupported_media_type')
+      return 'Format du visuel non pris en charge : JPEG, PNG, WebP ou vidéo MP4.';
+    if (error.code === 'not_found') return 'Ce morceau n’est plus disponible.';
+    if (error.code === 'track_not_ready')
+      return 'Ce morceau est encore en cours de traitement. Réessaie dans un instant.';
+  }
+  return errorMessage(error);
+}
+
+const POST_FAILURES: Partial<Record<KnownFailureReason, string>> = {
+  invalid_media: 'Le visuel est illisible ou n’est pas un format pris en charge.',
+  unsupported_codec: 'Le codec de la vidéo n’est pas pris en charge. Essaie un autre fichier.',
+  too_long: 'La vidéo dépasse 60 secondes.',
+  too_large: 'Le visuel est trop lourd (5 Mo pour une image, 15 Mo pour une vidéo).',
+  processing_error: 'La création de l’extrait a échoué. Réessaie.',
+};
+
+/** Why a post ended `failed`, in French. */
+export function postFailureMessage(reason: FailureReason | string): string {
+  return (reason ? POST_FAILURES[reason as KnownFailureReason] : undefined) ??
+    'La création de l’extrait a échoué. Réessaie.';
 }

@@ -1,5 +1,5 @@
 // One function per phase-1 operation of docs/openapi.yaml. UI-agnostic.
-import type { ApiClient } from './client';
+import type { ApiClient, UploadOptions } from './client';
 import type {
   SearchResults,
   CloseFriendPage,
@@ -8,6 +8,10 @@ import type {
   FollowState,
   LikeState,
   Playlist,
+  Post,
+  PostPage,
+  PostViewReport,
+  FeedSource,
   PlaylistItem,
   PlaylistItemPage,
   PlaylistPage,
@@ -103,6 +107,23 @@ export function createWaveApi(client: ApiClient) {
         request<undefined>('PUT', `/playlists/${enc(id)}/order`, { body: { trackIds } }),
       like: (id: string) => request<LikeState>('PUT', `/playlists/${enc(id)}/like`),
       unlike: (id: string) => request<LikeState>('DELETE', `/playlists/${enc(id)}/like`),
+    },
+    posts: {
+      /** W-35: multipart, 202 `processing`; poll `get`. */
+      create: (form: FormData, options: UploadOptions = {}) =>
+        upload<Post>('POST', '/posts', form, options),
+      get: (id: string) => request<Post>('GET', `/posts/${enc(id)}`),
+      // W-34: vertical feed.
+      streamUrl: (id: string) => request<StreamUrl>('GET', `/posts/${enc(id)}/stream-url`),
+      like: (id: string) => request<LikeState>('PUT', `/posts/${enc(id)}/like`),
+      unlike: (id: string) => request<LikeState>('DELETE', `/posts/${enc(id)}/like`),
+      /** Batched views (≤ 50), `keepalive` on page hide. */
+      reportViews: (views: PostViewReport[], opts: { keepalive?: boolean } = {}) =>
+        request<undefined>('POST', '/post-views', { body: { views }, keepalive: opts.keepalive }),
+    },
+    feed: {
+      page: (source: FeedSource, page: PageParams = {}) =>
+        request<PostPage>('GET', `/feed/${source}`, { query: { ...page } }),
     },
     users: {
       playlists: (username: string, page: PageParams = {}) =>
