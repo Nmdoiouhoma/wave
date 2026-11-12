@@ -21,7 +21,10 @@ final class ViewNormalizer
     private static function normalize(mixed $value): mixed
     {
         if (\is_object($value)) {
-            return self::toArray($value);
+            $array = self::toArray($value);
+
+            // A map (`\stdClass`) stays a JSON object when empty: `{}`, not `[]`.
+            return [] === $array && $value instanceof \stdClass ? new \stdClass() : $array;
         }
         if (\is_array($value)) {
             return array_map(self::normalize(...), $value);

@@ -7,13 +7,14 @@ namespace App\Entity;
 use App\Enum\ReportReason;
 use App\Enum\ReportStatus;
 use App\Enum\ReportTargetType;
+use App\Repository\ReportRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
 use Symfony\Component\Uid\Uuid;
 
-/** DATA_MODEL §13. Polymorphic target (no FK). Table created by W-30; behaviour arrives with W-33. */
-#[ORM\Entity]
+/** DATA_MODEL §13. Polymorphic target (no FK). Table created by W-30; behaviour W-33 (native SQL in ReportRepository). */
+#[ORM\Entity(repositoryClass: ReportRepository::class)]
 #[ORM\Table(name: 'report')]
 #[ORM\UniqueConstraint(name: 'uniq_report_reporter_target', columns: ['reporter_id', 'target_type', 'target_id'])]
 #[ORM\Index(name: 'idx_report_status_created', columns: ['status', 'created_at'])]

@@ -1,0 +1,101 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\State\Processor;
+
+use ApiPlatform\Metadata\Operation;
+use ApiPlatform\State\ProcessorInterface;
+use App\ApiResource\ReportTargetView;
+use App\Dto\Input\ModerationDecisionInput;
+use App\Entity\User;
+use App\Enum\Moderation;
+use App\Enum\ReportStatus;
+use App\Enum\ReportTargetType;
+use App\Http\JsonInputDecoder;
+use App\Mapper\ReportMapper;
+use App\Moderation\ModerationApplier;
+use App\Moderation\ReportTargetResolver;
+use App\Problem\ApiProblemException;
+use App\Repository\ReportRepository;
+use App\Security\CurrentUser;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\Request;
+
+/**
+ * `POST /admin/report-targets/{targetType}/{targetId}/decision` (ROLE_MODERATOR, 200), DATA_MODEL
+ * §13. Order: body (422) → unknown target (404) → action not allowed for the type, suspending
+ * oneself or an already suspended user (422 `validation_failed`). Applies to every open report
+ * of the target, also with none (proactive moderation), under the target's advisory lock.
+ *
+ * Response: the target after the decision; counts and reasons are those of the reports holding
+ * the resulting status (`actioned` or `dismissed`, as the queue with that `status` filter).
+ *
+ * @implements ProcessorInterface<mixed, ReportTargetView>
+ */
+final readonly class ModerationDecisionProcessor implements ProcessorInterface
+{
+    public function __construct(
+        private CurrentUser $currentUser,
+        private JsonInputDecoder $decoder,
+        private ReportTargetResolver $targets,
+        private ReportRepository $reports,
+        private ModerationApplier $moderation,
+        private ReportMapper $mapper,
+        private EntityManagerInterface $em,
+    ) {
+    }
+
+    public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): ReportTargetView
+    {
+        $moderator = $this->currentUser->require();
+        /** @var Request $request */
+        $request = $context['request'];
+        $input = $this->decoder->decode($request, ModerationDecisionInput::class);
+        [$type, $id] = ReportTargetResolver::fromPath($uriVariables['targetType'] ?? null, $uriVariables['targetId'] ?? null);
+        $target = $this->targets->find($type, $id) ?? throw ApiProblemException::notFound();
+
+        $action = (string) $input->action;
+        $isUser = ReportTargetType::User === $type;
+        if ($isUser ? ModerationDecisionInput::HIDE === $action : ModerationDecisionInput::SUSPEND === $action) {
+            throw ApiProblemException::validation('action', $isUser ? 'A user is suspended, not hidden.' : 'Only a user can be suspended.');
+        }
+        if (ModerationDecisionInput::SUSPEND === $action && $target instanceof User) {
+            if ($target->getId()->equals($moderator->getId())) {
+                throw ApiProblemException::validation('action', 'You cannot suspend yourself.');
+            }
+            if ($target->isSuspended()) {
+                throw ApiProblemException::validation('action', 'This account is already suspended.');
+            }
+        }
+        $note = null === $input->note || '' === trim($input->note) ? null : trim($input->note);
+        $status = ModerationDecisionInput::DISMISS === $action ? ReportStatus::Dismissed : ReportStatus::Actioned;
+
+        $this->em->wrapInTransaction(function () use ($type, $id, $target, $action, $status, $moderator, $note): void {
+            $this->reports->lockTarget($type, $id);
+            if ($target instanceof User) {
+                if (ModerationDecisionInput::SUSPEND === $action) {
+                    $this->moderation->suspend($target);
+                }
+            } else {
+                $this->moderation->setModeration($type, $id, ModerationDecisionInput::HIDE === $action ? Moderation::Hidden : Moderation::Visible);
+            }
+            $this->reports->closeOpen($type, $id, $status, $moderator, $note);
+        });
+
+        // The writes were native SQL: reload the target for the response.
+        $this->em->refresh($target);
+        $row = $this->reports->findTarget($type, $id, $status);
+        $now = new \DateTimeImmutable();
+
+        return $this->mapper->targetView(
+            $type,
+            $id->toRfc4122(),
+            $target,
+            $row['n'] ?? 0,
+            $this->reports->reasonCounts($status, [$id->toRfc4122()])[$type->value.':'.$id->toRfc4122()] ?? [],
+            $row['first_at'] ?? $now,
+            $row['last_at'] ?? $now,
+        );
+    }
+}

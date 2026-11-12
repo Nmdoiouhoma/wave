@@ -83,6 +83,25 @@ final class ConcurrencySecurityTest extends SecurityTestCase
         self::assertSame(16, (int) $this->raw->fetchOne('SELECT count(*) FROM follow WHERE followed_id = ?', [$star->getId()->toRfc4122()]));
     }
 
+    /** W-45: concurrent events on one target merge into one unread item (DATA_MODEL §8b, no lock). */
+    public function testConcurrentLikesAndFollowsMergeIntoOneUnreadNotification(): void
+    {
+        $owner = $this->user('owner');
+        $track = $this->track($owner);
+        $requests = [];
+        for ($i = 0; $i < 10; ++$i) {
+            $requests[] = ['PUT', '/api/v1/tracks/'.$track.'/like', $this->user('fan'.$i), ''];
+            $requests[] = ['PUT', '/api/v1/users/'.self::PREFIX.'_owner/follow', $this->user('fol'.$i), ''];
+        }
+
+        self::assertSame(array_fill(0, 20, 200), $this->runConcurrently($requests));
+        $o = $owner->getId()->toRfc4122();
+        self::assertSame(1, (int) $this->raw->fetchOne("SELECT count(*) FROM notification WHERE recipient_id = ? AND type = 'track_like' AND read_at IS NULL", [$o]));
+        self::assertSame(1, (int) $this->raw->fetchOne("SELECT count(*) FROM notification WHERE recipient_id = ? AND type = 'follow' AND read_at IS NULL", [$o]));
+        self::assertSame(10, (int) $this->raw->fetchOne('SELECT count(*) FROM notification_actor a JOIN notification n ON n.id = a.notification_id WHERE n.track_id = ?', [$track]));
+        self::assertSame(10, (int) $this->raw->fetchOne("SELECT count(*) FROM notification_actor a JOIN notification n ON n.id = a.notification_id WHERE n.recipient_id = ? AND n.type = 'follow'", [$o]));
+    }
+
     public function testConcurrentAppendsKeepPositionsContiguous(): void
     {
         $owner = $this->user('owner');

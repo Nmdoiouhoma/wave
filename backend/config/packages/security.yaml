@@ -34,6 +34,8 @@ security:
     access_control:
         - { path: ^/api/v1/genres$, roles: PUBLIC_ACCESS }
         - { path: ^/api/v1/docs, roles: PUBLIC_ACCESS }
+        # 403 before any lookup (W-33): no target existence oracle for non-moderators.
+        - { path: ^/api/v1/admin(/|$), roles: ROLE_MODERATOR }
         - { path: ^/api/v1/, roles: IS_AUTHENTICATED_FULLY }
 
 when@test:

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\User;
+use App\Enum\NotificationType;
 use App\Pagination\Keyset;
 use App\Security\TrackAudience;
 use Doctrine\DBAL\ArrayParameterType;
@@ -13,7 +14,8 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * Track, playlist and post likes (DATA_MODEL §8): `INSERT … ON CONFLICT DO NOTHING`, counters moved
- * only if a row changed, atomic SQL in the caller's transaction.
+ * only if a row changed, atomic SQL in the caller's transaction. An inserted like notifies the
+ * target's owner, a deleted one withdraws the actor from it (DATA_MODEL §8b).
  */
 final readonly class LikeRepository
 {
@@ -23,7 +25,13 @@ final readonly class LikeRepository
         'post' => ['table' => 'post_like', 'column' => 'post_id', 'counter' => 'post'],
     ];
 
-    public function __construct(private Connection $db)
+    private const array NOTIFICATIONS = [
+        'track' => NotificationType::TrackLike,
+        'playlist' => NotificationType::PlaylistLike,
+        'post' => NotificationType::PostLike,
+    ];
+
+    public function __construct(private Connection $db, private NotificationRepository $notifications)
     {
     }
 
@@ -39,8 +47,13 @@ final readonly class LikeRepository
             "INSERT INTO {$t['table']} (user_id, {$t['column']}, created_at) VALUES (:u, :t, clock_timestamp()) ON CONFLICT DO NOTHING",
             ['u' => $user->getId()->toRfc4122(), 't' => $targetId->toRfc4122()],
         );
+        // Counter first: the target row lock orders concurrent writers before the notification row.
+        $count = $this->bump($t['counter'], $targetId, 1 === $inserted ? 1 : 0);
+        if (1 === $inserted) {
+            $this->notifications->recordOn(self::NOTIFICATIONS[$kind], $user, $targetId);
+        }
 
-        return [1 === $inserted, $this->bump($t['counter'], $targetId, 1 === $inserted ? 1 : 0)];
+        return [1 === $inserted, $count];
     }
 
     /**
@@ -55,8 +68,12 @@ final readonly class LikeRepository
             "DELETE FROM {$t['table']} WHERE user_id = :u AND {$t['column']} = :t",
             ['u' => $user->getId()->toRfc4122(), 't' => $targetId->toRfc4122()],
         );
+        $count = $this->bump($t['counter'], $targetId, 1 === $deleted ? -1 : 0);
+        if (1 === $deleted) {
+            $this->notifications->retractOn(self::NOTIFICATIONS[$kind], $user, $targetId);
+        }
 
-        return $this->bump($t['counter'], $targetId, 1 === $deleted ? -1 : 0);
+        return $count;
     }
 
     /**
@@ -74,8 +91,13 @@ final readonly class LikeRepository
             "DELETE FROM {$t['table']} WHERE user_id = :u AND {$t['column']} = :t",
             ['u' => $user->getId()->toRfc4122(), 't' => $targetId->toRfc4122()],
         );
+        if (1 !== $deleted) {
+            return null;
+        }
+        $count = $this->bump($t['counter'], $targetId, -1);
+        $this->notifications->retractOn(self::NOTIFICATIONS[$kind], $user, $targetId);
 
-        return 1 === $deleted ? $this->bump($t['counter'], $targetId, -1) : null;
+        return $count;
     }
 
     /**

@@ -12,11 +12,12 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * Follow graph (DATA_MODEL §8): idempotent writes, counters moved only when a row was
- * really inserted/deleted, in the caller's transaction.
+ * really inserted/deleted, in the caller's transaction; the same rule writes and withdraws the
+ * `follow` notification (DATA_MODEL §8b).
  */
 final readonly class FollowRepository
 {
-    public function __construct(private Connection $db)
+    public function __construct(private Connection $db, private NotificationRepository $notifications)
     {
     }
 
@@ -29,8 +30,10 @@ final readonly class FollowRepository
         );
         if (1 === $inserted) {
             $this->db->executeStatement('UPDATE app_user SET following_count = following_count + 1 WHERE id = :id', ['id' => $follower->getId()->toRfc4122()]);
+            $count = (int) $this->db->fetchOne('UPDATE app_user SET followers_count = followers_count + 1 WHERE id = :id RETURNING followers_count', ['id' => $followed->getId()->toRfc4122()]);
+            $this->notifications->recordFollow($follower, $followed);
 
-            return (int) $this->db->fetchOne('UPDATE app_user SET followers_count = followers_count + 1 WHERE id = :id RETURNING followers_count', ['id' => $followed->getId()->toRfc4122()]);
+            return $count;
         }
 
         return $this->followersCount($followed);
@@ -45,8 +48,10 @@ final readonly class FollowRepository
         );
         if (1 === $deleted) {
             $this->db->executeStatement('UPDATE app_user SET following_count = following_count - 1 WHERE id = :id', ['id' => $follower->getId()->toRfc4122()]);
+            $count = (int) $this->db->fetchOne('UPDATE app_user SET followers_count = followers_count - 1 WHERE id = :id RETURNING followers_count', ['id' => $followed->getId()->toRfc4122()]);
+            $this->notifications->retractFollow($follower, $followed);
 
-            return (int) $this->db->fetchOne('UPDATE app_user SET followers_count = followers_count - 1 WHERE id = :id RETURNING followers_count', ['id' => $followed->getId()->toRfc4122()]);
+            return $count;
         }
 
         return $this->followersCount($followed);

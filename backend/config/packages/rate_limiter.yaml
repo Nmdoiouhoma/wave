@@ -26,3 +26,5 @@ framework:
         comment_day_user: { policy: sliding_window, limit: 200, interval: '1 day', cache_pool: cache.rate_limiter }
         feed_for_you_user: { policy: sliding_window, limit: 60, interval: '1 minute', cache_pool: cache.rate_limiter }
         post_view_user: { policy: sliding_window, limit: 60, interval: '1 minute', cache_pool: cache.rate_limiter }
+        notifications_user: { policy: sliding_window, limit: 120, interval: '1 minute', cache_pool: cache.rate_limiter }
+        report_user: { policy: sliding_window, limit: 20, interval: '1 hour', cache_pool: cache.rate_limiter }

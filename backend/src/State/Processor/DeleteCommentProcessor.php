@@ -6,14 +6,12 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
-use App\Enum\Moderation;
 use App\Mapper\CommentMapper;
 use App\Problem\ApiProblemException;
 use App\Repository\CommentRepository;
 use App\Security\CurrentUser;
-use App\Security\TrackAudience;
+use App\State\Provider\CommentLookup;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\Uid\Uuid;
 
 /**
  * `DELETE /comments/{commentId}` (204). DATA_MODEL §10: a comment the caller cannot see (post
@@ -27,7 +25,7 @@ final readonly class DeleteCommentProcessor implements ProcessorInterface
     public function __construct(
         private CurrentUser $currentUser,
         private CommentRepository $comments,
-        private TrackAudience $audience,
+        private CommentLookup $lookup,
         private EntityManagerInterface $em,
     ) {
     }
@@ -35,16 +33,7 @@ final readonly class DeleteCommentProcessor implements ProcessorInterface
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): null
     {
         $viewer = $this->currentUser->require();
-        $rawId = $uriVariables['commentId'] ?? null;
-        $comment = \is_string($rawId) && Uuid::isValid($rawId) ? $this->comments->findWithRelations(Uuid::fromString($rawId)) : null;
-        $visible = null !== $comment
-            && $this->audience->isPostVisible($comment->getPost(), $viewer)
-            && ($viewer->isModerator()
-                || $comment->getAuthor()->getId()->equals($viewer->getId())
-                || (Moderation::Visible === $comment->getModeration() && !$comment->getAuthor()->isSuspended()));
-        if (null === $comment || !$visible) {
-            throw ApiProblemException::notFound();
-        }
+        $comment = $this->lookup->visible($uriVariables['commentId'] ?? null, $viewer);
         if (!CommentMapper::canDelete($comment, $viewer)) {
             throw ApiProblemException::forbidden('Only the comment author, the post author or a moderator can delete this comment.');
         }
