@@ -10,4 +10,6 @@ enum AdminRoleOutcome
     case Unchanged;
     case NotFound;
     case LastAdmin;
+    case Suspended;
+    case Unverified;
 }

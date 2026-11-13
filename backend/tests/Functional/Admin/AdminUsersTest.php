@@ -159,7 +159,9 @@ final class AdminUsersTest extends WaveApiTestCase
         $forMod = $this->json($this->api('GET', '/api/v1/admin/dashboard', $mod));
         self::assertNull($forMod['alerts']);
         self::assertNull($forMod['announcements']);
-        self::assertSame($forAdmin['users'], $forMod['users']);
+        self::assertNull($forMod['users'], 'ADR 013: moderation counters only');
+        self::assertNull($forMod['content']);
+        self::assertSame($forAdmin['moderation'], $forMod['moderation']);
     }
 
     private function staff(string $username, string $role): User

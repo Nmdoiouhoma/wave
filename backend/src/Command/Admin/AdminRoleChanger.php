@@ -14,6 +14,8 @@ use Symfony\Component\Uid\Uuid;
  * transaction: the admins are locked first (ORDER BY id, so two revokes serialize), then the
  * target row; `admin.admin_granted` / `admin.admin_revoked` is written in it with actor NULL.
  * Revoking keeps the other roles (an admin who was also moderator stays moderator).
+ * W-77 F27: a suspended or unverified account is never granted; the last-admin guard counts
+ * only non-suspended admins (revoking a suspended admin is always allowed).
  */
 final readonly class AdminRoleChanger
 {
@@ -27,11 +29,11 @@ final readonly class AdminRoleChanger
     public function change(string $email, bool $grant): AdminRoleOutcome
     {
         return $this->db->transactional(function (Connection $db) use ($email, $grant): AdminRoleOutcome {
-            $admins = $db->fetchFirstColumn(
-                "SELECT id FROM app_user WHERE roles::jsonb @> '[\"ROLE_ADMIN\"]'::jsonb ORDER BY id FOR UPDATE",
-            );
+            $activeAdmins = array_filter($db->fetchAllAssociative(
+                "SELECT id, suspended_at FROM app_user WHERE roles::jsonb @> '[\"ROLE_ADMIN\"]'::jsonb ORDER BY id FOR UPDATE",
+            ), static fn (array $admin): bool => null === $admin['suspended_at']);
             $row = $db->fetchAssociative(
-                'SELECT id, roles FROM app_user WHERE email = :e FOR UPDATE',
+                'SELECT id, roles, suspended_at, email_verified_at FROM app_user WHERE email = :e FOR UPDATE',
                 ['e' => mb_strtolower(trim($email))],
             );
             if (false === $row) {
@@ -43,7 +45,13 @@ final readonly class AdminRoleChanger
             if ($grant === $isAdmin) {
                 return AdminRoleOutcome::Unchanged;
             }
-            if (!$grant && \count($admins) <= 1) {
+            if ($grant && null !== $row['suspended_at']) {
+                return AdminRoleOutcome::Suspended;
+            }
+            if ($grant && null === $row['email_verified_at']) {
+                return AdminRoleOutcome::Unverified;
+            }
+            if (!$grant && null === $row['suspended_at'] && \count($activeAdmins) <= 1) {
                 return AdminRoleOutcome::LastAdmin;
             }
             $next = $grant ? [...$roles, self::ADMIN] : array_values(array_diff($roles, [self::ADMIN]));

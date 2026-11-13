@@ -38,26 +38,30 @@ export function DashboardPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
       <div className="grid gap-4 md:grid-cols-2">
-        <Card title="Utilisateurs">
-          <Stat label="Comptes" value={d.users.total} to="/admin/users" />
-          <Stat label="Nouveaux (24 h)" value={d.users.new24h} />
-          <Stat label="Nouveaux (7 j)" value={d.users.new7d} />
-          <Stat label="Suspendus" value={d.users.suspended} to="/admin/users?status=suspended" />
-          <Stat label="E-mail non vérifié" value={d.users.unverified} to="/admin/users?status=unverified" />
-          <Stat label="Modérateurs" value={d.users.moderators} to="/admin/users?role=ROLE_MODERATOR" />
-          <Stat label="Administrateurs" value={d.users.admins} to="/admin/users?role=ROLE_ADMIN" />
-        </Card>
+        {d.users && (
+          <Card title="Utilisateurs">
+            <Stat label="Comptes" value={d.users.total} to="/admin/users" />
+            <Stat label="Nouveaux (24 h)" value={d.users.new24h} />
+            <Stat label="Nouveaux (7 j)" value={d.users.new7d} />
+            <Stat label="Suspendus" value={d.users.suspended} to="/admin/users?status=suspended" />
+            <Stat label="E-mail non vérifié" value={d.users.unverified} to="/admin/users?status=unverified" />
+            <Stat label="Modérateurs" value={d.users.moderators} to="/admin/users?role=ROLE_MODERATOR" />
+            <Stat label="Administrateurs" value={d.users.admins} to="/admin/users?role=ROLE_ADMIN" />
+          </Card>
+        )}
         <Card title="Modération">
           <Stat label="Cibles signalées" value={d.moderation.openReportTargets} to="/admin/reports" />
           <Stat label="Signalements ouverts" value={d.moderation.openReports} to="/admin/reports" />
           <Stat label="Masqués (24 h)" value={d.moderation.hiddenContent24h} />
         </Card>
-        <Card title="Activité (24 h)">
-          <Stat label="Morceaux" value={d.content.tracks24h} />
-          <Stat label="Posts" value={d.content.posts24h} />
-          <Stat label="Commentaires" value={d.content.comments24h} />
-          <Stat label="Envois refusés" value={d.content.failedUploads24h} />
-        </Card>
+        {d.content && (
+          <Card title="Activité (24 h)">
+            <Stat label="Morceaux" value={d.content.tracks24h} />
+            <Stat label="Posts" value={d.content.posts24h} />
+            <Stat label="Commentaires" value={d.content.comments24h} />
+            <Stat label="Envois refusés" value={d.content.failedUploads24h} />
+          </Card>
+        )}
         {d.alerts && (
           <Card title="Alertes">
             <Stat label="Ouvertes" value={d.alerts.open} />

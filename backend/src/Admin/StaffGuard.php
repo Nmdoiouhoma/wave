@@ -14,10 +14,20 @@ final class StaffGuard
 {
     public static function canActOn(User $actor, User $target): bool
     {
-        if ($target->isAdmin()) {
+        return self::canActOnRoles($actor, $target->getRoles());
+    }
+
+    /**
+     * Same rule on raw stored roles, for a re-check on a row locked `FOR UPDATE` (W-77 F26).
+     *
+     * @param array<string> $targetRoles
+     */
+    public static function canActOnRoles(User $actor, array $targetRoles): bool
+    {
+        if (\in_array('ROLE_ADMIN', $targetRoles, true)) {
             return false;
         }
 
-        return !$target->isModerator() || $actor->isAdmin();
+        return !\in_array('ROLE_MODERATOR', $targetRoles, true) || $actor->isAdmin();
     }
 }

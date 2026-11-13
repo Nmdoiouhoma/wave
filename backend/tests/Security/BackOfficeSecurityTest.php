@@ -112,7 +112,10 @@ final class BackOfficeSecurityTest extends SecurityTestCase
         self::assertIsArray($second['announcements']);
         $third = $this->json($this->api('GET', '/api/v1/admin/dashboard', $mod));
         self::assertNull($third['alerts']);
-        self::assertArrayNotHasKey('email', $third['users']);
+        self::assertNull($third['users']);
+        self::assertNull($third['content']);
+        self::assertIsArray($second['users']);
+        self::assertIsArray($second['content']);
     }
 
     public function testAnnouncementTextIsInertAndTheBodyIsStrict(): void
@@ -120,9 +123,9 @@ final class BackOfficeSecurityTest extends SecurityTestCase
         $admin = $this->staff('boss', 'ROLE_ADMIN');
         $user = $this->createUser('alice');
         $title = '<img src=x onerror=alert(1)>';
-        $body = "</script><script>alert(document.cookie)</script>\u{202E}gnp.exe";
+        $body = "</script><script>alert(document.cookie)</script>\nsecond line";
 
-        $created = $this->api('POST', '/api/v1/admin/announcements', $admin, ['json' => ['title' => $title, 'body' => $body, 'level' => 'warning', 'startsAt' => '2026-01-01T00:00:00Z']]); // explicit: see W-77 finding on the truncated :now
+        $created = $this->api('POST', '/api/v1/admin/announcements', $admin, ['json' => ['title' => $title, 'body' => $body, 'level' => 'warning']]); // no startsAt: visible at once (W-77 F25)
         self::assertSame(201, $created->getStatusCode(), $created->getContent(false));
         self::assertStringStartsWith('application/json', $created->getHeaders()['content-type'][0]);
 
@@ -142,6 +145,16 @@ final class BackOfficeSecurityTest extends SecurityTestCase
             ['title' => 't', 'body' => 'b', 'level' => 'critical'],
             ['title' => str_repeat('t', 81), 'body' => 'b', 'level' => 'info'],
             ['title' => "t\u{0000}", 'body' => 'b', 'level' => 'info'],
+            // W-77 F28: control and direction characters (newline allowed in the body only).
+            ['title' => "t\u{202E}gnp.exe", 'body' => 'b', 'level' => 'info'],
+            ['title' => 't', 'body' => "b\u{202E}gnp.exe", 'level' => 'info'],
+            ['title' => 't', 'body' => "b\u{2067}x\u{2069}", 'level' => 'info'],
+            ['title' => 't', 'body' => "b\u{202A}", 'level' => 'info'],
+            ['title' => "t\n", 'body' => 'b', 'level' => 'info'],
+            ['title' => "t\tx", 'body' => 'b', 'level' => 'info'],
+            ['title' => 't', 'body' => "b\r\nc", 'level' => 'info'],
+            ['title' => 't', 'body' => "b\u{001B}[31m", 'level' => 'info'],
+            ['title' => 't', 'body' => "b\u{0085}", 'level' => 'info'],
             ['title' => 't', 'body' => 'b', 'level' => 'info', 'startsAt' => '2026-11-13 10:00:00'],
             ['title' => 't', 'body' => 'b', 'level' => 'info', 'startsAt' => '2026-11-13T10:00:00'],
             ['title' => 't', 'body' => 'b', 'level' => 'info', 'startsAt' => '2026-02-30T10:00:00Z'],
@@ -162,12 +175,20 @@ final class BackOfficeSecurityTest extends SecurityTestCase
         self::assertSame(422, $patch(['createdBy' => null])->getStatusCode());
         self::assertSame(422, $patch(['title' => null])->getStatusCode());
         self::assertSame(422, $patch(['startsAt' => '2999-01-01T00:00:00Z', 'endsAt' => '2998-01-01T00:00:00Z'])->getStatusCode());
+        $this->assertProblem($patch(['title' => "t\u{2066}x"]), 422, 'validation_failed');
+        $this->assertProblem($patch(['body' => "b\u{202D}"]), 422, 'validation_failed');
         self::assertSame(1, (int) $this->db()->fetchOne('SELECT count(*) FROM announcement'), 'no invalid body created a row');
 
         // Scheduled and expired announcements stay off the banner.
         self::assertSame(200, $patch(['startsAt' => '2999-01-01T00:00:00Z'])->getStatusCode());
         self::assertSame([], $this->json($this->api('GET', '/api/v1/announcements', $user))['items']);
         self::assertSame(200, $patch(['startsAt' => '2020-01-01T00:00:00Z', 'endsAt' => '2020-01-02T00:00:00Z'])->getStatusCode());
+        self::assertSame([], $this->json($this->api('GET', '/api/v1/announcements', $user))['items']);
+
+        // W-77 F25: ended "now" (microseconds) is hidden at once, not up to 1 s later.
+        self::assertSame(200, $patch(['endsAt' => null])->getStatusCode());
+        self::assertCount(1, $this->json($this->api('GET', '/api/v1/announcements', $user))['items']);
+        self::assertSame(200, $patch(['endsAt' => new \DateTimeImmutable()->format('Y-m-d\\TH:i:s.uP')])->getStatusCode());
         self::assertSame([], $this->json($this->api('GET', '/api/v1/announcements', $user))['items']);
     }
 

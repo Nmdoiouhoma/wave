@@ -9,6 +9,7 @@ use ApiPlatform\State\ProviderInterface;
 use App\ApiResource\ActiveAnnouncementsView;
 use App\Entity\Announcement;
 use App\Mapper\JournalMapper;
+use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Clock\ClockInterface;
 
@@ -37,7 +38,8 @@ final readonly class ActiveAnnouncementsProvider implements ProviderInterface
             ->from(Announcement::class, 'a')
             ->where('a.startsAt <= :now')
             ->andWhere('a.endsAt IS NULL OR a.endsAt > :now')
-            ->setParameter('now', $this->clock->now())
+            // Bound with microseconds like the columns (W-77 F25): no 1 s lag on a new or ended banner.
+            ->setParameter('now', $this->clock->now(), Types::DATETIMETZ_IMMUTABLE)
             ->orderBy('levelRank', 'ASC')
             ->addOrderBy('a.startsAt', 'DESC')
             ->addOrderBy('a.id', 'DESC')

@@ -8,7 +8,10 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use App\State\Provider\AdminDashboardProvider;
 
-/** `AdminDashboard` schema (FB-28): `alerts` and `announcements` null for a moderator caller. */
+/**
+ * `AdminDashboard` schema (FB-28): a moderator caller gets the `moderation` block only, every
+ * other block null (ADR 013 §2, "moderation counters only", W-77 F30).
+ */
 #[ApiResource(
     shortName: 'AdminDashboard',
     operations: [
@@ -23,16 +26,16 @@ use App\State\Provider\AdminDashboardProvider;
 final readonly class AdminDashboardView
 {
     /**
-     * @param array<string, int>      $users
+     * @param array<string, int>|null $users
      * @param array<string, int>      $moderation
-     * @param array<string, int>      $content
+     * @param array<string, int>|null $content
      * @param array<string, int>|null $alerts
      * @param array<string, int>|null $announcements
      */
     public function __construct(
-        public array $users,
+        public ?array $users,
         public array $moderation,
-        public array $content,
+        public ?array $content,
         public ?array $alerts,
         public ?array $announcements,
         public string $generatedAt,

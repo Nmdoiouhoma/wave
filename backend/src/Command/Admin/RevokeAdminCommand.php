@@ -23,7 +23,7 @@ final readonly class RevokeAdminCommand
             AdminRoleOutcome::Changed => self::say($output, 'ROLE_ADMIN revoked.', Command::SUCCESS),
             AdminRoleOutcome::Unchanged => self::say($output, 'This account is not an admin.', Command::SUCCESS),
             AdminRoleOutcome::LastAdmin => self::say($output, 'Refused: this is the last admin.', Command::FAILURE),
-            AdminRoleOutcome::NotFound => self::say($output, 'User not found.', Command::FAILURE),
+            AdminRoleOutcome::NotFound, AdminRoleOutcome::Suspended, AdminRoleOutcome::Unverified => self::say($output, 'User not found.', Command::FAILURE),
         };
     }
 

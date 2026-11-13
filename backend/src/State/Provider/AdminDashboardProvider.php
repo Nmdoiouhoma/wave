@@ -17,8 +17,9 @@ use Symfony\Contracts\Cache\ItemInterface;
 
 /**
  * `GET /admin/dashboard` (ROLE_MODERATOR, FB-28). One aggregate query cached 60 s and shared by
- * every caller; the admin-only blocks (`alerts`, `announcements`) are nulled for a moderator
- * after the cache read, so the cached value never depends on the caller.
+ * every caller; a moderator gets the moderation counters only (ADR 013 §2): `users`, `content`,
+ * `alerts` and `announcements` are nulled after the cache read, so the cached value never
+ * depends on the caller.
  *
  * @implements ProviderInterface<AdminDashboardView>
  */
@@ -47,7 +48,7 @@ final readonly class AdminDashboardProvider implements ProviderInterface
         $n = static fn (string $key): int => (int) $data['row'][$key];
 
         return new AdminDashboardView(
-            [
+            $admin ? [
                 'total' => $n('users_total'),
                 'new24h' => $n('users_new24h'),
                 'new7d' => $n('users_new7d'),
@@ -55,18 +56,18 @@ final readonly class AdminDashboardProvider implements ProviderInterface
                 'unverified' => $n('users_unverified'),
                 'moderators' => $n('users_moderators'),
                 'admins' => $n('users_admins'),
-            ],
+            ] : null,
             [
                 'openReportTargets' => $n('open_targets'),
                 'openReports' => $n('open_reports'),
                 'hiddenContent24h' => $n('hidden24h'),
             ],
-            [
+            $admin ? [
                 'tracks24h' => $n('tracks24h'),
                 'posts24h' => $n('posts24h'),
                 'comments24h' => $n('comments24h'),
                 'failedUploads24h' => $n('failed_uploads24h'),
-            ],
+            ] : null,
             $admin ? [
                 'open' => $n('alerts_high') + $n('alerts_medium') + $n('alerts_low'),
                 'openHigh' => $n('alerts_high'),

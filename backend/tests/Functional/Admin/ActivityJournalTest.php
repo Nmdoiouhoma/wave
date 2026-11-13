@@ -201,6 +201,32 @@ final class ActivityJournalTest extends WaveApiTestCase
         self::assertSame('alice', $this->json($this->api('GET', '/api/v1/me', $this->reload($alice)))['username'] ?? null);
     }
 
+    /** W-77 F27: no grant to a suspended or unverified account; suspended admins do not count. */
+    public function testAdminGrantRefusesSuspendedOrUnverifiedAndLastAdminIgnoresSuspended(): void
+    {
+        $this->createUser('carl');
+        $this->createUser('dana', verified: false);
+        $this->createUser('erin');
+        $this->createUser('fred');
+        $this->db()->executeStatement("UPDATE app_user SET suspended_at = now() WHERE username IN ('carl', 'fred')");
+        $grant = $this->command('app:admin:grant');
+        $revoke = $this->command('app:admin:revoke');
+
+        self::assertSame(1, $grant->execute(['email' => 'carl@example.test']));
+        self::assertStringContainsString('suspended', $grant->getDisplay());
+        self::assertSame(1, $grant->execute(['email' => 'dana@example.test']));
+        self::assertStringContainsString('verified', $grant->getDisplay());
+        self::assertSame(0, (int) $this->db()->fetchOne("SELECT count(*) FROM activity_event WHERE type = 'admin.admin_granted'"));
+
+        // fred is an admin who got suspended later: erin is the only active admin.
+        $this->db()->executeStatement("UPDATE app_user SET roles = '[\"ROLE_ADMIN\"]' WHERE username = 'fred'");
+        self::assertSame(0, $grant->execute(['email' => 'erin@example.test']));
+        self::assertSame(1, $revoke->execute(['email' => 'erin@example.test']));
+        self::assertStringContainsString('last admin', $revoke->getDisplay());
+        self::assertSame(0, $revoke->execute(['email' => 'fred@example.test']), 'a suspended admin can always be revoked');
+        self::assertSame(['ROLE_ADMIN'], $this->roles('erin'));
+    }
+
     public function testPurgeRetention(): void
     {
         $alice = $this->createUser('alice');

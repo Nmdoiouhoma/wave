@@ -72,6 +72,17 @@ final readonly class AdminSuspensionProcessor implements ProcessorInterface
         }
 
         $this->em->wrapInTransaction(function () use ($caller, $target, $suspend, $note, $notInState): void {
+            // W-77 F26: re-read the roles on the locked row, so a concurrent `app:admin:grant` or
+            // role change cannot slip between the guard above and the write below.
+            $raw = $this->db->fetchOne('SELECT roles FROM app_user WHERE id = :id FOR UPDATE', ['id' => $target->getId()->toRfc4122()]);
+            if (false === $raw) {
+                throw ApiProblemException::notFound();
+            }
+            /** @var list<string> $roles */
+            $roles = json_decode((string) $raw, true, 4, \JSON_THROW_ON_ERROR);
+            if (!StaffGuard::canActOnRoles($caller, $roles)) {
+                throw ApiProblemException::forbidden($suspend ? 'You cannot suspend this account.' : 'You cannot unsuspend this account.');
+            }
             $changed = $suspend
                 ? $this->moderation->suspend($target)
                 : 1 === (int) $this->db->executeStatement(

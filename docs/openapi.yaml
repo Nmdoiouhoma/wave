@@ -3134,16 +3134,19 @@ components:
       required: [users, moderation, content, alerts, announcements, generatedAt]
       properties:
         users:
-          type: object
-          required: [total, new24h, new7d, suspended, unverified, moderators, admins]
-          properties:
-            total: { type: integer }
-            new24h: { type: integer }
-            new7d: { type: integer }
-            suspended: { type: integer }
-            unverified: { type: integer }
-            moderators: { type: integer }
-            admins: { type: integer }
+          description: Null for a moderator caller (ADR 013, F30).
+          oneOf:
+            - type: object
+              required: [total, new24h, new7d, suspended, unverified, moderators, admins]
+              properties:
+                total: { type: integer }
+                new24h: { type: integer }
+                new7d: { type: integer }
+                suspended: { type: integer }
+                unverified: { type: integer }
+                moderators: { type: integer }
+                admins: { type: integer }
+            - type: 'null'
         moderation:
           type: object
           required: [openReportTargets, openReports, hiddenContent24h]
@@ -3152,13 +3155,16 @@ components:
             openReports: { type: integer }
             hiddenContent24h: { type: integer, description: Auto-hides and staff hides in the last 24 h. }
         content:
-          type: object
-          required: [tracks24h, posts24h, comments24h, failedUploads24h]
-          properties:
-            tracks24h: { type: integer }
-            posts24h: { type: integer }
-            comments24h: { type: integer }
-            failedUploads24h: { type: integer }
+          description: Null for a moderator caller (ADR 013, F30).
+          oneOf:
+            - type: object
+              required: [tracks24h, posts24h, comments24h, failedUploads24h]
+              properties:
+                tracks24h: { type: integer }
+                posts24h: { type: integer }
+                comments24h: { type: integer }
+                failedUploads24h: { type: integer }
+            - type: 'null'
         alerts:
           description: Null for a moderator caller.
           oneOf:

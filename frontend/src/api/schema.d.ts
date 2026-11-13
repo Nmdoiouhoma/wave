@@ -2435,6 +2435,7 @@ export interface components {
       items: components['schemas']['Announcement'][];
     };
     AdminDashboard: {
+      /** @description Null for a moderator caller (ADR 013, F30). */
       users: {
         total: number;
         new24h: number;
@@ -2443,19 +2444,20 @@ export interface components {
         unverified: number;
         moderators: number;
         admins: number;
-      };
+      } | null;
       moderation: {
         openReportTargets: number;
         openReports: number;
         /** @description Auto-hides and staff hides in the last 24 h. */
         hiddenContent24h: number;
       };
+      /** @description Null for a moderator caller (ADR 013, F30). */
       content: {
         tracks24h: number;
         posts24h: number;
         comments24h: number;
         failedUploads24h: number;
-      };
+      } | null;
       /** @description Null for a moderator caller. */
       alerts: {
         open: number;
