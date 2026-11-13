@@ -34,7 +34,12 @@ Source of truth for the PostgreSQL 16 schema. API shapes live in `openapi.yaml`;
 | `ReportReason` | `spam`, `harassment`, `hate`, `sexual`, `violence`, `copyright`, `impersonation`, `other` |
 | `ReportStatus` | `open`, `actioned`, `dismissed` |
 | `NotificationType` | `follow`, `track_like`, `playlist_like`, `post_like`, `comment` (FB-16) |
-| `Role` | `ROLE_USER` (implicit), `ROLE_MODERATOR`, `ROLE_ADMIN` (inherits moderator) |
+| `Role` | `ROLE_USER` (implicit), `ROLE_MODERATOR`, `ROLE_ADMIN` (inherits moderator). ROLE_ADMIN is granted only by console (ADR 013) |
+| `ActivityCategory` | `auth`, `account`, `content`, `report`, `upload`, `abuse`, `admin` (§15) |
+| `AlertRule` | `login_failures`, `token_reuse`, `mass_registration`, `report_burst`, `report_spree`, `upload_abuse`, `rate_limit_hammering`, `privilege_granted` (§16) |
+| `AlertSeverity` | `low`, `medium`, `high` |
+| `AlertStatus` | `open`, `acknowledged` |
+| `AnnouncementLevel` | `info`, `warning` (§17) |
 
 ## 2. User — `app_user`
 
@@ -51,7 +56,8 @@ Source of truth for the PostgreSQL 16 schema. API shapes live in `openapi.yaml`;
 | followers_count | int | no | counter (Follow) |
 | following_count | int | no | counter (Follow) |
 | email_verified_at | timestamptz | yes | null = unverified (§3b); set by verify-email or password-reset confirm |
-| suspended_at | timestamptz | yes | set by moderator; blocks login/refresh |
+| suspended_at | timestamptz | yes | set by moderator; blocks login/refresh; cleared by unsuspend (ADR 013) |
+| last_login_at | timestamptz | yes | set on successful login (not on refresh); shown in the back-office, survives journal retention (FB-28) |
 | created_at | timestamptz | no | |
 
 Indexes: unique(email), unique(username), GIN `gin_trgm_ops` on `wave_unaccent(lower(username))` and on `wave_unaccent(lower(display_name))`.
@@ -385,7 +391,7 @@ A user cannot report their own content (422 `cannot_report_own`) and can only re
 Concurrency: the report insert and the auto-hide check run in one transaction holding `pg_advisory_xact_lock(hashtext(target_type || ':' || target_id))`, so the 5th and 6th concurrent reporters hide the target exactly once and counters move once.
 **Auto-hide**: in the report transaction, if `COUNT(DISTINCT reporter_id) WHERE target AND status='open' ≥ 5` and target_type ∈ {track, post, comment, playlist, artist} → target `moderation = hidden` (counters adjusted, e.g. comment_count, artist track_count recount). `user` targets are never auto-hidden: queue only.
 **Moderator decision** (per target, applies to all its open reports): `hide` → moderation=hidden, reports `actioned`; `dismiss` → moderation=visible, reports `dismissed`; `suspend` (user targets only) → `suspended_at = now()`, refresh tokens deleted, reports `actioned`. All set `handled_by_id`, `handled_at`, `decision_note`.
-Allowed actions: content targets `hide`/`dismiss` (`suspend` → 422 `validation_failed`); user targets `suspend`/`dismiss` (`hide` → 422); suspending oneself or an already suspended user → 422. Unknown target → 404 (moderators see everything else, hidden included). Moderation changes use the conditional UPDATE of §10 and adjust counters only on an actual change (comment_count, artist track_count recount). Unsuspend is phase 5 (W-50).
+Allowed actions: content targets `hide`/`dismiss` (`suspend` → 422 `validation_failed`); user targets `suspend`/`dismiss` (`hide` → 422); suspending oneself or an already suspended user → 422. Unknown target → 404 (moderators see everything else, hidden included). Moderation changes use the conditional UPDATE of §10 and adjust counters only on an actual change (comment_count, artist track_count recount). Unsuspend: `DELETE /admin/users/{userId}/suspension` (FB-28, ADR 013). Role guard (ADR 013 §2): `suspend` on a moderator by a moderator, or on an admin by anyone → 403 `forbidden`. Every decision writes an `admin.report_decided` event (§15) in the same transaction.
 
 ## 13b. Account deletion (GDPR erasure) — hard delete
 
@@ -395,7 +401,7 @@ Allowed actions: content targets `hide`/`dismiss` (`suspend` → 422 `validation
 3. Delete `report` rows whose target is any deleted row (polymorphic); reports filed by the user go by cascade; `handled_by_id` → NULL by FK.
 4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, close-friend rows on both sides, listens, listen grants, post views, affinity, account tokens, reports filed). Then `DELETE FROM notification n WHERE NOT EXISTS (SELECT 1 FROM notification_actor a WHERE a.notification_id = n.id)` (items whose only actors were the user, §8b). Refresh tokens deleted by `username = id`.
 5. Dispatch `PurgeObjects` (batches of ≤ 500 keys) and `SendAccountDeletedEmail` inside the same transaction.
-Username and email are free for re-registration immediately. Backups keep the data until their rotation (documented in the README prod checklist; 30 days). Synchronous; target < 5 s for 100 tracks / 500 posts; move to an async `DeleteAccount` message if it ever exceeds that.
+Activity journal (§15): events whose `actor_id` or `subject_user_id` is the user are deleted, except `admin.*` rows (kept, user columns → NULL by FK); `security_alert` rows whose subject is the user go by cascade (§16). Username and email are free for re-registration immediately. Backups keep the data until their rotation (documented in the README prod checklist; 30 days). Synchronous; target < 5 s for 100 tracks / 500 posts; move to an async `DeleteAccount` message if it ever exceeds that.
 
 ## 14. Object storage layout
 
@@ -412,3 +418,90 @@ Two areas behind `ObjectStorage` (CONVENTIONS §7): **private** bucket `wave-pri
 | Post visual video | `quarantine/posts/{postId}/visual` | public `videos/posts/{postId}/{uuid}.mp4` + `images/posts/{postId}/{uuid}-poster.webp` | H.264 main, ≤ 720×1280, ≤ 30 fps, CRF 26, **audio stripped** (`-an`), faststart |
 
 Quarantine objects are deleted after success, kept 7 days after failure (`CleanupQuarantine` daily). Replaced images: old key purged via `PurgeObjects` after the DB points to the new key. Hidden (moderated) public images remain reachable by key in v1 (accepted: unguessable keys, not listed anywhere).
+
+## 15. ActivityEvent — `activity_event` (FB-28, ADR 013)
+
+Per-user journal and audit trail of admin actions. Append-only (no UPDATE), written by the backend only.
+
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| id | uuid PK | no | UUID v7 (time-ordered: keyset on `id` = keyset on time) |
+| category | varchar(16) | no | `ActivityCategory` |
+| type | varchar(40) | no | dotted name, closed list below (CHECK); exception to the varchar(16) enum rule |
+| actor_id | uuid FK → app_user | yes | who acted; NULL = anonymous (failed login on unknown email, registration attempt) or console; SET NULL |
+| subject_user_id | uuid FK → app_user | yes | user the event is about (= actor for self actions, target user for admin actions, account of a failed login); SET NULL |
+| target_type | varchar(16) | yes | `ReportTargetType` or `alert`, `announcement` |
+| target_id | uuid | yes | polymorphic, no FK |
+| ip_prefix | varchar(43) | yes | IPv4 /24 (`203.0.113.0/24`), IPv6 /48; NULL for console and async events |
+| ip_hash | bytea | yes | first 16 bytes of HMAC-SHA256(full client IP, `ACTIVITY_IP_PEPPER`); client IP = `Request::getClientIp()` behind `TRUSTED_PROXIES` |
+| user_agent | varchar(200) | yes | truncated, control chars stripped |
+| metadata | jsonb | no | default `{}`; ids, enum values, counts only (e.g. `{"action":"hide","reportCount":3}`, `{"from":"ROLE_USER","to":"ROLE_MODERATOR"}`); **never** emails, passwords, tokens, user-written text. Admin `note` (≤ 500, written by staff) is the only free text allowed, key `note` |
+| created_at | timestamptz | no | |
+
+Types (category → types):
+- `auth`: `auth.login_succeeded`, `auth.login_failed`, `auth.logout`, `auth.token_reused`, `auth.password_changed`, `auth.password_reset_requested`, `auth.password_reset_completed`
+- `account`: `account.registered`, `account.email_verified`, `account.email_changed`
+- `content`: `content.track_created`, `content.track_deleted`, `content.post_created`, `content.post_deleted`, `content.comment_created`, `content.artist_created`
+- `report`: `report.created`, `report.auto_hidden`
+- `upload`: `upload.rejected` (metadata `reason` = `FailureReason`)
+- `abuse`: `abuse.rate_limited` (metadata `bucket`; at most one event per user-or-ip_hash and bucket per minute)
+- `admin`: `admin.user_suspended`, `admin.user_unsuspended`, `admin.role_changed`, `admin.content_hidden`, `admin.content_restored`, `admin.content_deleted`, `admin.report_decided`, `admin.alert_acknowledged`, `admin.announcement_created`, `admin.announcement_updated`, `admin.announcement_deleted`, `admin.journal_viewed` (first page only), `admin.admin_granted`, `admin.admin_revoked` (console, actor NULL)
+
+Indexes: (subject_user_id, id DESC), (actor_id, id DESC) WHERE category = 'admin', (category, type, created_at), (ip_hash, type, created_at) WHERE ip_hash IS NOT NULL, (created_at) for the purge.
+Write path: `ActivityJournal::record()` — admin events in the caller's transaction (no admin action without its row); other events inserted after the business transaction commits (failed logins have none), a failure is logged and swallowed, never turned into an error response. Watched types dispatch `EvaluateSecurityRules` (§16).
+Retention (`PurgeActivityEvents`, daily, batches of 5 000): `admin.*` 365 days, others 90 days.
+Deletion: §13b deletes the user's non-admin events explicitly before deleting the user; `admin.*` rows survive with `actor_id` / `subject_user_id` set NULL by FK.
+
+## 16. SecurityAlert — `security_alert` (FB-28, ADR 013)
+
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| id | uuid PK | no | |
+| rule | varchar(32) | no | `AlertRule` |
+| severity | varchar(16) | no | `AlertSeverity`, fixed per rule |
+| subject_user_id | uuid FK → app_user | yes | CASCADE |
+| subject_ip_hash | bytea | yes | for IP-based rules (§15 `ip_hash`); never the IP itself |
+| subject_target_type | varchar(16) | yes | for `report_burst` |
+| subject_target_id | uuid | yes | for `report_burst` |
+| hit_count | int | no | default 1, CHECK ≥ 1; +1 per new hit while open (atomic UPDATE) |
+| first_seen_at | timestamptz | no | |
+| last_seen_at | timestamptz | no | |
+| status | varchar(16) | no | `AlertStatus`, default open |
+| acknowledged_by_id | uuid FK → app_user | yes | SET NULL |
+| acknowledged_at | timestamptz | yes | |
+| note | varchar(500) | yes | written at acknowledgement |
+| created_at | timestamptz | no | |
+
+Dedup: a stored generated column `subject_key` = `rule || ':' || coalesce(subject_user_id::text, encode(subject_ip_hash,'hex'), subject_target_type || ':' || subject_target_id::text)` and partial UNIQUE (subject_key) WHERE status = 'open' (written by hand in the migration). Insert = `INSERT … ON CONFLICT DO UPDATE SET hit_count = hit_count + 1, last_seen_at = now()`.
+Indexes: (status, severity, last_seen_at DESC), (subject_user_id).
+
+Rules (thresholds are constants of `SecurityRules`, windows sliding on `activity_event.created_at`):
+
+| Rule | Trigger | Severity |
+|---|---|---|
+| `login_failures` | ≥ 10 `auth.login_failed` for one account in 15 min, or ≥ 30 from one `ip_hash` in 15 min | medium |
+| `token_reuse` | any `auth.token_reused` (ADR 008) | high |
+| `mass_registration` | ≥ 3 `account.registered` from one `ip_hash` in 1 h | medium |
+| `report_burst` | `report.auto_hidden` on a target (5 distinct reporters, §13) | low |
+| `report_spree` | ≥ 15 `report.created` by one user in 1 h | medium |
+| `upload_abuse` | ≥ 5 `upload.rejected` by one user in 1 h | medium |
+| `rate_limit_hammering` | ≥ 10 `abuse.rate_limited` for one user or `ip_hash` in 10 min | low |
+| `privilege_granted` | `admin.admin_granted` (console) | high |
+
+Retention: acknowledged alerts deleted 180 days after `acknowledged_at` (same daily job); open alerts are kept.
+
+## 17. Announcement — `announcement` (FB-28, ADR 013)
+
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| id | uuid PK | no | |
+| title | varchar(80) | no | 1–80, trimmed, plain text |
+| body | varchar(500) | no | 1–500, plain text (no HTML, no Markdown; links not rendered) |
+| level | varchar(16) | no | `AnnouncementLevel` |
+| starts_at | timestamptz | no | default now |
+| ends_at | timestamptz | yes | NULL = until deleted; CHECK ends_at > starts_at |
+| created_by_id | uuid FK → app_user | yes | SET NULL |
+| created_at | timestamptz | no | |
+| updated_at | timestamptz | no | bumped on every PATCH (clients re-show an edited banner) |
+
+Active = `starts_at ≤ now() AND (ends_at IS NULL OR ends_at > now())`; at most 3 active returned, `level` warning first, then newest `starts_at`. Index (starts_at, ends_at). Hard delete; no retention job (a few rows per year).

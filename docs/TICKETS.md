@@ -293,6 +293,56 @@ Phase-3 visibility rules live in DATA_MODEL §6 (track audience, FB-18) and §9-
 - Notifications (W-45): no route takes a notification or user id (nothing to probe); items never show a suspended actor or a target invisible to the recipient (T7, T17); like/unlike and follow/unfollow loops create at most one unread item per read; `read` cannot touch another user's rows.
 - `docs/SECURITY.md` extended with phase-3 threats (T22+) and findings.
 
+## Admin back-office (before phase 4) — FB-28, ADR 013
+
+Contract: ADR 013, DATA_MODEL §15-17 (+ §1 enums, §2 `last_login_at`, §13, §13b), `openapi.yaml` `/admin/*` + `/announcements`. Absorbs W-50. Frontend tickets start after the FB-27 redesign is merged (use its components; no styling decided here).
+Lots: **1** W-70 · **2** W-71 ∥ W-72 · **3** W-73 ∥ W-74 · **4** W-75 · **5** W-76 ∥ W-77 · then W-79 (user test); W-78 (log server) independent, after the first deploy.
+
+**W-70 · backend · W-33** Journal foundation, roles and console
+- One migration: `activity_event`, `security_alert` (generated `subject_key` + partial unique index written by hand, never in a diff), `announcement`, `app_user.last_login_at`; SQL shown to the lead before applying.
+- `ActivityJournal::record()` per DATA_MODEL §15: admin events in the caller's transaction, others after commit and never failing the request; IP → `ip_prefix` + HMAC `ip_hash` (`ACTIVITY_IP_PEPPER`, new env var, CONVENTIONS §9, boot fails if empty in prod); UA truncated 200; metadata whitelist (a test asserts no email/token/password in any recorded row).
+- Hook the non-admin event types listed in §15 (login success/failure, logout, token reuse, password/email flows, registration, content created/deleted, report created/auto-hidden, upload rejected, rate-limited ≤ 1/min per bucket); `last_login_at` on login.
+- `app:admin:grant <email>` / `app:admin:revoke <email>`: journaled with actor NULL; revoke of the last admin refused; unknown email → non-zero exit, no output revealing whether the email exists beyond "not found".
+- `PurgeActivityEvents` daily (90 d / admin 365 d / acknowledged alerts 180 d) in batches; §13b journal rules are implemented by W-55 (acceptance bullet added there).
+- Role guard on the W-33 `suspend` decision (moderator → moderator/admin, anyone → admin = 403, after 404) and `admin.report_decided` journaled.
+
+**W-71 · backend · W-70** Users and content admin API
+- `/admin/dashboard`, `/admin/users`, `/admin/users/{userId}`, `…/suspension` (POST/DELETE), `…/role`, `/admin/content`, `/admin/content/{type}/{id}/deletion`: orders, filters and error order of the contract; moderator gets `email` null and `alerts`/`announcements` null; ROLE_ADMIN routes → 403 for a moderator before any lookup (unknown id included).
+- Self-suspension 422, self role change 403, `ROLE_ADMIN` in body 422, admin target 403; role change effective at the target's next request (test with a still-valid JWT).
+- Each mutation writes exactly one `admin.*` row with actor, subject, target and note (asserted); content deletion reuses the owner delete processors (counters, `PurgeObjects`, reports) and `artist_has_tracks` → 409.
+
+**W-72 · backend · W-70** Journal, alerts and announcements API
+- `/admin/users/{userId}/activity` (first page journals `admin.journal_viewed`), `/admin/audit-log`, `/admin/alerts` + acknowledgement (409 `already_acknowledged`), `/admin/announcements` CRUD, `GET /announcements` (≤ 3 active, `warning` first).
+- `EvaluateSecurityRules` async handler with the 8 rules and thresholds of DATA_MODEL §16 as constants; one test per rule (threshold − 1 → no alert, threshold → one alert, further hits → `hitCount` grows, no second open row); dedup holds under 2 concurrent workers.
+- Index use checked with EXPLAIN on 100 k events for the journal page and each rule query (attached to the handoff).
+
+**W-73 · frontend · W-71, FB-27** Back-office shell, users and dashboard
+- `/admin` route guarded on `me.roles` (ROLE_MODERATOR), lazy-loaded chunk not downloaded by other users; menu entries by role (admin-only pages hidden for moderators; a 403 from the API still shows "Accès réservé").
+- Dashboard cards; users list with search, role/status filters and cursor paging; user detail with counts, last login, last suspension, suspend/unsuspend and role change (note required, confirmation dialog), buttons hidden when the guard forbids them.
+
+**W-74 · frontend · W-71, W-33, FB-27** Moderation (absorbs W-50)
+- Reports queue grouped by target (preview, reasons, counts), per-target report list, decision buttons with note; content list per type with filters, hide/restore via the decision endpoint, delete (admin only, typed confirmation).
+- 403/404/409/422 mapped to French messages; optimistic updates rolled back on error.
+
+**W-75 · frontend · W-72, FB-27** Journal, alerts and announcements
+- User journal tab (category filter, IP prefix and UA shown, never more), audit log page, alerts list (severity/status/rule filters) with acknowledgement note, announcements CRUD with date pickers.
+- App-wide banner from `GET /announcements` (text only, dismiss stored per `id`+`updatedAt` in local storage, wrapped in try/catch).
+
+**W-76 · media-infra · W-70** Prod wiring of the journal
+- `ACTIVITY_IP_PEPPER` in the prod secrets and `.env` docs; scheduler runs the purge; `TRUSTED_PROXIES` checked so `getClientIp()` is the real client (test request through nginx with a forged `X-Forwarded-For` from outside → ignored).
+- README prod checklist: create the first admin with `app:admin:grant`, retention periods, privacy notice line for the journal.
+
+**W-77 · qa-security · W-71, W-72** Back-office security review (Opus)
+- Every `/admin` route: anonymous 401, user 403, moderator 403 on admin-only routes, before lookup (no existence oracle); IDOR on ids; privilege escalation (moderator → admin, admin → admin, self) impossible; mass assignment on role/announcement bodies.
+- Journal privacy: no full IP, email, token or user text in `activity_event`; retention job deletes what it should; account deletion leaves no non-admin event about the user. Announcement body rendered as text (XSS attempt).
+
+**W-78 · media-infra · W-53, first deploy** Technical log server (later)
+- Per ADR 013 §9 and the user's choice: second small instance with Loki (filesystem, 14-day retention) + Grafana behind SSH tunnel, agent (Alloy or Promtail) on the app box capped at 96 MB collecting container, nginx and PHP logs; or the Dozzle fallback.
+- No business data and no request bodies shipped; nginx access logs with IPs truncated before shipping; memory of the app box measured before/after (handoff).
+
+**W-79 · qa · W-73..W-75** Back-office test with the user
+- Browser test prompt for the user (moderator account and admin account), then fixes; closes FB-28.
+
 ## Phase 4 — Recommendations v1, search, demo seed
 
 **W-40 · backend · W-39, W-32** Recommendations v1 (replaces the W-39 ranking)
@@ -319,7 +369,7 @@ Phase-3 visibility rules live in DATA_MODEL §6 (track audience, FB-18) and §9-
 
 ## Phase 5 — Tests, hardening, moderation UI, README
 
-**W-50 · frontend · W-33** Moderation UI
+**W-50 · frontend · W-33** Moderation UI — **absorbed by W-74 (FB-28, ADR 013), do not implement separately**
 - `/admin` visible only with `ROLE_MODERATOR`; queue grouped by target with preview, reasons, counts; decision buttons with note; per-target report list.
 
 **W-51 · backend · all** Test coverage pass
@@ -337,10 +387,11 @@ Phase-3 visibility rules live in DATA_MODEL §6 (track audience, FB-18) and §9-
 **W-55 · backend · W-33, W-40** Account deletion (GDPR)
 - `DELETE /me` with password per DATA_MODEL §13b: wrong password 422; success 204, cookie cleared, refresh token → 401, login → 401.
 - After deletion no row references the user (query every table) and counters of surviving rows are exact (followers, likes, comment counts, playlist item counts/positions, hashtag counts); other users' posts on the user's tracks are gone.
+- Activity journal (FB-28, DATA_MODEL §13b): no non-admin `activity_event` row about the user remains; `admin.*` rows survive with NULL user columns; alerts about the user are gone.
 - `PurgeObjects` dispatched for every collected key (asserted against the in-memory storage); confirmation email in Mailpit; user with 100 tracks / 500 posts deleted in < 5 s.
 
 **W-56 · frontend · W-55** Delete-account UI
 - Settings → "Delete my account": explicit consequences text, password field, typed confirmation (`username`), then logout and redirect to home.
 
 **W-54 · qa-security · all** Final security sign-off
-- `make audit` green; full `tests/Security` suite green, including deletion (another user cannot delete my account; no residual personal data in DB or storage); `docs/SECURITY.md` final with residual risks; every open finding closed or accepted by the user.
+- `make audit` green; W-77 (back-office review) closed; full `tests/Security` suite green, including deletion (another user cannot delete my account; no residual personal data in DB or storage); `docs/SECURITY.md` final with residual risks; every open finding closed or accepted by the user.

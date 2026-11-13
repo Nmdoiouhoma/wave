@@ -42,6 +42,7 @@ tags:
   - name: search
   - name: reports
   - name: admin
+  - name: announcements
 
 paths:
   # ───────────────────────────── auth ─────────────────────────────
@@ -1628,7 +1629,7 @@ paths:
       tags: [admin]
       operationId: listReportTargets
       summary: List report targets
-      description: ROLE_MODERATOR. Moderation queue grouped by target, most reported first then oldest first (keyset on `(openReportCount DESC, firstReportedAt ASC, targetType, targetId)`, counts may move between pages). With `status` other than `open`, `openReportCount` counts the reports of that status. Non-moderator → 403 `forbidden` on every `/admin` route.
+      description: ROLE_MODERATOR. Moderation queue grouped by target, most reported first then oldest first (keyset on `(openReportCount DESC, firstReportedAt ASC, targetType, targetId)`, counts may move between pages). With `status` other than `open`, `openReportCount` counts the reports of that status. Non-moderator → 403 `forbidden` on every `/admin` route; routes marked ROLE_ADMIN also answer 403 to a moderator before any lookup (ADR 013).
       parameters:
         - name: status
           in: query
@@ -1683,7 +1684,7 @@ paths:
         ROLE_MODERATOR. Applies to every open report of the target (DATA_MODEL §13).
         `hide` → target hidden, reports actioned. `dismiss` → target visible again, reports dismissed. `suspend` (user targets only, else 422) → account suspended, refresh tokens revoked, reports actioned.
         `hide` on a user target, suspending oneself or an already suspended user → 422 `validation_failed`. Unknown target → 404. Non-moderator → 403 before any lookup.
-        A decision is also allowed with no open report (proactive moderation). Unsuspend comes in phase 5.
+        A decision is also allowed with no open report (proactive moderation, used by the back-office content list to hide / restore). `suspend` follows the role guard of ADR 013 §2 (a moderator on a moderator or admin, anyone on an admin → 403 `forbidden`, checked after the 404). Unsuspend: `DELETE /admin/users/{userId}/suspension`. Every decision is journaled `admin.report_decided` (FB-28).
       requestBody:
         required: true
         content:
@@ -1700,6 +1701,392 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+
+  # ───────────────────────── admin back-office (FB-28, ADR 013) ─────────────────────────
+  /admin/dashboard:
+    get:
+      tags: [admin]
+      operationId: getAdminDashboard
+      summary: Get admin dashboard
+      description: ROLE_MODERATOR. Live counters (cached 60 s server-side). For a moderator, `alerts` and `announcements` are null.
+      responses:
+        '200':
+          description: Counters.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDashboard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users:
+    get:
+      tags: [admin]
+      operationId: listAdminUsers
+      summary: List users (admin)
+      description: |
+        ROLE_MODERATOR. Newest accounts first (keyset on `id` DESC). Suspended and unverified users included.
+        `q` matches username and display name (prefix + trigram, as `/search?type=users`); for an admin, a `q` containing `@` matches the email exactly (case-insensitive) instead. `email` is null for moderators.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 180 }
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/AdminRole' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, suspended, unverified] }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of users.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/AdminUserIdPath'
+    get:
+      tags: [admin]
+      operationId: getAdminUser
+      summary: Get user (admin)
+      description: ROLE_MODERATOR. Any existing user, suspended included. Unknown id → 404.
+      responses:
+        '200':
+          description: User.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/users/{userId}/suspension:
+    parameters:
+      - $ref: '#/components/parameters/AdminUserIdPath'
+    post:
+      tags: [admin]
+      operationId: suspendUser
+      summary: Suspend user
+      description: |
+        ROLE_MODERATOR. Same effect as the `suspend` decision of W-33 (DATA_MODEL §13): `suspended_at = now()`, every refresh-token family deleted; the next request with a still-valid access JWT → 403 `account_suspended`. Does not touch reports.
+        Order: unknown id → 404; target is self → 422 `validation_failed`; role guard (ADR 013 §2: a moderator on a moderator or admin, anyone on an admin) → 403 `forbidden`; already suspended → 422 `validation_failed`. Journaled `admin.user_suspended` with the note.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminNoteRequest' }
+      responses:
+        '200':
+          description: User after suspension.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [admin]
+      operationId: unsuspendUser
+      summary: Unsuspend user
+      description: |
+        ROLE_MODERATOR. Clears `suspended_at`; the user logs in again (no session is restored). Same order and role guard as suspension; not suspended → 422 `validation_failed`. Journaled `admin.user_unsuspended`.
+      responses:
+        '200':
+          description: User after unsuspension.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/users/{userId}/role:
+    parameters:
+      - $ref: '#/components/parameters/AdminUserIdPath'
+    put:
+      tags: [admin]
+      operationId: setUserRole
+      summary: Set user role
+      description: |
+        ROLE_ADMIN (moderator → 403 before any lookup). Moves a user between `ROLE_USER` and `ROLE_MODERATOR`; `ROLE_ADMIN` is never accepted (422 `validation_failed`: console only, ADR 013 §3).
+        Order: body → 422; unknown id → 404; self or target is an admin → 403 `forbidden`; same role as current → 200 unchanged, nothing journaled. Takes effect at the target's next request. Journaled `admin.role_changed` (`from`, `to`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetRoleRequest' }
+      responses:
+        '200':
+          description: User after the change.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/users/{userId}/activity:
+    parameters:
+      - $ref: '#/components/parameters/AdminUserIdPath'
+    get:
+      tags: [admin]
+      operationId: listUserActivity
+      summary: List user activity
+      description: |
+        ROLE_ADMIN. Journal of events whose subject or actor is the user (DATA_MODEL §15), newest first (keyset on `id` DESC), within retention (90 days, `admin.*` 1 year).
+        Opening the first page (no cursor) is itself journaled as `admin.journal_viewed`. Unknown id → 404.
+      parameters:
+        - name: category
+          in: query
+          schema: { $ref: '#/components/schemas/ActivityCategory' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of events.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivityEventPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/audit-log:
+    get:
+      tags: [admin]
+      operationId: listAdminAuditLog
+      summary: List admin actions
+      description: ROLE_ADMIN. Every `admin.*` event (DATA_MODEL §15), newest first, optionally for one staff member (`actorId`). Retention 1 year.
+      parameters:
+        - name: actorId
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of admin events.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActivityEventPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/content:
+    get:
+      tags: [admin]
+      operationId: listAdminContent
+      summary: List content (admin)
+      description: |
+        ROLE_MODERATOR. One content type per call (`type` required), newest first (keyset on `(createdAt, id)` DESC). Hidden, private, processing and failed items included; moderators see everything.
+        `q` filters on the item label (title, caption, body, name; trigram, ≥ 2 chars). Hide / restore goes through `POST /admin/report-targets/{targetType}/{targetId}/decision` (`hide` / `dismiss`), which works without open reports.
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/AdminContentType' }
+        - name: moderation
+          in: query
+          schema: { $ref: '#/components/schemas/Moderation' }
+        - name: ownerId
+          in: query
+          description: Owner (track, playlist, artist) or author (post, comment).
+          schema: { type: string, format: uuid }
+        - name: q
+          in: query
+          schema: { type: string, minLength: 2, maxLength: 100 }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of content.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminContentPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/content/{contentType}/{contentId}/deletion:
+    parameters:
+      - $ref: '#/components/parameters/AdminContentTypePath'
+      - $ref: '#/components/parameters/AdminContentIdPath'
+    post:
+      tags: [admin]
+      operationId: deleteAdminContent
+      summary: Delete content (admin)
+      description: |
+        ROLE_ADMIN (moderator → 403 before any lookup). Irreversible hard delete with the owner's own delete rules (counters, `PurgeObjects`, reports of the target and of cascaded rows deleted, DATA_MODEL §0; a track takes the posts using it; an artist with tracks → 409 `artist_has_tracks`).
+        Unknown id → 404. Journaled `admin.content_deleted` (type, id, owner id, note) in the same transaction; the owner is not notified in v1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminNoteRequest' }
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/alerts:
+    get:
+      tags: [admin]
+      operationId: listSecurityAlerts
+      summary: List security alerts
+      description: ROLE_ADMIN. Default `status=open`; highest severity first, then most recent `lastSeenAt` (keyset on `(severityRank DESC, lastSeenAt DESC, id)`).
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/AlertStatus' }
+        - name: severity
+          in: query
+          schema: { $ref: '#/components/schemas/AlertSeverity' }
+        - name: rule
+          in: query
+          schema: { $ref: '#/components/schemas/AlertRule' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of alerts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityAlertPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/alerts/{alertId}/acknowledgement:
+    parameters:
+      - name: alertId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [admin]
+      operationId: acknowledgeSecurityAlert
+      summary: Acknowledge security alert
+      description: ROLE_ADMIN. Sets `acknowledged`, author, date and note; a new hit of the same rule and subject then opens a new alert. Unknown id → 404; already acknowledged → 409 `already_acknowledged`. Journaled `admin.alert_acknowledged`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminNoteRequest' }
+      responses:
+        '200':
+          description: Alert after acknowledgement.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SecurityAlert' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/announcements:
+    get:
+      tags: [admin]
+      operationId: listAdminAnnouncements
+      summary: List announcements (admin)
+      description: ROLE_ADMIN. All announcements, past, active and scheduled, newest `startsAt` first.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of announcements.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnouncementPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin]
+      operationId: createAnnouncement
+      summary: Create announcement
+      description: ROLE_ADMIN. Plain text only (DATA_MODEL §17). `endsAt` must be after `startsAt` (422). Journaled `admin.announcement_created`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAnnouncementRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Announcement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /admin/announcements/{announcementId}:
+    parameters:
+      - $ref: '#/components/parameters/AnnouncementIdPath'
+    patch:
+      tags: [admin]
+      operationId: updateAnnouncement
+      summary: Update announcement
+      description: ROLE_ADMIN. Partial update; bumps `updatedAt` so clients show the banner again. Unknown id → 404. Journaled `admin.announcement_updated`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAnnouncementRequest' }
+          application/merge-patch+json:
+            schema: { $ref: '#/components/schemas/UpdateAnnouncementRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Announcement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [admin]
+      operationId: deleteAnnouncement
+      summary: Delete announcement
+      description: ROLE_ADMIN. Hard delete (to end one early, PATCH `endsAt` instead). Unknown id → 404. Journaled `admin.announcement_deleted`.
+      responses:
+        '204': { description: Deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── announcements ─────────────────────────────
+  /announcements:
+    get:
+      tags: [announcements]
+      operationId: listActiveAnnouncements
+      summary: List active announcements
+      description: Any signed-in user. Up to 3 active announcements (DATA_MODEL §17), `warning` first then newest. The client hides one the user dismissed, keyed by `id` + `updatedAt` (local storage), and renders `title`/`body` as text only.
+      responses:
+        '200':
+          description: Active announcements.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActiveAnnouncements' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
 components:
   securitySchemes:
@@ -1770,6 +2157,27 @@ components:
       schema: { $ref: '#/components/schemas/ReportTargetType' }
     ReportTargetIdPath:
       name: targetId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AdminUserIdPath:
+      name: userId
+      in: path
+      required: true
+      description: User id (not username); suspended users included, unknown id → 404.
+      schema: { type: string, format: uuid }
+    AdminContentTypePath:
+      name: contentType
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/AdminContentType' }
+    AdminContentIdPath:
+      name: contentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AnnouncementIdPath:
+      name: announcementId
       in: path
       required: true
       schema: { type: string, format: uuid }
@@ -1867,6 +2275,7 @@ components:
         - playlist_limit_reached     # 409
         - playlist_order_mismatch    # 409
         - already_reported           # 409
+        - already_acknowledged       # 409 (security alert, FB-28)
         - too_many_pending_uploads   # 409
         - upload_already_used        # 409
         - upload_expired             # 409
@@ -2517,6 +2926,256 @@ components:
         action: { type: string, enum: [hide, dismiss, suspend] }
         note: { type: [string, 'null'], maxLength: 500 }
 
+    # ── admin back-office (FB-28, ADR 013) ──
+    AdminRole:
+      type: string
+      enum: [ROLE_USER, ROLE_MODERATOR, ROLE_ADMIN]
+      description: Highest role of the user.
+    AdminUser:
+      type: object
+      required: [id, username, displayName, avatarUrl, email, emailVerified, role, suspendedAt, createdAt, lastLoginAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { $ref: '#/components/schemas/MediaUrl' }
+        email: { type: [string, 'null'], format: email, description: Null for a moderator caller. }
+        emailVerified: { type: boolean }
+        role: { $ref: '#/components/schemas/AdminRole' }
+        suspendedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+        lastLoginAt: { type: [string, 'null'], format: date-time }
+    AdminUserDetail:
+      allOf:
+        - $ref: '#/components/schemas/AdminUser'
+        - type: object
+          required: [counts, openReportCount, openAlertCount, lastSuspension]
+          properties:
+            counts:
+              type: object
+              required: [tracks, posts, comments, playlists, artists, followers, following, reportsFiled]
+              properties:
+                tracks: { type: integer }
+                posts: { type: integer }
+                comments: { type: integer }
+                playlists: { type: integer }
+                artists: { type: integer }
+                followers: { type: integer }
+                following: { type: integer }
+                reportsFiled: { type: integer }
+            openReportCount: { type: integer, description: Open reports on the user and on their content. }
+            openAlertCount: { type: [integer, 'null'], description: Open alerts about the user; null for a moderator caller. }
+            lastSuspension:
+              description: Latest `admin.user_suspended` event within retention, else null.
+              oneOf:
+                - type: object
+                  required: [at, by, note]
+                  properties:
+                    at: { $ref: '#/components/schemas/DateTime' }
+                    by:
+                      oneOf:
+                        - $ref: '#/components/schemas/UserSummary'
+                        - type: 'null'
+                    note: { type: [string, 'null'] }
+                - type: 'null'
+    SetRoleRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role: { type: string, enum: [ROLE_USER, ROLE_MODERATOR] }
+        note: { type: [string, 'null'], maxLength: 500 }
+    AdminNoteRequest:
+      type: object
+      required: [note]
+      additionalProperties: false
+      properties:
+        note: { type: string, minLength: 1, maxLength: 500, description: 'Reason, written to the audit journal.' }
+    ActivityCategory:
+      type: string
+      enum: [auth, account, content, report, upload, abuse, admin]
+    ActivityEvent:
+      type: object
+      required: [id, category, type, actor, subjectUser, targetType, targetId, ipPrefix, ipHash, userAgent, metadata, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        category: { $ref: '#/components/schemas/ActivityCategory' }
+        type: { type: string, description: 'Closed list in DATA_MODEL §15, e.g. `auth.login_failed`, `admin.user_suspended`.', maxLength: 40 }
+        actor:
+          description: Null = anonymous or console.
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        subjectUser:
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        targetType: { type: [string, 'null'] }
+        targetId: { type: [string, 'null'], format: uuid }
+        ipPrefix: { type: [string, 'null'], description: 'Truncated address (`203.0.113.0/24`, IPv6 /48), never the full IP.' }
+        ipHash: { type: [string, 'null'], description: 'Hex of the keyed IP hash (32 chars), only to compare events; not reversible.' }
+        userAgent: { type: [string, 'null'], maxLength: 200 }
+        metadata:
+          type: object
+          description: Ids, enum values, counts and staff `note` only (DATA_MODEL §15).
+          additionalProperties: true
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+    AdminContentType:
+      type: string
+      enum: [track, post, comment, playlist, artist]
+    AdminContentItem:
+      type: object
+      required: [type, id, label, imageUrl, owner, moderation, status, visibility, openReportCount, createdAt]
+      properties:
+        type: { $ref: '#/components/schemas/AdminContentType' }
+        id: { $ref: '#/components/schemas/Id' }
+        label: { type: string, description: 'Title, caption, body (truncated 140) or name.' }
+        imageUrl: { $ref: '#/components/schemas/MediaUrl' }
+        owner: { $ref: '#/components/schemas/UserSummary' }
+        moderation: { $ref: '#/components/schemas/Moderation' }
+        status:
+          type: [string, 'null']
+          enum: [processing, ready, failed, null]
+          description: Media status for tracks and posts; null otherwise.
+        visibility:
+          type: [string, 'null']
+          enum: [public, followers, close_friends, private, null]
+          description: Real track visibility, or `public`/`private` for playlists; null otherwise.
+        openReportCount: { type: integer }
+        createdAt: { $ref: '#/components/schemas/DateTime' }
+    AlertRule:
+      type: string
+      enum: [login_failures, token_reuse, mass_registration, report_burst, report_spree, upload_abuse, rate_limit_hammering, privilege_granted]
+    AlertSeverity:
+      type: string
+      enum: [low, medium, high]
+    AlertStatus:
+      type: string
+      enum: [open, acknowledged]
+    SecurityAlert:
+      type: object
+      required: [id, rule, severity, subjectUser, subjectIpHash, subjectTarget, hitCount, firstSeenAt, lastSeenAt, status, acknowledgedBy, acknowledgedAt, note]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        rule: { $ref: '#/components/schemas/AlertRule' }
+        severity: { $ref: '#/components/schemas/AlertSeverity' }
+        subjectUser:
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        subjectIpHash: { type: [string, 'null'], description: 'Hex keyed hash, to filter the journal; never the IP.' }
+        subjectTarget:
+          oneOf:
+            - type: object
+              required: [targetType, targetId]
+              properties:
+                targetType: { $ref: '#/components/schemas/ReportTargetType' }
+                targetId: { $ref: '#/components/schemas/Id' }
+            - type: 'null'
+        hitCount: { type: integer, minimum: 1 }
+        firstSeenAt: { $ref: '#/components/schemas/DateTime' }
+        lastSeenAt: { $ref: '#/components/schemas/DateTime' }
+        status: { $ref: '#/components/schemas/AlertStatus' }
+        acknowledgedBy:
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+        acknowledgedAt: { type: [string, 'null'], format: date-time }
+        note: { type: [string, 'null'] }
+    AnnouncementLevel:
+      type: string
+      enum: [info, warning]
+    Announcement:
+      type: object
+      required: [id, title, body, level, startsAt, endsAt, updatedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        title: { type: string, maxLength: 80 }
+        body: { type: string, maxLength: 500, description: 'Plain text; render as text, never as HTML.' }
+        level: { $ref: '#/components/schemas/AnnouncementLevel' }
+        startsAt: { $ref: '#/components/schemas/DateTime' }
+        endsAt: { type: [string, 'null'], format: date-time }
+        updatedAt: { $ref: '#/components/schemas/DateTime' }
+    CreateAnnouncementRequest:
+      type: object
+      required: [title, body, level]
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 80 }
+        body: { type: string, minLength: 1, maxLength: 500 }
+        level: { $ref: '#/components/schemas/AnnouncementLevel' }
+        startsAt: { type: [string, 'null'], format: date-time, description: Default now. }
+        endsAt: { type: [string, 'null'], format: date-time }
+    UpdateAnnouncementRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 80 }
+        body: { type: string, minLength: 1, maxLength: 500 }
+        level: { $ref: '#/components/schemas/AnnouncementLevel' }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: [string, 'null'], format: date-time }
+    ActiveAnnouncements:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 3
+          items: { $ref: '#/components/schemas/Announcement' }
+    AdminDashboard:
+      type: object
+      required: [users, moderation, content, alerts, announcements, generatedAt]
+      properties:
+        users:
+          type: object
+          required: [total, new24h, new7d, suspended, unverified, moderators, admins]
+          properties:
+            total: { type: integer }
+            new24h: { type: integer }
+            new7d: { type: integer }
+            suspended: { type: integer }
+            unverified: { type: integer }
+            moderators: { type: integer }
+            admins: { type: integer }
+        moderation:
+          type: object
+          required: [openReportTargets, openReports, hiddenContent24h]
+          properties:
+            openReportTargets: { type: integer }
+            openReports: { type: integer }
+            hiddenContent24h: { type: integer, description: Auto-hides and staff hides in the last 24 h. }
+        content:
+          type: object
+          required: [tracks24h, posts24h, comments24h, failedUploads24h]
+          properties:
+            tracks24h: { type: integer }
+            posts24h: { type: integer }
+            comments24h: { type: integer }
+            failedUploads24h: { type: integer }
+        alerts:
+          description: Null for a moderator caller.
+          oneOf:
+            - type: object
+              required: [open, openHigh, openMedium, openLow]
+              properties:
+                open: { type: integer }
+                openHigh: { type: integer }
+                openMedium: { type: integer }
+                openLow: { type: integer }
+            - type: 'null'
+        announcements:
+          description: Null for a moderator caller.
+          oneOf:
+            - type: object
+              required: [active, scheduled]
+              properties:
+                active: { type: integer }
+                scheduled: { type: integer }
+            - type: 'null'
+        generatedAt: { $ref: '#/components/schemas/DateTime' }
+
     # ── pages ──
     UserPage:
       type: object
@@ -2577,4 +3236,34 @@ components:
       required: [items, nextCursor]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/ReportTarget' } }
+        nextCursor: { type: [string, 'null'] }
+    AdminUserPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AdminUser' } }
+        nextCursor: { type: [string, 'null'] }
+    ActivityEventPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ActivityEvent' } }
+        nextCursor: { type: [string, 'null'] }
+    AdminContentPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AdminContentItem' } }
+        nextCursor: { type: [string, 'null'] }
+    SecurityAlertPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SecurityAlert' } }
+        nextCursor: { type: [string, 'null'] }
+    AnnouncementPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Announcement' } }
         nextCursor: { type: [string, 'null'] }

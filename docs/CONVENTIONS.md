@@ -212,6 +212,7 @@ Dev host port: nginx on **8090** (front, `/api`, `/media` same origin). Mailpit 
 | `MAILER_FROM` | `Wave <no-reply@wave.local>` | worker |
 | `CORS_ALLOW_ORIGIN` | `^http://localhost:8090$` | php |
 | `TRUSTED_PROXIES` | `172.16.0.0/12` | php (real client IP for rate limits) |
+| `ACTIVITY_IP_PEPPER` | random 32 bytes, ≠ APP_SECRET (boot fails if empty in prod) | php, worker (keyed IP hash of the activity journal, DATA_MODEL §15, ADR 013) |
 | `LOCK_DSN` | `postgresql+advisory://…` (= DATABASE_URL) | php, worker (dedup stamp) |
 | `POSTGRES_DB/USER/PASSWORD`, `MINIO_ROOT_USER/PASSWORD` | | compose |
 | `VITE_API_BASE_URL` | `/api/v1` | front (canonical name; no other alias) |
