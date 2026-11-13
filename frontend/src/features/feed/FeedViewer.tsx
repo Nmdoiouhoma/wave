@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDownIcon } from '@/components/ui/icons';
+import { useMediaQuery, WIDE_QUERY } from '@/lib/useMediaQuery';
 import { playerStore } from '@/stores/player';
 import { FeedItem } from './FeedItem';
 import { feedApi, type Post } from './feedApi';
+import { PostSidePanel } from './PostSidePanel';
 import { FeedPlayback, type ClipStatus } from './feedPlayback';
 
 const VIEW_TICK_MS = 1_000;
@@ -54,6 +56,7 @@ export function FeedViewer({
   const count = posts.length + (footer ? 1 : 0);
   const activePost = posts[active] ?? null;
   const nextPost = posts[active + 1] ?? null;
+  const wide = useMediaQuery(WIDE_QUERY);
 
   // Created first: the effects below run after it in the same commit.
   useEffect(() => {
@@ -160,55 +163,58 @@ export function FeedViewer({
   }, [go]);
 
   return (
-    <div className="relative h-full bg-black">
+    <div className="relative h-full bg-black lg:flex">
       {header}
-      <div
-        ref={scroller}
-        role="feed"
-        aria-label="Extraits"
-        aria-busy={false}
-        tabIndex={0}
-        onScroll={onScroll}
-        className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:mx-auto md:max-w-[min(100%,calc(100dvh*9/16))]"
-      >
-        {posts.map((post, i) => (
-          <FeedItem
-            key={post.id}
-            post={post}
-            active={i === active}
-            near={Math.abs(i - active) <= NEAR}
-            status={i === active && clip?.postId === post.id ? clip.status : null}
-            onTogglePlay={() => playback.current?.togglePlay()}
-          />
-        ))}
-        {footer && (
-          <div className="flex h-full snap-start snap-always items-center justify-center px-6 text-center text-white">
-            {footer}
+      <div className="relative h-full min-w-0 lg:flex-1">
+        <div
+          ref={scroller}
+          role="feed"
+          aria-label="Extraits"
+          aria-busy={false}
+          tabIndex={0}
+          onScroll={onScroll}
+          className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:mx-auto md:max-w-[min(100%,calc(100dvh*9/16))]"
+        >
+          {posts.map((post, i) => (
+            <FeedItem
+              key={post.id}
+              post={post}
+              active={i === active}
+              near={Math.abs(i - active) <= NEAR}
+              status={i === active && clip?.postId === post.id ? clip.status : null}
+              onTogglePlay={() => playback.current?.togglePlay()}
+            />
+          ))}
+          {footer && (
+            <div className="flex h-full snap-start snap-always items-center justify-center px-6 text-center text-white">
+              {footer}
+            </div>
+          )}
+        </div>
+        {count > 1 && (
+          <div className="absolute top-1/2 right-4 z-20 hidden -translate-y-1/2 flex-col gap-3 md:flex">
+            <button
+              type="button"
+              aria-label="Extrait précédent"
+              disabled={active === 0}
+              onClick={() => go(active - 1)}
+              className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-30"
+            >
+              <ChevronDownIcon size={22} className="rotate-180" />
+            </button>
+            <button
+              type="button"
+              aria-label="Extrait suivant"
+              disabled={active >= count - 1}
+              onClick={() => go(active + 1)}
+              className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-30"
+            >
+              <ChevronDownIcon size={22} />
+            </button>
           </div>
         )}
       </div>
-      {count > 1 && (
-        <div className="absolute top-1/2 right-4 z-20 hidden -translate-y-1/2 flex-col gap-3 md:flex">
-          <button
-            type="button"
-            aria-label="Extrait précédent"
-            disabled={active === 0}
-            onClick={() => go(active - 1)}
-            className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-30"
-          >
-            <ChevronDownIcon size={22} className="rotate-180" />
-          </button>
-          <button
-            type="button"
-            aria-label="Extrait suivant"
-            disabled={active >= count - 1}
-            onClick={() => go(active + 1)}
-            className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-30"
-          >
-            <ChevronDownIcon size={22} />
-          </button>
-        </div>
-      )}
+      {wide && activePost && <PostSidePanel key={activePost.id} post={activePost} />}
     </div>
   );
 }

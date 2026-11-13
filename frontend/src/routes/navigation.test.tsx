@@ -228,6 +228,27 @@ describe('navigation shell (desktop)', () => {
   });
 });
 
+describe('logout in the shell (FB-25)', () => {
+  it('desktop: the rail logs out in one click', async () => {
+    setViewport(true);
+    await loginAs('lea@wave.local');
+    const user = userEvent.setup();
+    const router = renderApp('/library');
+    await user.click(await screen.findByRole('button', { name: 'Se déconnecter' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+    expect(sessionStore.getState().user).toBeNull();
+  });
+
+  it('mobile: own profile offers it, the rail is absent', async () => {
+    setViewport(false);
+    await loginAs('lea@wave.local');
+    const user = userEvent.setup();
+    const router = renderApp(`/u/${ME}`);
+    await user.click(await screen.findByRole('button', { name: 'Se déconnecter' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
+  });
+});
+
 describe('navigation shell (anonymous)', () => {
   it('sends an anonymous visitor of / to /login', async () => {
     const router = renderApp('/');

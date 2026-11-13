@@ -248,7 +248,8 @@ export function FeedItem({
             aria-label="Commentaires"
             aria-haspopup="dialog"
             onClick={() => setSheet('comments')}
-            className="flex flex-col items-center gap-0.5 text-xs font-semibold"
+            // FB-26: from lg up the side panel shows the comments.
+            className="flex flex-col items-center gap-0.5 text-xs font-semibold lg:hidden"
           >
             <CommentIcon />
             <span>{formatCount(Math.max(0, post.commentCount + commentDelta))}</span>

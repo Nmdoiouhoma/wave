@@ -52,7 +52,7 @@ export function CaptionField({
           onChange={(e) => onChange(e.target.value)}
           className={cx(
             box,
-            'caret-fg resize-none overflow-hidden bg-transparent text-transparent placeholder:text-faint focus:outline-none',
+            'caret-fg placeholder:text-faint resize-none overflow-hidden bg-transparent text-transparent focus:outline-none',
           )}
         />
       </div>

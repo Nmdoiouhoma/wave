@@ -49,6 +49,39 @@ function serveFeed(source: 'for-you' | 'following', pages: FeedPageData[]) {
 const playingAudio = () => audios.find((a) => !a.paused) ?? null;
 const activeItem = () => document.querySelector('article[aria-current="true"]') as HTMLElement;
 
+describe('wide feed layout (FB-26)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const viewport = (matches: boolean) =>
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
+
+  it('shows track info and comments of the active post in a right panel from lg up', async () => {
+    viewport(true);
+    const p1 = makePost(1);
+    serveFeed('for-you', [{ items: [p1], nextCursor: null }]);
+    renderRoute(<FeedPage which="for-you" />);
+    const panel = await screen.findByRole('complementary', { name: 'Détails de l’extrait' });
+    expect(within(panel).getByText(p1.track.title)).toBeInTheDocument();
+    expect(within(panel).getByRole('heading', { name: 'Commentaires' })).toBeInTheDocument();
+  });
+
+  it('has no panel on a phone', async () => {
+    viewport(false);
+    serveFeed('for-you', [{ items: [makePost(1)], nextCursor: null }]);
+    renderRoute(<FeedPage which="for-you" />);
+    await screen.findByRole('feed');
+    expect(screen.queryByRole('complementary', { name: 'Détails de l’extrait' })).toBeNull();
+  });
+});
+
 describe('vertical feed (W-34)', () => {
   it('dedupes pages, fetches after a short page and plays the first clip, pausing the player', async () => {
     const pause = vi.fn();

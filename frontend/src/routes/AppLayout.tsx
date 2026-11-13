@@ -14,6 +14,7 @@ import {
 import { Toaster } from '@/components/ui/Toaster';
 import { Avatar } from '@/components/ui/Media';
 import { TrackSheets } from '@/features/playlists/TrackSheets';
+import { LogoutButton } from '@/features/auth/LogoutButton';
 import { VerifyEmailBanner } from '@/features/auth/VerifyEmailBanner';
 import { BellIcon, NotificationBell, UnreadBadge } from '@/features/notifications/NotificationBell';
 import { useBellLabel, useUnreadCount } from '@/features/notifications/queries';
@@ -74,6 +75,7 @@ function Logo() {
 function Rail({ active, notificationsOn, createOpen, onCreate, createRef }: NavProps) {
   const entries = useEntries();
   const bellLabel = useBellLabel();
+  const me = useCurrentUser();
   const item = (on: boolean) =>
     cx(
       'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
@@ -122,13 +124,23 @@ function Rail({ active, notificationsOn, createOpen, onCreate, createRef }: NavP
         <UnreadBadge />
       </Link>
       {MOCKS_ENABLED && (
-        <Link
-          to="/dev/mailbox"
-          className="text-faint hover:text-fg mt-auto rounded-xl px-3 py-2 text-xs"
-        >
+        <Link to="/dev/mailbox" className="text-faint hover:text-fg rounded-xl px-3 py-2 text-xs">
           Boîte mail de démo
         </Link>
       )}
+      {/* FB-25: account block, logout one click away. */}
+      <div className="mt-auto flex flex-col gap-2">
+        <Link to="/settings" aria-label="Paramètres" className={item(false)}>
+          <Avatar
+            url={me.avatarUrl}
+            name={me.displayName}
+            seed={me.id}
+            className="size-8 text-xs"
+          />
+          <span className="truncate">{me.displayName}</span>
+        </Link>
+        <LogoutButton />
+      </div>
     </aside>
   );
 }

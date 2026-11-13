@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useUserArtists, useUserProfile, useUserTracks } from '@/api/queries/users';
+import { LogoutButton } from '@/features/auth/LogoutButton';
 import { ButtonLink } from '@/components/ui/Button';
 import { cx } from '@/components/ui/cx';
 import { EditIcon, LibraryIcon, MicIcon, MusicIcon, UploadIcon } from '@/components/ui/icons';
@@ -53,6 +54,8 @@ export function ProfilePage() {
             <ButtonLink to="/me/artists" variant="secondary" size="sm">
               <MicIcon size={16} /> Mes artistes
             </ButtonLink>
+            {/* FB-25: on desktop the rail owns the logout. */}
+            <LogoutButton className="md:hidden" />
           </div>
         ) : (
           <div className="flex shrink-0 items-center gap-2">

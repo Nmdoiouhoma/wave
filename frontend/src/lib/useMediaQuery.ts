@@ -14,3 +14,5 @@ export function useMediaQuery(query: string): boolean {
 }
 
 export const DESKTOP_QUERY = '(min-width: 768px)';
+/** FB-26: wide enough for the feed's right panel (track info + comments). */
+export const WIDE_QUERY = '(min-width: 1024px)';

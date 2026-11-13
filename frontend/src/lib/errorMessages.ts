@@ -116,6 +116,8 @@ const POST_FAILURES: Partial<Record<KnownFailureReason, string>> = {
 
 /** Why a post ended `failed`, in French. */
 export function postFailureMessage(reason: FailureReason | string): string {
-  return (reason ? POST_FAILURES[reason as KnownFailureReason] : undefined) ??
-    'La création de l’extrait a échoué. Réessaie.';
+  return (
+    (reason ? POST_FAILURES[reason as KnownFailureReason] : undefined) ??
+    'La création de l’extrait a échoué. Réessaie.'
+  );
 }

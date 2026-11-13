@@ -39,6 +39,34 @@ function FeedSheet({
   );
 }
 
+/** Comments list + report form, shared by the phone sheet and the desktop side panel. */
+export function CommentsBody({
+  post,
+  onCountDelta,
+  reporting,
+  setReporting,
+}: {
+  post: Post;
+  onCountDelta: (delta: number) => void;
+  reporting: Comment | null;
+  setReporting: (c: Comment | null) => void;
+}) {
+  return (
+    <>
+      {reporting && (
+        <ReportForm
+          target={{ type: 'comment', id: reporting.id }}
+          onDone={() => setReporting(null)}
+        />
+      )}
+      {/* Kept mounted while reporting so the draft and the scroll survive. */}
+      <div hidden={!!reporting}>
+        <CommentsPanel postId={post.id} onCountDelta={onCountDelta} onReport={setReporting} />
+      </div>
+    </>
+  );
+}
+
 export function CommentsSheet({
   post,
   open,
@@ -61,16 +89,12 @@ export function CommentsSheet({
       title={reporting ? reportTitle('comment') : 'Commentaires'}
       onClose={close}
     >
-      {reporting && (
-        <ReportForm
-          target={{ type: 'comment', id: reporting.id }}
-          onDone={() => setReporting(null)}
-        />
-      )}
-      {/* Kept mounted while reporting so the draft and the scroll survive. */}
-      <div hidden={!!reporting}>
-        <CommentsPanel postId={post.id} onCountDelta={onCountDelta} onReport={setReporting} />
-      </div>
+      <CommentsBody
+        post={post}
+        onCountDelta={onCountDelta}
+        reporting={reporting}
+        setReporting={setReporting}
+      />
     </FeedSheet>
   );
 }
