@@ -163,7 +163,7 @@ export function FeedViewer({
   }, [go]);
 
   return (
-    <div className="relative h-full bg-black lg:flex">
+    <div className="bg-bg relative h-full lg:flex">
       {header}
       <div className="relative h-full min-w-0 lg:flex-1">
         <div
@@ -173,7 +173,7 @@ export function FeedViewer({
           aria-busy={false}
           tabIndex={0}
           onScroll={onScroll}
-          className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:mx-auto md:max-w-[min(100%,calc(100dvh*9/16))]"
+          className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:border-line md:mx-auto md:my-4 md:h-[calc(100%-2rem)] md:max-w-[min(100%,calc(100dvh*9/16))] md:rounded-[28px] md:border"
         >
           {posts.map((post, i) => (
             <FeedItem
@@ -186,7 +186,7 @@ export function FeedViewer({
             />
           ))}
           {footer && (
-            <div className="flex h-full snap-start snap-always items-center justify-center px-6 text-center text-white">
+            <div className="flex h-full snap-start snap-always items-center justify-center px-6 text-center">
               {footer}
             </div>
           )}
@@ -198,7 +198,7 @@ export function FeedViewer({
               aria-label="Extrait précédent"
               disabled={active === 0}
               onClick={() => go(active - 1)}
-              className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-30"
+              className="flex size-11 items-center justify-center rounded-full bg-surface border-line text-fg hover:bg-surface-2 border disabled:opacity-30"
             >
               <ChevronDownIcon size={22} className="rotate-180" />
             </button>
@@ -207,7 +207,7 @@ export function FeedViewer({
               aria-label="Extrait suivant"
               disabled={active >= count - 1}
               onClick={() => go(active + 1)}
-              className="flex size-11 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-30"
+              className="flex size-11 items-center justify-center rounded-full bg-surface border-line text-fg hover:bg-surface-2 border disabled:opacity-30"
             >
               <ChevronDownIcon size={22} />
             </button>

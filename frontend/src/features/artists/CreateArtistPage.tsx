@@ -33,7 +33,7 @@ function Steps({ step }: { step: 1 | 2 }) {
                 done
                   ? 'bg-success/20 text-success'
                   : current
-                    ? 'bg-wave text-white'
+                    ? 'bg-accent text-accent-contrast'
                     : 'bg-surface-2 text-faint',
               )}
             >

@@ -22,7 +22,7 @@ export function MiniPlayer({ onExpand }: { onExpand: () => void }) {
       className="bg-surface-2/95 ring-line md:border-line relative mx-2 mb-2 overflow-hidden rounded-2xl shadow-2xl ring-1 shadow-black/50 backdrop-blur md:mx-0 md:mb-0 md:rounded-none md:border-t md:ring-0"
     >
       <div className="bg-surface-3 absolute inset-x-0 top-0 h-0.5 md:hidden" aria-hidden>
-        <div className="bg-wave h-full" style={{ width: `${pct}%` }} />
+        <div className="bg-accent h-full" style={{ width: `${pct}%` }} />
       </div>
       <div className="flex items-center gap-3 px-3 py-2 md:px-6 md:py-3">
         <button

@@ -33,7 +33,7 @@ export function UnreadBadge({ className }: { className?: string }) {
       aria-hidden
       data-testid="unread-badge"
       className={cx(
-        'bg-wave flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold text-white',
+        'bg-accent flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold text-accent-contrast',
         className,
       )}
     >

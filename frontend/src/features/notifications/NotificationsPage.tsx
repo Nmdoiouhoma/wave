@@ -72,7 +72,7 @@ function Item({ n }: { n: Notification }) {
           </time>
         </span>
         {n.target && <Cover url={n.target.imageUrl} seed={n.target.id} className="size-11" />}
-        {!n.read && <span aria-hidden className="bg-wave size-2 shrink-0 rounded-full" />}
+        {!n.read && <span aria-hidden className="bg-accent size-2 shrink-0 rounded-full" />}
       </Link>
     </li>
   );

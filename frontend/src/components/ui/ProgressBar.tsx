@@ -21,7 +21,7 @@ export function ProgressBar({
     >
       <div
         className={cx(
-          'bg-wave h-full rounded-full transition-[width] duration-200',
+          'bg-accent h-full rounded-full transition-[width] duration-200',
           pct === null && 'w-1/3 animate-pulse',
         )}
         style={pct === null ? undefined : { width: `${pct}%` }}

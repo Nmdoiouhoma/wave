@@ -11,7 +11,7 @@ export function Splash() {
       role="status"
       aria-label="Chargement de Wave"
     >
-      <span className="bg-wave flex size-14 animate-pulse items-center justify-center rounded-2xl text-white">
+      <span className="bg-accent flex size-14 animate-pulse items-center justify-center rounded-2xl text-accent-contrast">
         <WaveLogo size={30} />
       </span>
     </div>

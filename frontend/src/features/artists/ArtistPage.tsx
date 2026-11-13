@@ -5,7 +5,7 @@ import { CloseIcon, EditIcon, MusicIcon, UploadIcon } from '@/components/ui/icon
 import { Avatar } from '@/components/ui/Media';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
-import { formatCount, hueOf } from '@/lib/format';
+import { formatCount } from '@/lib/format';
 import { MultiUploader } from '@/features/tracks/MultiUploader';
 import { PlayAllButton, TrackList } from '@/features/tracks/TrackList';
 import { ReportButton } from '@/features/reports/ReportButton';
@@ -24,19 +24,18 @@ export function ArtistPage() {
     return <ErrorState error={artist.error} onRetry={() => void artist.refetch()} />;
   const a = artist.data;
   const items = tracks.data?.pages.flatMap((p) => p.items) ?? [];
-  const hue = hueOf(a.id);
 
   return (
     <div className="mx-auto max-w-3xl">
       <header
         className="-mx-4 -mt-4 flex flex-col items-center gap-4 px-4 pt-10 pb-6 text-center sm:flex-row sm:items-end sm:text-left md:-mx-8 md:px-8"
-        style={{ background: `linear-gradient(180deg, hsl(${hue} 60% 30% / 0.55), transparent)` }}
+        
       >
         <Avatar
           url={a.avatarUrl}
           name={a.name}
           seed={a.id}
-          className="size-32 text-4xl shadow-2xl shadow-black/50 sm:size-40"
+          className="size-32 text-4xl sm:size-40"
         />
         <div className="min-w-0 flex-1">
           <p className="text-muted text-xs font-semibold tracking-widest uppercase">Artiste</p>

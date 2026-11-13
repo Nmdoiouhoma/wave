@@ -9,8 +9,8 @@ import {
   LibraryIcon,
   PlusIcon,
   UserIcon,
-  WaveLogo,
 } from '@/components/ui/icons';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { Toaster } from '@/components/ui/Toaster';
 import { Avatar } from '@/components/ui/Media';
 import { TrackSheets } from '@/features/playlists/TrackSheets';
@@ -64,10 +64,9 @@ interface NavProps {
 function Logo() {
   return (
     <Link to="/" className="flex items-center gap-2" aria-label="Wave, Pour toi">
-      <span className="bg-wave flex size-8 items-center justify-center rounded-lg text-white">
-        <WaveLogo size={18} />
+      <span className="text-[26px] leading-none font-bold tracking-[-0.04em]">
+        wave<span className="text-accent">.</span>
       </span>
-      <span className="text-lg font-bold tracking-tight">Wave</span>
     </Link>
   );
 }
@@ -78,11 +77,11 @@ function Rail({ active, notificationsOn, createOpen, onCreate, createRef }: NavP
   const me = useCurrentUser();
   const item = (on: boolean) =>
     cx(
-      'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
-      on ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg',
+      'flex min-h-11 items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition',
+      on ? 'bg-fg text-bg' : 'text-muted hover:text-fg',
     );
   return (
-    <aside className="border-line bg-surface/50 fixed inset-y-0 left-0 flex w-60 flex-col gap-8 border-r px-4 py-6">
+    <aside className="border-line bg-bg fixed inset-y-0 left-0 flex w-60 flex-col gap-8 border-r px-4 py-6">
       <div className="px-2">
         <Logo />
       </div>
@@ -129,7 +128,7 @@ function Rail({ active, notificationsOn, createOpen, onCreate, createRef }: NavP
         </Link>
       )}
       {/* FB-25: account block, logout one click away. */}
-      <div className="mt-auto flex flex-col gap-2">
+      <div className="border-line bg-surface mt-auto flex flex-col gap-2 rounded-2xl border p-2.5">
         <Link to="/settings" aria-label="Paramètres" className={item(false)}>
           <Avatar
             url={me.avatarUrl}
@@ -139,6 +138,7 @@ function Rail({ active, notificationsOn, createOpen, onCreate, createRef }: NavP
           />
           <span className="truncate">{me.displayName}</span>
         </Link>
+        <ThemeToggle />
         <LogoutButton />
       </div>
     </aside>
@@ -172,7 +172,7 @@ function TabBar({ active, createOpen, onCreate, createRef }: NavProps) {
                   aria-current={on ? 'page' : undefined}
                   className={cls}
                 >
-                  <span className="bg-wave flex h-7 w-10 items-center justify-center rounded-lg text-white">
+                  <span className="bg-accent text-accent-contrast flex h-7 w-10 items-center justify-center rounded-full">
                     <Icon size={18} />
                   </span>
                   {e.label}

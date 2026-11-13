@@ -15,12 +15,13 @@ import { TextArea, TextField } from '@/components/ui/Field';
 import { LogoutIcon } from '@/components/ui/icons';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Avatar } from '@/components/ui/Media';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { formErrors } from '@/features/auth/formErrors';
 import { useVerifiedGate } from '@/features/auth/useVerifiedGate';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="bg-surface ring-line rounded-2xl p-5 ring-1" aria-label={title}>
+    <section className="bg-surface border-line rounded-[20px] border p-5" aria-label={title}>
       <h2 className="mb-4 font-semibold">{title}</h2>
       {children}
     </section>
@@ -44,6 +45,10 @@ export function SettingsPage() {
           @{me.username} · {me.email}
         </p>
       </div>
+
+      <Section title="Apparence">
+        <ThemeToggle />
+      </Section>
 
       <Section title="Avatar">
         <ImageUploader

@@ -22,7 +22,7 @@ function FeedTabs({ which }: { which: FeedSource }) {
   return (
     <nav
       aria-label="Fils"
-      className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center bg-gradient-to-b from-black/60 to-transparent pt-[max(0.75rem,env(safe-area-inset-top))] pb-6"
+      className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center bg-gradient-to-b from-black/60 to-transparent md:from-transparent pt-[max(0.75rem,env(safe-area-inset-top))] pb-6"
     >
       <div className="pointer-events-auto flex gap-1">
         {TABS.map((t) => (
@@ -32,7 +32,9 @@ function FeedTabs({ which }: { which: FeedSource }) {
             aria-current={t.id === which ? 'page' : undefined}
             className={cx(
               'rounded-full px-4 py-2 text-sm font-semibold transition',
-              t.id === which ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white',
+              t.id === which
+                ? 'bg-white/20 text-white md:bg-fg md:text-bg'
+                : 'text-white/80 hover:text-white md:text-muted md:hover:text-fg',
             )}
           >
             {t.label}
@@ -70,21 +72,21 @@ function FeedSessionView({ which }: { which: FeedSource }) {
 
   if (query.isPending || (query.isSuccess && !posts.length && query.hasNextPage))
     return (
-      <div className="relative flex h-full items-center justify-center bg-black text-white">
+      <div className="relative flex h-full items-center justify-center bg-bg text-fg">
         {header}
         <Spinner />
       </div>
     );
   if (query.isError && !posts.length)
     return (
-      <div className="relative flex h-full items-center justify-center bg-black text-white">
+      <div className="relative flex h-full items-center justify-center bg-bg text-fg">
         {header}
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
       </div>
     );
   if (!posts.length)
     return (
-      <div className="relative flex h-full items-center justify-center bg-black px-6 text-white">
+      <div className="relative flex h-full items-center justify-center bg-bg text-fg px-6">
         {header}
         <EmptyState icon={<CompassIcon size={28} />} title={EMPTY[which].title}>
           <p>{EMPTY[which].body}</p>
@@ -99,7 +101,7 @@ function FeedSessionView({ which }: { which: FeedSource }) {
   if (query.isFetchNextPageError)
     footer = (
       <div role="alert" className="flex flex-col items-center gap-3">
-        <p className="text-sm text-white/80">{errorMessage(query.error)}</p>
+        <p className="text-muted text-sm">{errorMessage(query.error)}</p>
         <Button variant="secondary" size="sm" onClick={() => void query.fetchNextPage()}>
           Réessayer
         </Button>
@@ -110,7 +112,7 @@ function FeedSessionView({ which }: { which: FeedSource }) {
     footer = (
       <div className="flex flex-col items-center gap-3">
         <p className="text-2xl font-bold">Tu as tout vu</p>
-        <p className="text-sm text-white/70">Reviens plus tard, ou repars du début.</p>
+        <p className="text-muted text-sm">Reviens plus tard, ou repars du début.</p>
         <Button size="sm" onClick={restart}>
           Recommencer
         </Button>

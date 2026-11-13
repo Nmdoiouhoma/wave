@@ -16,7 +16,7 @@ function Equalizer() {
       {[0, 0.2, 0.4].map((d) => (
         <span
           key={d}
-          className="eq-bar bg-cyan block h-full w-1 rounded-sm"
+          className="eq-bar bg-accent block h-full w-1 rounded-sm"
           style={{ animationDelay: `${d}s` }}
         />
       ))}

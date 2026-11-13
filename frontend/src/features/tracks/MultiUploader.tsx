@@ -116,7 +116,7 @@ export function MultiUploader({ artist, initialArtistId, onProgressChange }: Mul
             gate && 'pointer-events-none opacity-60',
           )}
         >
-          <span className="bg-wave flex size-12 items-center justify-center rounded-full text-white">
+          <span className="bg-accent flex size-12 items-center justify-center rounded-full text-accent-contrast">
             <UploadIcon size={22} />
           </span>
           <span className="font-semibold">

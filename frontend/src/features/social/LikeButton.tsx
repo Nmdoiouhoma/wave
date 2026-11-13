@@ -42,7 +42,7 @@ export function LikeButton({
       }
       className={cx(
         'hover:bg-surface-2 inline-flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-full px-2 transition disabled:cursor-wait',
-        state.liked ? 'text-danger' : 'text-muted hover:text-fg',
+        state.liked ? 'text-like' : 'text-muted hover:text-fg',
         className,
       )}
     >

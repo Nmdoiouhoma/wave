@@ -5,7 +5,7 @@ import { MusicIcon } from './icons';
 
 function gradient(seed: string) {
   const h = hueOf(seed);
-  return `linear-gradient(135deg, hsl(${h} 70% 55%), hsl(${(h + 60) % 360} 75% 38%))`;
+  return `hsl(${h} 75% 86%)`;
 }
 
 function useImageOk(url: string | null) {
@@ -28,7 +28,7 @@ export function Avatar({
   return (
     <span
       className={cx(
-        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white select-none',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-[#16161a] select-none',
         className ?? 'size-10 text-sm',
       )}
       style={{ background: gradient(seed) }}
@@ -66,7 +66,7 @@ export function Cover({
       {img.show ? (
         <img src={url!} alt="" className="size-full object-cover" onError={img.onError} />
       ) : (
-        <MusicIcon className="size-2/5 text-white/70" />
+        <MusicIcon className="size-2/5 text-[#16161a]/70" />
       )}
     </span>
   );

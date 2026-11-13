@@ -1,28 +1,76 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/dm-sans';
+
+/* FB-27 "Papier": design tokens. One set per theme; Tailwind utilities read the variables. */
+:root {
+  --bg: #f7f7f4;
+  --surface: #ffffff;
+  --surface-2: #efefea;
+  --line: #e4e4df;
+  --text: #16161a;
+  --muted: #5e5e66;
+  --accent: #2b44ff;
+  --accent-contrast: #ffffff;
+  --like: #e5484d;
+  --danger: #c62a2f;
+  --success: #12794f;
+  --warning: #8a5a00;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #121214;
+    --surface: #1b1b1f;
+    --surface-2: #232328;
+    --line: #2c2c32;
+    --text: #f2f2ee;
+    --muted: #a0a0a8;
+    --accent: #8a97ff;
+    --accent-contrast: #121214;
+    --like: #ff6b6f;
+    --danger: #ff6b6f;
+    --success: #3ddc97;
+    --warning: #ffc24b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #121214;
+  --surface: #1b1b1f;
+  --surface-2: #232328;
+  --line: #2c2c32;
+  --text: #f2f2ee;
+  --muted: #a0a0a8;
+  --accent: #8a97ff;
+  --accent-contrast: #121214;
+  --like: #ff6b6f;
+  --danger: #ff6b6f;
+  --success: #3ddc97;
+  --warning: #ffc24b;
+  color-scheme: dark;
+}
 
 @theme {
-  --color-bg: #09090e;
-  --color-surface: #12121a;
-  --color-surface-2: #1b1b26;
-  --color-surface-3: #252533;
-  --color-line: #2c2c3c;
-  --color-fg: #f3f3f8;
-  --color-muted: #a0a0b4;
-  --color-faint: #6b6b80;
-  --color-accent: #8b6cff;
-  --color-accent-strong: #a48bff;
-  --color-cyan: #2fd3ea;
-  --color-danger: #ff5d73;
-  --color-success: #3ddc97;
-  --color-warning: #ffc24b;
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --radius-card: 1rem;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--line);
+  --color-line: var(--line);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-like: var(--like);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --radius-card: 1.25rem;
 }
 
 @layer base {
-  :root {
-    color-scheme: dark;
-  }
   html,
   body,
   #root {
@@ -36,23 +84,13 @@
     -webkit-tap-highlight-color: transparent;
   }
   :focus-visible {
-    outline: 2px solid var(--color-accent-strong);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']) {
     cursor: pointer;
   }
-}
-
-@utility bg-wave {
-  background-image: linear-gradient(135deg, var(--color-accent) 0%, var(--color-cyan) 100%);
-}
-
-@utility text-wave {
-  background-image: linear-gradient(135deg, var(--color-accent-strong) 0%, var(--color-cyan) 100%);
-  background-clip: text;
-  color: transparent;
 }
 
 @utility pb-safe {
@@ -74,13 +112,13 @@
     to right,
     var(--color-fg) 0%,
     var(--color-fg) var(--pct),
-    var(--color-surface-3) var(--pct)
+    var(--color-line) var(--pct)
   );
 }
 .range::-moz-range-track {
   height: 4px;
   border-radius: 999px;
-  background: var(--color-surface-3);
+  background: var(--color-line);
 }
 .range::-moz-range-progress {
   height: 4px;
@@ -94,7 +132,7 @@
   margin-top: -5px;
   border-radius: 999px;
   background: var(--color-fg);
-  box-shadow: 0 0 0 4px rgb(0 0 0 / 0.25);
+  box-shadow: 0 0 0 4px var(--color-surface-2);
 }
 .range::-moz-range-thumb {
   width: 14px;
