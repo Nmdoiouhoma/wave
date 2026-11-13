@@ -400,6 +400,7 @@ export function toMe(u: MockUser): Me {
     ...toProfile(u, u),
     email: u.email,
     emailVerified: u.emailVerified,
+    features: { catalog: false },
     roles: u.roles,
   };
 }

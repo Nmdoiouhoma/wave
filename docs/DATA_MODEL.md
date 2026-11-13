@@ -33,7 +33,7 @@ Source of truth for the PostgreSQL 16 schema. API shapes live in `openapi.yaml`;
 | `ReportTargetType` | `track`, `post`, `comment`, `playlist`, `artist`, `user` |
 | `ReportReason` | `spam`, `harassment`, `hate`, `sexual`, `violence`, `copyright`, `impersonation`, `other` |
 | `ReportStatus` | `open`, `actioned`, `dismissed` |
-| `NotificationType` | `follow`, `track_like`, `playlist_like`, `post_like`, `comment` (FB-16) |
+| `NotificationType` | `follow`, `track_like`, `playlist_like`, `post_like`, `comment` (FB-16), `repost` (FB-33, ADR 015) |
 | `Role` | `ROLE_USER` (implicit), `ROLE_MODERATOR`, `ROLE_ADMIN` (inherits moderator). ROLE_ADMIN is granted only by console (ADR 013) |
 | `ActivityCategory` | `auth`, `account`, `content`, `report`, `upload`, `abuse`, `admin` (§15) |
 | `AlertRule` | `login_failures`, `token_reuse`, `mass_registration`, `report_burst`, `report_spree`, `upload_abuse`, `rate_limit_hammering`, `privilege_granted` (§16) |
@@ -236,7 +236,7 @@ PK(owner_id, friend_id); CHECK owner_id ≠ friend_id; **FK (friend_id, owner_id
 | type | varchar(16) | no | `NotificationType` |
 | track_id | uuid FK → track | yes | CASCADE; set iff type=`track_like` |
 | playlist_id | uuid FK → playlist | yes | CASCADE; set iff type=`playlist_like` |
-| post_id | uuid FK → post | yes | CASCADE; set iff type ∈ {`post_like`, `comment`} |
+| post_id | uuid FK → post | yes | CASCADE; set iff type ∈ {`post_like`, `comment`, `repost`} |
 | read_at | timestamptz | yes | null = unread |
 | created_at | timestamptz | no | |
 | updated_at | timestamptz | no | bumped when an actor joins |
@@ -252,6 +252,7 @@ Events (same transaction as the action, only when it really inserted a row, so i
 | playlist like inserted | `playlist_like` | playlist.owner_id | playlist |
 | post like inserted | `post_like` | post.author_id | post |
 | comment created (§10) | `comment` | post.author_id | post |
+| repost inserted (§9b) | `repost` | post.author_id | post |
 Write = `INSERT INTO notification … ON CONFLICT (…) WHERE read_at IS NULL DO UPDATE SET updated_at = now() RETURNING id`, then `INSERT INTO notification_actor … ON CONFLICT DO NOTHING`. Concurrent events on one target merge into one row (no lock needed). **No notification to oneself**: actor = recipient → nothing written (liking or commenting one's own content).
 Aggregation: while unread, every new actor joins the same row; after `POST /me/notifications/read` (`read_at = now()` where `updated_at ≤ upTo`), the next event opens a new row. A like/unlike loop therefore yields at most one new item per read by the recipient (no spam).
 Undo: unfollow / unlike delete the actor's `notification_actor` rows for that (recipient, type, target), read or not, then delete those notifications left without actor. Comment deletion or hiding does **not** touch notifications (no comment body is ever stored or shown, so nothing leaks).
@@ -278,6 +279,7 @@ Read-time filters (list and unread count use the same query): recipient = caller
 | failure_reason | varchar(32) | yes | |
 | moderation | varchar(16) | no | default visible |
 | like_count, comment_count, view_count | int | no | counters (PostLike; visible comments; first PostView per user) |
+| repost_count | int | no | counter (§9b, ADR 015) |
 | trending_score | double precision | no | *job* |
 | created_at | timestamptz | no | |
 
@@ -298,6 +300,19 @@ Any handler failure sets `status='failed'` + `failure_reason`.
 
 `hashtag`: id uuid PK, name varchar(50) UNIQUE (lowercase NFKC, `^[\p{L}\p{N}_]{1,50}$`, stored without `#`), post_count int (counter: +1 per post_hashtag insert, −1 on post delete), created_at. Indexes: unique(name), `name varchar_pattern_ops` (prefix search), GIN trgm(name).
 `post_hashtag`: PK(post_id, hashtag_id), post CASCADE, hashtag CASCADE; index (hashtag_id, post_id). Extracted from caption at creation (regex `#([\p{L}\p{N}_]{1,50})`, deduped, max 10; extras ignored). Captions are immutable in v1.
+
+## 9b. Repost — `repost` (FB-33, ADR 015)
+
+| Column | Type | Null | Rules |
+|---|---|---|---|
+| user_id | uuid FK → app_user | no | CASCADE; the reposter |
+| post_id | uuid FK → post | no | CASCADE |
+| created_at | timestamptz | no | |
+
+PK(user_id, post_id); indexes (post_id) (cascade, F signal), (user_id, created_at DESC, post_id DESC) (profile list, Abonnements). Counter `post.repost_count` (+1 on insert, −1 on delete, atomic). Write/undo/notification exactly like `post_like` (§8, §8b, type `repost`).
+**Repostable by v** ⇔ post playable for v (§9) ∧ *publicly playable* (track.visibility = public ∧ (track.allow_clips ∨ post.author = track.owner)) ∧ post.author ≠ v. Not playable → 404; own → 422 `cannot_repost_own`; restricted audience → 422 `repost_not_allowed`.
+**Repost shown to viewer w** ⇔ post publicly playable ∧ playable for w ∧ reposter.suspended_at IS NULL (live; rows never rewritten, counter unchanged when a repost stops being shown).
+Migration (W-80, new, never edit an applied one): table + indexes, `post.repost_count int NOT NULL DEFAULT 0 CHECK (>= 0)`, notification `type` CHECK and target CHECK extended to `repost`. Deletion: post → CASCADE; reposter's account → §13b step 2.
 
 ## 10. Comment — `comment`
 
@@ -397,7 +412,7 @@ Allowed actions: content targets `hide`/`dismiss` (`suspend` → 422 `validation
 
 `DELETE /me` (password re-confirmed) **hard-deletes** the user and everything they authored; no anonymised remnants (rationale: ADR 007). One transaction, in this order:
 1. Collect every storage key: user avatar; avatars of owned artists; raw/audio/cover keys of owned tracks; clip/visual/poster keys of posts authored by the user **and** of other users' posts using the user's tracks (they are deleted with the track, decision D5 follow-up).
-2. Fix counters on rows that survive, with set-based SQL: `followers_count`/`following_count` of the other side of each follow; `like_count` of tracks/playlists/posts the user liked; `comment_count` of posts the user commented (visible comments only); `item_count` of others' playlists containing the user's tracks (then compact `position`); `post_count` of hashtags of deleted posts. `play_count` is **not** decremented (aggregate, not personal data).
+2. Fix counters on rows that survive, with set-based SQL: `followers_count`/`following_count` of the other side of each follow; `like_count` of tracks/playlists/posts the user liked; `repost_count` of posts the user reposted (§9b); `comment_count` of posts the user commented (visible comments only); `item_count` of others' playlists containing the user's tracks (then compact `position`); `post_count` of hashtags of deleted posts. `play_count` is **not** decremented (aggregate, not personal data).
 3. Delete `report` rows whose target is any deleted row (polymorphic); reports filed by the user go by cascade; `handled_by_id` → NULL by FK.
 4. `DELETE FROM track WHERE owner_id = :u` (cascades posts on those tracks, likes, items, listens), then `DELETE FROM artist WHERE owner_id = :u`, then `DELETE FROM app_user WHERE id = :u` (cascades the rest: playlists, posts, comments, likes, follows, close-friend rows on both sides, listens, listen grants, post views, affinity, account tokens, reports filed). Then `DELETE FROM notification n WHERE NOT EXISTS (SELECT 1 FROM notification_actor a WHERE a.notification_id = n.id)` (items whose only actors were the user, §8b). Refresh tokens deleted by `username = id`.
 5. Dispatch `PurgeObjects` (batches of ≤ 500 keys) and `SendAccountDeletedEmail` inside the same transaction.
@@ -505,3 +520,9 @@ Retention: acknowledged alerts deleted 180 days after `acknowledged_at` (same da
 | updated_at | timestamptz | no | bumped on every PATCH (clients re-show an edited banner) |
 
 Active = `starts_at ≤ now() AND (ends_at IS NULL OR ends_at > now())`; at most 3 active returned, `level` warning first, then newest `starts_at`. Index (starts_at, ends_at). Hard delete; no retention job (a few rows per year).
+
+## 18. Phase-4 reads without new tables
+
+- **Admin series** (`GET /admin/dashboard/series`, FB-31): one `GROUP BY type, (created_at AT TIME ZONE 'Europe/Paris')::date` over `activity_event` with `(category, type) IN (…)` and `created_at ≥` local midnight of the first day (existing index `(category, type, created_at)`; EXPLAIN on 100 k events in the W-82 handoff), plus `security_alert` by `first_seen_at` (small table, no index). Cache 5 min.
+- **Discover** (`GET /discover`, FB-32): trending tracks on the existing partial `(trending_score DESC, id DESC)` index; hashtags by publicly playable posts of the last 7 days via the post partial `(created_at DESC, id DESC)` index + `post_hashtag`; suggested users via `follow` PK and `(followed_id, created_at)`. No new index unless the W-87 EXPLAIN shows a seq scan on the demo seed.
+- **External catalogue** (ADR 014): nothing stored in tables; Symfony cache pool `cache.catalog` on the existing DBAL cache table only.

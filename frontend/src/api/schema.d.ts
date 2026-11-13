@@ -526,6 +526,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/users/{username}/reposts': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
+        username: components['parameters']['Username'];
+      };
+      cookie?: never;
+    };
+    /**
+     * List user reposts
+     * @description ADR 015. Posts reposted by this user, newest repost first (keyset on repost time, post id). Each item has `repostedBy` = this user and `repostedAt`. Only reposts whose post is still publicly playable and playable for the caller are listed (live filter, nothing rewritten). Suspended user → 404 like every `/users/{username}` route.
+     */
+    get: operations['listUserReposts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/users/{username}/playlists': {
     parameters: {
       query?: never;
@@ -1118,6 +1141,33 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/posts/{postId}/repost': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        postId: components['parameters']['PostId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Repost post
+     * @description ADR 015. Idempotent (a second PUT changes nothing, notifies once). Allowed iff the post is playable for the caller, has a public audience (track public ∧ (allowClips ∨ author = track owner)) and is not the caller's own (`Post.canRepost`).
+     *     Not playable for the caller → 404 `not_found`; own post → 422 `cannot_repost_own`; visible but restricted audience → 422 `repost_not_allowed`. Notifies the author (`repost`, aggregated like `post_like`).
+     */
+    put: operations['repostPost'];
+    post?: never;
+    /**
+     * Undo repost
+     * @description Idempotent. An existing repost by the caller is removed whatever the post's visibility (counter decremented, the caller leaves the `repost` notification); without one, a post the caller cannot see → 404 `not_found`.
+     */
+    delete: operations['unrepostPost'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/posts/{postId}/comments': {
     parameters: {
       query?: never;
@@ -1219,7 +1269,9 @@ export interface paths {
     };
     /**
      * Get following feed
-     * @description Playable posts by followed users (suspended authors excluded), newest first (seen posts included), keyset on `(createdAt, id)`. Empty page and null `nextCursor` when the caller follows nobody. `limit` default 10, max 20.
+     * @description Playable posts by followed users (suspended authors excluded) **and, phase 4 (ADR 015), posts reposted by followed users** (reposter not suspended, post publicly playable and playable for the caller, caller's own posts excluded from the repost path). Seen posts included.
+     *     Each post appears at most once, at its latest activity (creation by a followed author or a repost by a followed user), newest first, keyset on `(activity time, id)`; `repostedBy`/`repostedAt` describe that latest activity when it is a repost, else null. Phase-3 cursors → 400 `invalid_cursor`. A post may move up between pages when a new repost lands: clients dedupe by id.
+     *     Empty page and null `nextCursor` when the caller follows nobody. `limit` default 10, max 20.
      */
     get: operations['getFollowingFeed'];
     put?: never;
@@ -1291,6 +1343,96 @@ export interface paths {
      * @description Playable posts with this hashtag, newest first.
      */
     get: operations['listHashtagPosts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/discover': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get discover home
+     * @description Default content of Découvrir when the search box is empty, and of the desktop side columns of Pour toi / Abonnements (FB-32). One call, every section always present (possibly empty).
+     *     Public-only per ADR 012 §6: tracks are public-visible (DATA_MODEL §6) with a non-suspended owner; hashtags are ranked on publicly playable posts only.
+     *     - `trendingTracks` ≤ 10: by `track.trending_score` desc, id desc (W-40 job); ids cached 15 min globally, hydrated per caller (`likedByMe`…).
+     *     - `genres` ≤ 12: the caller's top genres by affinity (`user_affinity`, kind genre) first, then genres by number of public-visible tracks desc, then name.
+     *     - `suggestedUsers` ≤ 6: never the caller, a followed user or a suspended user; only users with ≥ 1 public-visible track or publicly playable post; ranked by the number of the caller's followees who follow them desc, then `followersCount` desc, then id. Not cached.
+     *     - `trendingHashtags` ≤ 10: by number of publicly playable posts created in the last 7 days desc, then `postCount` desc, then name; cached 15 min globally. Empty hashtags never listed.
+     */
+    get: operations['getDiscoverHome'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/catalog/artists': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Search catalogue artists
+     * @description ADR 014. External, read-only catalogue (Deezer). Flag `CATALOG_PROVIDER=none` → 404 `not_found` on every `/catalog/*` route (the front reads `Me.features.catalog` instead of probing).
+     *     Up to `limit` artists, no paging. Provider failure (timeout, quota, error) → 200 with `available: false` and empty `items` (the front omits the section), never 500. Cached 1 h per normalised `q`.
+     */
+    get: operations['searchCatalogArtists'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/catalog/charts/artists': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List catalogue chart artists
+     * @description ADR 014. Provider's chart (≤ 10 artists) for Découvrir; cached 1 h; failure → 200 `available:false`. Flag off → 404.
+     */
+    get: operations['listCatalogChartArtists'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/catalog/artists/{externalId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider-prefixed id, validated before any outbound call (invalid → 404). */
+        externalId: string;
+      };
+      cookie?: never;
+    };
+    /**
+     * Get catalogue artist
+     * @description ADR 014. Artist with up to 10 top tracks. Metadata cached 24 h, top tracks (signed preview URLs) 10 min. On provider failure: stale metadata (≤ 24 h) with `topTracks: []`, else 503 `catalog_unavailable` with `Retry-After`. Unknown id at the provider → 404. Flag off → 404.
+     *     Previews are played from `previewUrl` (Deezer's CDN) directly by the browser; Wave never stores or proxies them. On a media error the client refetches this resource once.
+     */
+    get: operations['getCatalogArtist'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1402,6 +1544,28 @@ export interface paths {
      * @description ROLE_MODERATOR. Live counters (cached 60 s server-side). For a moderator, `alerts` and `announcements` are null.
      */
     get: operations['getAdminDashboard'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/dashboard/series': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get admin dashboard series
+     * @description ROLE_MODERATOR (FB-31). Daily counts for the charts, one call for every series. Days are calendar days in **Europe/Paris** (bucket = local midnight to midnight, DST-aware), oldest first, the last one being today (partial). `days` has 7 or 30 entries and every non-null series has the same length (0 for a day without event).
+     *     Sources: `activity_event` (DATA_MODEL §15, index `(category, type, created_at)`) for registrations, logins, tracks, posts, comments, rejected uploads, reports and hides; `security_alert.first_seen_at` for alerts. Events deleted with an account (§13b) or not journaled (fire-and-forget failure) are absent: the charts are monitoring, not accounting.
+     *     Moderator: only `moderation` (reports, hidden); `activity`, `content`, `alerts` are null. Cached 5 min server-side per (range, role level).
+     */
+    get: operations['getAdminDashboardSeries'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1752,8 +1916,11 @@ export interface components {
       | 'cannot_follow_self'
       | 'cannot_report_own'
       | 'not_a_follower'
+      | 'cannot_repost_own'
+      | 'repost_not_allowed'
       | 'rate_limited'
-      | 'internal_error';
+      | 'internal_error'
+      | 'catalog_unavailable';
     Problem: {
       /**
        * @description `urn:wave:problem:{code}`
@@ -1812,6 +1979,10 @@ export interface components {
     Visibility: 'public' | 'followers' | 'close_friends' | 'private';
     /** @enum {string} */
     Moderation: 'visible' | 'hidden';
+    RepostState: {
+      reposted: boolean;
+      repostCount: number;
+    };
     LikeState: {
       liked: boolean;
       likeCount: number;
@@ -1902,6 +2073,11 @@ export interface components {
       isFollowedByMe: boolean;
     };
     Me: components['schemas']['UserProfile'] & {
+      /** @description Server feature flags the client must follow (never probe routes). */
+      features: {
+        /** @description ADR 014: external catalogue (Deezer) enabled; false → hide every catalogue surface. */
+        catalog: boolean;
+      };
       /** Format: email */
       email: string;
       emailVerified: boolean;
@@ -2105,7 +2281,16 @@ export interface components {
       likeCount: number;
       commentCount: number;
       viewCount: number;
+      /** @description ADR 015; counts every repost, including ones the caller can no longer see. */
+      repostCount: number;
       likedByMe: boolean;
+      repostedByMe: boolean;
+      /** @description ADR 015: playable for the caller ∧ public audience ∧ not own. False → hide the repost button (undo stays possible when `repostedByMe`). */
+      canRepost: boolean;
+      /** @description Set only in `/feed/following` (followed reposter of the latest activity) and `/users/{username}/reposts`; null everywhere else. */
+      repostedBy: components['schemas']['UserSummary'] | null;
+      /** @description Time of the repost described by `repostedBy`; null when `repostedBy` is null. */
+      repostedAt: components['schemas']['DateTime'] | null;
       isOwner: boolean;
       createdAt: components['schemas']['DateTime'];
     };
@@ -2152,8 +2337,12 @@ export interface components {
       playlists?: components['schemas']['PlaylistPage'];
       hashtags?: components['schemas']['HashtagPage'];
     };
-    /** @enum {string} */
-    NotificationType: 'follow' | 'track_like' | 'playlist_like' | 'post_like' | 'comment';
+    /**
+     * @description `repost` (ADR 015) targets the reposted post, aggregated like `post_like`.
+     * @enum {string}
+     */
+    NotificationType:
+      'follow' | 'track_like' | 'playlist_like' | 'post_like' | 'comment' | 'repost';
     /** @description The caller's own content the event is about. Null for `follow`. */
     NotificationTarget: {
       /** @enum {string} */
@@ -2472,6 +2661,107 @@ export interface components {
       } | null;
       generatedAt: components['schemas']['DateTime'];
     };
+    DiscoverHome: {
+      trendingTracks: components['schemas']['Track'][];
+      genres: components['schemas']['Genre'][];
+      suggestedUsers: components['schemas']['UserListItem'][];
+      trendingHashtags: components['schemas']['Hashtag'][];
+    };
+    /** @description Must be shown next to every catalogue block. */
+    CatalogAttribution: {
+      /** @constant */
+      text: 'Données et extraits : Deezer';
+      /**
+       * Format: uri
+       * @example https://www.deezer.com
+       */
+      url: string;
+    };
+    CatalogArtistSummary: {
+      /** @example dz:27 */
+      id: string;
+      /** @description Plain text from the provider, never rendered as HTML. */
+      name: string;
+      /**
+       * Format: uri
+       * @description Provider CDN image (https://*.dzcdn.net).
+       */
+      pictureUrl: string | null;
+      fanCount: number | null;
+      /**
+       * Format: uri
+       * @description Link "Écouter sur Deezer".
+       */
+      deezerUrl: string;
+    };
+    /** @description Read-only; cannot be liked, added to a playlist, posted or reported in Wave. */
+    CatalogTrack: {
+      id: string;
+      title: string;
+      /** @description Full track duration (the preview lasts ≤ 30 s). */
+      durationSec: number;
+      /**
+       * Format: uri
+       * @description Provider preview URL, short-lived, played directly by the browser (no crossOrigin, no download). Null when the provider has no preview.
+       */
+      previewUrl: string | null;
+      albumTitle: string | null;
+      /** Format: uri */
+      coverUrl: string | null;
+      /** Format: uri */
+      deezerUrl: string;
+    };
+    CatalogArtist: components['schemas']['CatalogArtistSummary'] & {
+      topTracks: components['schemas']['CatalogTrack'][];
+      attribution: components['schemas']['CatalogAttribution'];
+    };
+    CatalogArtistList: {
+      /** @description False when the provider failed: items empty, the client omits the section. */
+      available: boolean;
+      items: components['schemas']['CatalogArtistSummary'][];
+      attribution: components['schemas']['CatalogAttribution'];
+    };
+    /** @description One count per entry of `days`, same order. */
+    DailySeries: number[];
+    AdminDashboardSeries: {
+      /** @enum {string} */
+      range: '7d' | '30d';
+      /** @constant */
+      timezone: 'Europe/Paris';
+      /** @description Local calendar dates, oldest first, last = today. */
+      days: string[];
+      /** @description Null for a moderator. */
+      activity: {
+        /** @description `account.registered`. */
+        registrations: components['schemas']['DailySeries'];
+        /** @description Distinct users with `auth.login_succeeded` that day. */
+        logins: components['schemas']['DailySeries'];
+      } | null;
+      /** @description Null for a moderator. */
+      content: {
+        /** @description `content.track_created`. */
+        tracks: components['schemas']['DailySeries'];
+        /** @description `content.post_created`. */
+        posts: components['schemas']['DailySeries'];
+        /** @description `content.comment_created`. */
+        comments: components['schemas']['DailySeries'];
+        /** @description `upload.rejected`. */
+        rejectedUploads: components['schemas']['DailySeries'];
+      } | null;
+      moderation: {
+        /** @description `report.created`. */
+        reports: components['schemas']['DailySeries'];
+        /** @description `report.auto_hidden` + `admin.content_hidden`. */
+        hidden: components['schemas']['DailySeries'];
+      };
+      /** @description Null for a moderator. Alerts by `first_seen_at`. */
+      alerts: {
+        high: components['schemas']['DailySeries'];
+        medium: components['schemas']['DailySeries'];
+        low: components['schemas']['DailySeries'];
+      } | null;
+      generatedAt: components['schemas']['DateTime'];
+    };
     UserPage: {
       items: components['schemas']['UserListItem'][];
       nextCursor: string | null;
@@ -2620,6 +2910,17 @@ export interface components {
     /** @description `validation_failed` (with `violations`) or a business rule code. */
     Unprocessable: {
       headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description `catalog_unavailable` (external provider down, nothing cached). */
+    ServiceUnavailable: {
+      headers: {
+        /** @description Seconds to wait. */
+        'Retry-After'?: number;
         [name: string]: unknown;
       };
       content: {
@@ -3374,6 +3675,36 @@ export interface operations {
     };
   };
   listUserPosts: {
+    parameters: {
+      query?: {
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path: {
+        /** @description Unknown or suspended user → 404 `not_found` (except `DELETE /users/{username}/follow`). */
+        username: components['parameters']['Username'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of posts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PostPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+    };
+  };
+  listUserReposts: {
     parameters: {
       query?: {
         /** @description Opaque value from a previous `nextCursor`. */
@@ -4471,6 +4802,57 @@ export interface operations {
       404: components['responses']['NotFound'];
     };
   };
+  repostPost: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        postId: components['parameters']['PostId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Repost state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RepostState'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['Unprocessable'];
+      429: components['responses']['TooManyRequests'];
+    };
+  };
+  unrepostPost: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        postId: components['parameters']['PostId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Repost state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RepostState'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+    };
+  };
   listComments: {
     parameters: {
       query?: {
@@ -4719,6 +5101,105 @@ export interface operations {
       404: components['responses']['NotFound'];
     };
   };
+  getDiscoverHome: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Discover sections. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiscoverHome'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      429: components['responses']['TooManyRequests'];
+    };
+  };
+  searchCatalogArtists: {
+    parameters: {
+      query: {
+        q: string;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Artists. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CatalogArtistList'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['Unprocessable'];
+      429: components['responses']['TooManyRequests'];
+    };
+  };
+  listCatalogChartArtists: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Artists. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CatalogArtistList'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+      429: components['responses']['TooManyRequests'];
+    };
+  };
+  getCatalogArtist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Provider-prefixed id, validated before any outbound call (invalid → 404). */
+        externalId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Artist. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CatalogArtist'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+      429: components['responses']['TooManyRequests'];
+      503: components['responses']['ServiceUnavailable'];
+    };
+  };
   createReport: {
     parameters: {
       query?: never;
@@ -4862,6 +5343,31 @@ export interface operations {
       };
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
+    };
+  };
+  getAdminDashboardSeries: {
+    parameters: {
+      query?: {
+        range?: '7d' | '30d';
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Series. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminDashboardSeries'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['Unprocessable'];
     };
   };
   listAdminUsers: {

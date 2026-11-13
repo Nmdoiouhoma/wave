@@ -343,29 +343,71 @@ Lots: **1** W-70 · **2** W-71 ∥ W-72 · **3** W-73 ∥ W-74 · **4** W-75 · 
 **W-79 · qa · W-73..W-75** Back-office test with the user
 - Browser test prompt for the user (moderator account and admin account), then fixes; closes FB-28.
 
-## Phase 4 — Recommendations v1, search, demo seed
+## Phase 4 — Recommendations v1, search, demo seed, catalogue, repost, admin charts
 
-**W-40 · backend · W-39, W-32** Recommendations v1 (replaces the W-39 ranking)
-- `RecomputeAffinity`, `RecomputeTrending` (scheduled) and `SqlFeedRanker` per ADR 005; weights in one class, unit-tested on a fixture dataset (genre-affine user gets that genre ranked first).
-- DI alias `FeedRanker` → `SqlFeedRanker`, `SimpleFeedRanker` deleted; `/feed/for-you` contract unchanged (cursor `r` changes: old cursors → 400, the client restarts, W-34).
+Contract (lot `p4-contract`): ADR 014 (Deezer catalogue, FB-06), ADR 015 (repost, FB-33), DATA_MODEL §9b + §18, `openapi.yaml` `/catalog/*`, `/discover`, `/posts/{postId}/repost`, `/users/{username}/reposts`, `/admin/dashboard/series`, `Post.repost*`/`canRepost`, `Me.features`, `NotificationType.repost`.
+**Launch order** (one backend agent at a time: PHPUnit drops the test database; front and media-infra run beside it):
+1. W-82 backend ∥ W-85 media-infra · 2. W-84 backend ∥ W-83 front · 3. W-80 backend ∥ W-86 front · 4. W-40 backend ∥ W-81 front · 5. W-41 backend ∥ W-42 media-infra · 6. W-87 backend · 7. W-43 front · 8. W-44 qa, then user test.
+
+**W-80 · backend · W-32, W-45** Repost (ADR 015)
+- One new migration (SQL shown to the lead): `repost` + indexes, `post.repost_count`, notification CHECKs extended to `repost`; hand-written objects of CLAUDE.md never dropped.
+- `PUT/DELETE /posts/{postId}/repost`: idempotent, counter only on real insert/delete, `repost` notification aggregated/undone like `post_like`, no self-notification (own post is 422 anyway). Tests: restricted-audience post (followers, close friends, private) → 422 `repost_not_allowed` when visible, 404 when not; own → 422 `cannot_repost_own`; unverified → 403; 31st repost in an hour → 429.
+- `Post.repostCount/repostedByMe/canRepost/repostedBy/repostedAt` hydrated without N+1 (query count asserted on a 20-post page).
+- `/feed/following` per the new description (one row per post at latest activity, `repostedBy` of that activity, old cursor → 400) and `/users/{username}/reposts`. Live filter tests: track turned `followers` after the repost → repost gone from both lists for a non-follower; reposter suspended → gone; post hidden → gone; counts unchanged.
+- §13b: deleting a reposter decrements `repost_count`; post deletion cascades. EXPLAIN of the following feed on 10 k posts / 5 k reposts in the handoff.
+
+**W-40 · backend · W-39, W-32, W-80** Recommendations v1 (replaces the W-39 ranking)
+- `RecomputeAffinity`, `RecomputeTrending` (scheduled) and `SqlFeedRanker` per ADR 005 **amended by ADR 015 §6** (F = 0.75 when a followed user reposted p in the last 7 days; post trending repost weight 4; viewer's reposts weight 3 in affinity); weights in one class, unit-tested on a fixture dataset (genre-affine user gets that genre ranked first; post reposted by a followee ranks above an equal unrelated post).
+- DI alias `FeedRanker` → `SqlFeedRanker`, `SimpleFeedRanker` deleted; `/feed/for-you` contract unchanged (cursor `r` changes: old cursors → 400, the client restarts, W-34); `repostedBy` null there.
 - W-39's behavioural tests (exclusions, ≤ 2 per author per page, fallback, no repeat within a session) pass unchanged against `SqlFeedRanker`; p95 < 150 ms on demo seed (EXPLAIN attached to PR).
 
 **W-41 · backend · W-04, W-30** Search and hashtags
 - `PostgresSearchProvider` for the 3 remaining types (users W-27, tracks W-29a keep their rules and ranking); `beyonce` finds `Beyoncé`, `lof` finds `lofi` (prefix), `daft pnk` finds `Daft Punk` (trigram).
-- `/search` without type returns 5 sections ≤ 5 items; with type paginates up to 200; private/hidden never returned.
+- `/search` without type returns 5 sections ≤ 5 items; with type paginates up to 200; private/hidden never returned. Catalogue artists are **not** a `/search` section (ADR 014 §3).
 - `GET /hashtags/{name}` and `/hashtags/{name}/posts`.
 
-**W-42 · media-infra · W-10, W-31, W-40** Demo seed
-- `make seed` generates audio with FFmpeg synthesis only (no external files): ≥ 30 users, 40 artists, 150 tracks over ≥ 10 genres, 300 posts with clips/visuals, follows, likes, listens, comments.
+**W-42 · media-infra · W-10, W-31, W-40, W-80** Demo seed
+- `make seed` generates audio with FFmpeg synthesis only (no external files): ≥ 30 users, 40 artists, 150 tracks over ≥ 10 genres, 300 posts with clips/visuals, follows, likes, listens, comments, ≥ 100 reposts of public posts.
 - Seed is deterministic (fixed random seed) and runs in < 5 min; ends with affinity + trending recomputed.
 
-**W-43 · frontend · W-40, W-41** Discovery UI
-- Découvrir (`/discover`, W-38 shell): search page with type tabs, debounced input (300 ms), hashtag page, genre chips.
+**W-82 · backend · W-70** Admin dashboard series (FB-31)
+- `GET /admin/dashboard/series?range=7d|30d` per contract and DATA_MODEL §18: one grouped query on `activity_event`, alerts by `first_seen_at`, days in Europe/Paris with zero-filled gaps, cache 5 min per (range, role level); bad `range` → 422.
+- Tests: anonymous 401, user 403; moderator gets `moderation` only (others null); events at 23:30 UTC on the day before a DST change land on the right local day; arrays length = `days` length (7/30), last = today Paris.
+- EXPLAIN on 100 k events (index `(category, type, created_at)` used) in the handoff.
+
+**W-83 · frontend · W-82, W-73** Admin charts (FB-31)
+- Dashboard: range toggle 7 j / 30 j, one small chart per series group (activity, content, moderation, alerts by severity) with design tokens for light/dark (FB-27), French day labels, accessible table fallback (`<table>` visually hidden), empty/error states; moderator sees the moderation chart only.
+- No chart library above ~40 kB gzip in the admin chunk (lazy chunk unchanged for other users).
+
+**W-84 · backend · —** External catalogue (FB-06, ADR 014)
+- `CatalogProvider` (CONVENTIONS §7), `DeezerCatalogProvider`, `NullCatalogProvider`, `CATALOG_PROVIDER` flag; `/catalog/artists`, `/catalog/charts/artists`, `/catalog/artists/{externalId}`; `Me.features.catalog`.
+- Tests with `MockHttpClient` only (never the real Deezer in CI): flag `none` → 404 on the 3 routes and `features.catalog=false`; timeout, HTTP 5xx, 200 + `{"error":…}` and outbound limiter exhausted → 200 `available:false` (lists) / stale metadata or 503 `catalog_unavailable` + `Retry-After` (artist), never 500; bad id (`dz:abc`, `../`) → 404 with no outbound call; cache hit makes no outbound call; top tracks re-fetched after 10 min, metadata after 24 h; `previewUrl` returned verbatim, no Wave URL wraps it; attribution present in every response.
+- No table, no stored audio; cache pool pruned daily by the scheduler.
+
+**W-85 · media-infra · —** Catalogue wiring (ADR 014 §9)
+- CSP of `front-static.conf` and `front-dev.conf`: `https://*.dzcdn.net` added to `img-src` and `media-src` only; check no COEP `require-corp` on the front; `CATALOG_PROVIDER` in compose files (`deezer` dev, `none` prod default) and `.env` docs.
+- README prod checklist: non-commercial clause, flag off until agreement, privacy line (preview playback exposes the IP to Deezer's CDN). Curl check of the CSP header in the handoff.
+
+**W-86 · frontend · W-84, W-85** Catalogue UI (Sonnet)
+- Shown only when `me.features.catalog`: Découvrir section "Artistes célèbres" (`/catalog/charts/artists`), catalogue artist results under the search box (separate block, never mixed with Wave results), page `/discover/artists/:externalId` with top tracks.
+- Preview playback in a dedicated lightweight player (or a `catalog` source in the player store) that never reports listens or grants, has no like/playlist/post action, uses `<audio>` without `crossOrigin`, refetches the artist once on a media error; "Données et extraits : Deezer" visible next to every block, "Écouter sur Deezer" link (`rel="noopener noreferrer"`); `available:false` → section omitted; 503 → retry message.
+
+**W-81 · frontend · W-80** Repost UI (Sonnet)
+- Repost button with count on the post (feed and detail), hidden when `!canRepost && !repostedByMe`, optimistic toggle rolled back on error (403 unverified, 422, 429 messages in French); "Reposté par X" header when `repostedBy` is set; profile tab "Reposts" (`/users/{username}/reposts`); notification text "a reposté ton post" (stub added in `p4-contract`); MSW mocks updated with the new `Post` fields.
+
+**W-87 · backend · W-40, W-41** Discover home (FB-32)
+- `GET /discover` per contract: 4 sections always present, public-only (ADR 012 §6), tests for each exclusion (self, followed, suspended, restricted track, hidden post, empty hashtag) and the ordering rules; global parts cached 15 min, per-viewer hydration without N+1; EXPLAIN on demo seed in the handoff.
+
+**W-43 · frontend · W-41, W-87 (W-86 optional)** Discovery UI + fill empty pages (FB-32)
+- Mock-up first (light and dark, `docs/design/`), validated by the user before code.
+- Découvrir (`/discover`, W-38 shell): with an empty search box, `/discover` sections (trending tracks, genre chips, accounts to follow with inline follow, trending hashtags) + catalogue block when enabled; while typing: search page with type tabs, debounced input (300 ms); hashtag page.
+- Desktop side columns: Abonnements (≥ 1024 px) right column = accounts to follow + trending hashtags; Pour toi (≥ 1280 px) left column = same, keeping the FB-26 right panel; Abonnements with no follow shows the suggestions inline instead of an empty state. One shared query (`/discover`, stale 5 min).
 - Empty and error states for every list.
 
-**W-44 · qa-security · W-40, W-41** Phase 4 review
-- Search SQL injection / tsquery syntax fuzzing (no 500); query-cost check on 100-char inputs.
-- EXPLAIN review of feed and search on seed data.
+**W-44 · qa-security · W-40, W-41, W-80, W-82, W-84, W-87** Phase 4 review
+- Search SQL injection / tsquery syntax fuzzing (no 500); query-cost check on 100-char inputs. EXPLAIN review of feed and search on seed data.
+- Repost: no audience leak (restricted post never reachable through a repost, after audience change, unfollow, suspension, hiding), counters and notifications under concurrency, rate limits.
+- Catalogue: SSRF/path injection through `externalId` and `q`, no Deezer audio through Wave, CSP limited to `*.dzcdn.net`, provider errors never 500, flag off hides everything. Admin series: role split, no per-user data.
 
 ## Phase 5 — Tests, hardening, moderation UI, README
 

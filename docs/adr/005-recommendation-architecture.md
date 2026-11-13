@@ -1,6 +1,6 @@
 # ADR 005 — Recommendation architecture
 
-Status: accepted · 2026-10-24 · Phase 3 runs an interim `SimpleFeedRanker` behind the same interface (ADR 011, FB-12); this ADR's `SqlFeedRanker` replaces it in W-40.
+Status: accepted · 2026-10-24 · Phase 3 runs an interim `SimpleFeedRanker` behind the same interface (ADR 011, FB-12); this ADR's `SqlFeedRanker` replaces it in W-40. Signals amended by ADR 015 §6 (reposts).
 
 ## Context
 For-you needs to be decent at launch with tiny data, cheap on PostgreSQL only, and replaceable by collaborative filtering or embeddings later without touching API or client.

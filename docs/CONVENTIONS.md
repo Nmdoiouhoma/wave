@@ -153,6 +153,19 @@ final readonly class SearchHits
     public function __construct(public array $ids, public ?int $nextOffset) {}
 }
 ```
+```php
+namespace App\Catalog; // ADR 014 — external read-only catalogue (Deezer), flag CATALOG_PROVIDER
+
+interface CatalogProvider
+{
+    /** Never throws for provider failures: returns CatalogResult(available: false, items: []). */
+    public function searchArtists(string $query, int $limit): CatalogResult;
+    public function chartArtists(int $limit): CatalogResult;
+    /** Null = unknown at the provider; throws CatalogUnavailable when down and nothing cached (→ 503). */
+    public function artist(string $externalId): ?CatalogArtist;
+}
+// Implementations: DeezerCatalogProvider, NullCatalogProvider (flag `none`: /catalog/* → 404).
+```
 `ObjectStorage` has no listing method on purpose. Listing quarantine objects (only `CleanupQuarantine` needs it) goes through `App\Media\QuarantineScanner` (interface + `FlysystemQuarantineScanner`, owned by media-infra) and must not leak into backend code.
 
 Implementations return ids only; providers hydrate and map (keeps CF/embeddings/Meilisearch swaps cheap). Cursors are opaque strings owned by the implementation (signed with the same codec as §6).
@@ -215,6 +228,7 @@ Dev host port: nginx on **8090** (front, `/api`, `/media` same origin). Mailpit 
 | `CORS_ALLOW_ORIGIN` | `^http://localhost:8090$` | php |
 | `TRUSTED_PROXIES` | empty (nginx is the edge and overwrites `X-Forwarded-*`, F1); never a subnet | php (real client IP: rate limits, journal) |
 | `ACTIVITY_IP_PEPPER` | random 32 bytes, ≠ APP_SECRET (boot fails if empty in prod) | php, worker (keyed IP hash of the activity journal, DATA_MODEL §15, ADR 013) |
+| `CATALOG_PROVIDER` | `deezer` (dev/demo); `none` = default and prod until FB-06 commercial question settled | php (ADR 014; `none` hides `/catalog/*` and sets `Me.features.catalog=false`) |
 | `LOCK_DSN` | `postgresql+advisory://…` (= DATABASE_URL) | php, worker (dedup stamp) |
 | `POSTGRES_DB/USER/PASSWORD`, `MINIO_ROOT_USER/PASSWORD` | | compose |
 | `VITE_API_BASE_URL` | `/api/v1` | front (canonical name; no other alias) |

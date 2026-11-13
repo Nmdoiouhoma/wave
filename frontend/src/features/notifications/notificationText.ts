@@ -22,6 +22,8 @@ function verb(n: Notification, plural: boolean): string {
       return `${has} aimé ton post${quoted}`;
     case 'comment':
       return `${has} commenté ton post${quoted}`;
+    case 'repost':
+      return `${has} reposté ton post${quoted}`;
   }
 }
 

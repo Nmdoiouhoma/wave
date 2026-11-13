@@ -57,7 +57,7 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 ## En cours (non commité)
 
-- Rien. **Pause des agents jusqu'au 15/11 1 h** : forfait de la semaine à 81 % le 13/11 à 14 h 30 (choix du lead, l'utilisateur peut lever la pause).
+- 13/11 soir : pause levée par l'utilisateur (« avec le quota restant », jamais de demande d'augmentation à l'admin). En cours : contrat phase 4 + FB-31/32/33 (architect, `p4-contract`) ∥ W-40 recommandations (backend). FB-29/FB-30 livrés (`19ca597`).
 
 ## Prochaines étapes
 

@@ -43,6 +43,8 @@ tags:
   - name: reports
   - name: admin
   - name: announcements
+  - name: discover
+  - name: catalog
 
 paths:
   # ───────────────────────────── auth ─────────────────────────────
@@ -593,6 +595,27 @@ paths:
       operationId: listUserPosts
       summary: List user posts
       description: Newest first. Others see playable posts only; the author sees all own posts.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of posts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PostPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /users/{username}/reposts:
+    parameters:
+      - $ref: '#/components/parameters/Username'
+    get:
+      tags: [users]
+      operationId: listUserReposts
+      summary: List user reposts
+      description: 'ADR 015. Posts reposted by this user, newest repost first (keyset on repost time, post id). Each item has `repostedBy` = this user and `repostedAt`. Only reposts whose post is still publicly playable and playable for the caller are listed (live filter, nothing rewritten). Suspended user → 404 like every `/users/{username}` route.'
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
@@ -1390,6 +1413,43 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /posts/{postId}/repost:
+    parameters:
+      - $ref: '#/components/parameters/PostId'
+    put:
+      tags: [posts]
+      operationId: repostPost
+      summary: Repost post
+      description: |
+        ADR 015. Idempotent (a second PUT changes nothing, notifies once). Allowed iff the post is playable for the caller, has a public audience (track public ∧ (allowClips ∨ author = track owner)) and is not the caller's own (`Post.canRepost`).
+        Not playable for the caller → 404 `not_found`; own post → 422 `cannot_repost_own`; visible but restricted audience → 422 `repost_not_allowed`. Notifies the author (`repost`, aggregated like `post_like`).
+      x-requires-verified-email: true
+      x-rate-limit: shared bucket `social_write`, plus bucket `repost` 30 per hour and 200 per day per user
+      responses:
+        '200':
+          description: Repost state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RepostState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+    delete:
+      tags: [posts]
+      operationId: unrepostPost
+      summary: Undo repost
+      description: Idempotent. An existing repost by the caller is removed whatever the post's visibility (counter decremented, the caller leaves the `repost` notification); without one, a post the caller cannot see → 404 `not_found`.
+      responses:
+        '200':
+          description: Repost state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RepostState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /posts/{postId}/comments:
     parameters:
       - $ref: '#/components/parameters/PostId'
@@ -1504,7 +1564,10 @@ paths:
       tags: [feed]
       operationId: getFollowingFeed
       summary: Get following feed
-      description: Playable posts by followed users (suspended authors excluded), newest first (seen posts included), keyset on `(createdAt, id)`. Empty page and null `nextCursor` when the caller follows nobody. `limit` default 10, max 20.
+      description: |
+        Playable posts by followed users (suspended authors excluded) **and, phase 4 (ADR 015), posts reposted by followed users** (reposter not suspended, post publicly playable and playable for the caller, caller's own posts excluded from the repost path). Seen posts included.
+        Each post appears at most once, at its latest activity (creation by a followed author or a repost by a followed user), newest first, keyset on `(activity time, id)`; `repostedBy`/`repostedAt` describe that latest activity when it is a repost, else null. Phase-3 cursors → 400 `invalid_cursor`. A post may move up between pages when a new repost lands: clients dedupe by id.
+        Empty page and null `nextCursor` when the caller follows nobody. `limit` default 10, max 20.
       parameters:
         - $ref: '#/components/parameters/Cursor'
         - name: limit
@@ -1591,6 +1654,101 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── discover (FB-32, W-87) ─────────────────────────────
+  /discover:
+    get:
+      tags: [discover]
+      operationId: getDiscoverHome
+      summary: Get discover home
+      description: |
+        Default content of Découvrir when the search box is empty, and of the desktop side columns of Pour toi / Abonnements (FB-32). One call, every section always present (possibly empty).
+        Public-only per ADR 012 §6: tracks are public-visible (DATA_MODEL §6) with a non-suspended owner; hashtags are ranked on publicly playable posts only.
+        - `trendingTracks` ≤ 10: by `track.trending_score` desc, id desc (W-40 job); ids cached 15 min globally, hydrated per caller (`likedByMe`…).
+        - `genres` ≤ 12: the caller's top genres by affinity (`user_affinity`, kind genre) first, then genres by number of public-visible tracks desc, then name.
+        - `suggestedUsers` ≤ 6: never the caller, a followed user or a suspended user; only users with ≥ 1 public-visible track or publicly playable post; ranked by the number of the caller's followees who follow them desc, then `followersCount` desc, then id. Not cached.
+        - `trendingHashtags` ≤ 10: by number of publicly playable posts created in the last 7 days desc, then `postCount` desc, then name; cached 15 min globally. Empty hashtags never listed.
+      x-rate-limit: 60 per minute per user
+      responses:
+        '200':
+          description: Discover sections.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscoverHome' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  # ───────────────────────────── catalog (FB-06, ADR 014) ─────────────────────────────
+  /catalog/artists:
+    get:
+      tags: [catalog]
+      operationId: searchCatalogArtists
+      summary: Search catalogue artists
+      description: |
+        ADR 014. External, read-only catalogue (Deezer). Flag `CATALOG_PROVIDER=none` → 404 `not_found` on every `/catalog/*` route (the front reads `Me.features.catalog` instead of probing).
+        Up to `limit` artists, no paging. Provider failure (timeout, quota, error) → 200 with `available: false` and empty `items` (the front omits the section), never 500. Cached 1 h per normalised `q`.
+      x-rate-limit: bucket `catalog` 30 per minute and 500 per day per user
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 100 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 10, default: 10 }
+      responses:
+        '200':
+          description: Artists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogArtistList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /catalog/charts/artists:
+    get:
+      tags: [catalog]
+      operationId: listCatalogChartArtists
+      summary: List catalogue chart artists
+      description: ADR 014. Provider's chart (≤ 10 artists) for Découvrir; cached 1 h; failure → 200 `available:false`. Flag off → 404.
+      x-rate-limit: bucket `catalog`
+      responses:
+        '200':
+          description: Artists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogArtistList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /catalog/artists/{externalId}:
+    parameters:
+      - name: externalId
+        in: path
+        required: true
+        description: Provider-prefixed id, validated before any outbound call (invalid → 404).
+        schema: { type: string, pattern: '^dz:[0-9]{1,15}$', example: 'dz:27' }
+    get:
+      tags: [catalog]
+      operationId: getCatalogArtist
+      summary: Get catalogue artist
+      description: |
+        ADR 014. Artist with up to 10 top tracks. Metadata cached 24 h, top tracks (signed preview URLs) 10 min. On provider failure: stale metadata (≤ 24 h) with `topTracks: []`, else 503 `catalog_unavailable` with `Retry-After`. Unknown id at the provider → 404. Flag off → 404.
+        Previews are played from `previewUrl` (Deezer's CDN) directly by the browser; Wave never stores or proxies them. On a media error the client refetches this resource once.
+      x-rate-limit: bucket `catalog`
+      responses:
+        '200':
+          description: Artist.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogArtist' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
   # ───────────────────────────── reports ─────────────────────────────
   /reports:
@@ -1717,6 +1875,29 @@ paths:
               schema: { $ref: '#/components/schemas/AdminDashboard' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/dashboard/series:
+    get:
+      tags: [admin]
+      operationId: getAdminDashboardSeries
+      summary: Get admin dashboard series
+      description: |
+        ROLE_MODERATOR (FB-31). Daily counts for the charts, one call for every series. Days are calendar days in **Europe/Paris** (bucket = local midnight to midnight, DST-aware), oldest first, the last one being today (partial). `days` has 7 or 30 entries and every non-null series has the same length (0 for a day without event).
+        Sources: `activity_event` (DATA_MODEL §15, index `(category, type, created_at)`) for registrations, logins, tracks, posts, comments, rejected uploads, reports and hides; `security_alert.first_seen_at` for alerts. Events deleted with an account (§13b) or not journaled (fire-and-forget failure) are absent: the charts are monitoring, not accounting.
+        Moderator: only `moderation` (reports, hidden); `activity`, `content`, `alerts` are null. Cached 5 min server-side per (range, role level).
+      parameters:
+        - name: range
+          in: query
+          schema: { type: string, enum: ['7d', '30d'], default: '7d' }
+      responses:
+        '200':
+          description: Series.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminDashboardSeries' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /admin/users:
     get:
@@ -2242,6 +2423,15 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    ServiceUnavailable:
+      description: '`catalog_unavailable` (external provider down, nothing cached).'
+      headers:
+        Retry-After:
+          description: Seconds to wait.
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     TooManyRequests:
       description: '`rate_limited`.'
       headers:
@@ -2296,8 +2486,11 @@ components:
         - cannot_follow_self         # 422
         - cannot_report_own          # 422
         - not_a_follower             # 422 (close friends, FB-18)
+        - cannot_repost_own          # 422 (ADR 015)
+        - repost_not_allowed         # 422 (ADR 015, restricted audience)
         - rate_limited               # 429
         - internal_error             # 500
+        - catalog_unavailable        # 503 (ADR 014)
     Problem:
       type: object
       required: [type, title, status, code]
@@ -2346,6 +2539,12 @@ components:
     Moderation:
       type: string
       enum: [visible, hidden]
+    RepostState:
+      type: object
+      required: [reposted, repostCount]
+      properties:
+        reposted: { type: boolean }
+        repostCount: { type: integer }
     LikeState:
       type: object
       required: [liked, likeCount]
@@ -2476,8 +2675,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/UserProfile'
         - type: object
-          required: [email, emailVerified, roles]
+          required: [email, emailVerified, roles, features]
           properties:
+            features:
+              type: object
+              description: Server feature flags the client must follow (never probe routes).
+              required: [catalog]
+              properties:
+                catalog: { type: boolean, description: 'ADR 014: external catalogue (Deezer) enabled; false → hide every catalogue surface.' }
             email: { type: string, format: email }
             emailVerified: { type: boolean }
             roles:
@@ -2702,7 +2907,7 @@ components:
         posterUrl: { type: [string, 'null'], format: uri, description: Video only. }
     Post:
       type: object
-      required: [id, author, track, clipStartMs, clipDurationMs, clip, visual, caption, hashtags, status, failureReason, moderation, likeCount, commentCount, viewCount, likedByMe, isOwner, createdAt]
+      required: [id, author, track, clipStartMs, clipDurationMs, clip, visual, caption, hashtags, status, failureReason, moderation, likeCount, commentCount, viewCount, repostCount, likedByMe, repostedByMe, canRepost, repostedBy, repostedAt, isOwner, createdAt]
       properties:
         id: { $ref: '#/components/schemas/Id' }
         author: { $ref: '#/components/schemas/UserSummary' }
@@ -2729,7 +2934,20 @@ components:
         likeCount: { type: integer }
         commentCount: { type: integer }
         viewCount: { type: integer }
+        repostCount: { type: integer, description: 'ADR 015; counts every repost, including ones the caller can no longer see.' }
         likedByMe: { type: boolean }
+        repostedByMe: { type: boolean }
+        canRepost: { type: boolean, description: 'ADR 015: playable for the caller ∧ public audience ∧ not own. False → hide the repost button (undo stays possible when `repostedByMe`).' }
+        repostedBy:
+          oneOf:
+            - $ref: '#/components/schemas/UserSummary'
+            - type: 'null'
+          description: Set only in `/feed/following` (followed reposter of the latest activity) and `/users/{username}/reposts`; null everywhere else.
+        repostedAt:
+          oneOf:
+            - $ref: '#/components/schemas/DateTime'
+            - type: 'null'
+          description: Time of the repost described by `repostedBy`; null when `repostedBy` is null.
         isOwner: { type: boolean }
         createdAt: { $ref: '#/components/schemas/DateTime' }
     PostUpload:
@@ -2801,7 +3019,8 @@ components:
     # ── notifications (FB-16, W-45) ──
     NotificationType:
       type: string
-      enum: [follow, track_like, playlist_like, post_like, comment]
+      enum: [follow, track_like, playlist_like, post_like, comment, repost]
+      description: '`repost` (ADR 015) targets the reposted post, aggregated like `post_like`.'
     NotificationTarget:
       type: object
       description: The caller's own content the event is about. Null for `follow`.
@@ -3184,6 +3403,114 @@ components:
               properties:
                 active: { type: integer }
                 scheduled: { type: integer }
+            - type: 'null'
+        generatedAt: { $ref: '#/components/schemas/DateTime' }
+
+    # ── discover (FB-32) ──
+    DiscoverHome:
+      type: object
+      required: [trendingTracks, genres, suggestedUsers, trendingHashtags]
+      properties:
+        trendingTracks: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/Track' } }
+        genres: { type: array, maxItems: 12, items: { $ref: '#/components/schemas/Genre' } }
+        suggestedUsers: { type: array, maxItems: 6, items: { $ref: '#/components/schemas/UserListItem' } }
+        trendingHashtags: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/Hashtag' } }
+
+    # ── catalog (FB-06, ADR 014) ──
+    CatalogAttribution:
+      type: object
+      required: [text, url]
+      description: Must be shown next to every catalogue block.
+      properties:
+        text: { type: string, const: 'Données et extraits : Deezer' }
+        url: { type: string, format: uri, example: 'https://www.deezer.com' }
+    CatalogArtistSummary:
+      type: object
+      required: [id, name, pictureUrl, fanCount, deezerUrl]
+      properties:
+        id: { type: string, pattern: '^dz:[0-9]{1,15}$', example: 'dz:27' }
+        name: { type: string, description: 'Plain text from the provider, never rendered as HTML.' }
+        pictureUrl: { type: [string, 'null'], format: uri, description: 'Provider CDN image (https://*.dzcdn.net).' }
+        fanCount: { type: [integer, 'null'] }
+        deezerUrl: { type: string, format: uri, description: 'Link "Écouter sur Deezer".' }
+    CatalogTrack:
+      type: object
+      required: [id, title, durationSec, previewUrl, albumTitle, coverUrl, deezerUrl]
+      description: Read-only; cannot be liked, added to a playlist, posted or reported in Wave.
+      properties:
+        id: { type: string, pattern: '^dz:[0-9]{1,15}$' }
+        title: { type: string }
+        durationSec: { type: integer, description: 'Full track duration (the preview lasts ≤ 30 s).' }
+        previewUrl: { type: [string, 'null'], format: uri, description: 'Provider preview URL, short-lived, played directly by the browser (no crossOrigin, no download). Null when the provider has no preview.' }
+        albumTitle: { type: [string, 'null'] }
+        coverUrl: { type: [string, 'null'], format: uri }
+        deezerUrl: { type: string, format: uri }
+    CatalogArtist:
+      allOf:
+        - $ref: '#/components/schemas/CatalogArtistSummary'
+        - type: object
+          required: [topTracks, attribution]
+          properties:
+            topTracks: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/CatalogTrack' } }
+            attribution: { $ref: '#/components/schemas/CatalogAttribution' }
+    CatalogArtistList:
+      type: object
+      required: [available, items, attribution]
+      properties:
+        available: { type: boolean, description: 'False when the provider failed: items empty, the client omits the section.' }
+        items: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/CatalogArtistSummary' } }
+        attribution: { $ref: '#/components/schemas/CatalogAttribution' }
+
+    # ── admin series (FB-31) ──
+    DailySeries:
+      type: array
+      items: { type: integer, minimum: 0 }
+      description: One count per entry of `days`, same order.
+    AdminDashboardSeries:
+      type: object
+      required: [range, timezone, days, activity, content, moderation, alerts, generatedAt]
+      properties:
+        range: { type: string, enum: ['7d', '30d'] }
+        timezone: { type: string, const: Europe/Paris }
+        days:
+          type: array
+          items: { type: string, format: date, example: '2026-11-13' }
+          description: Local calendar dates, oldest first, last = today.
+        activity:
+          description: Null for a moderator.
+          oneOf:
+            - type: object
+              required: [registrations, logins]
+              properties:
+                registrations: { $ref: '#/components/schemas/DailySeries', description: '`account.registered`.' }
+                logins: { $ref: '#/components/schemas/DailySeries', description: 'Distinct users with `auth.login_succeeded` that day.' }
+            - type: 'null'
+        content:
+          description: Null for a moderator.
+          oneOf:
+            - type: object
+              required: [tracks, posts, comments, rejectedUploads]
+              properties:
+                tracks: { $ref: '#/components/schemas/DailySeries', description: '`content.track_created`.' }
+                posts: { $ref: '#/components/schemas/DailySeries', description: '`content.post_created`.' }
+                comments: { $ref: '#/components/schemas/DailySeries', description: '`content.comment_created`.' }
+                rejectedUploads: { $ref: '#/components/schemas/DailySeries', description: '`upload.rejected`.' }
+            - type: 'null'
+        moderation:
+          type: object
+          required: [reports, hidden]
+          properties:
+            reports: { $ref: '#/components/schemas/DailySeries', description: '`report.created`.' }
+            hidden: { $ref: '#/components/schemas/DailySeries', description: '`report.auto_hidden` + `admin.content_hidden`.' }
+        alerts:
+          description: Null for a moderator. Alerts by `first_seen_at`.
+          oneOf:
+            - type: object
+              required: [high, medium, low]
+              properties:
+                high: { $ref: '#/components/schemas/DailySeries' }
+                medium: { $ref: '#/components/schemas/DailySeries' }
+                low: { $ref: '#/components/schemas/DailySeries' }
             - type: 'null'
         generatedAt: { $ref: '#/components/schemas/DateTime' }
 
