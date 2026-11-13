@@ -33,6 +33,7 @@ enum ProblemCode: string
     case PlaylistLimitReached = 'playlist_limit_reached';
     case PlaylistOrderMismatch = 'playlist_order_mismatch';
     case AlreadyReported = 'already_reported';
+    case AlreadyAcknowledged = 'already_acknowledged';
     case TooManyPendingUploads = 'too_many_pending_uploads';
     case UploadAlreadyUsed = 'upload_already_used';
     case UploadExpired = 'upload_expired';
@@ -60,7 +61,7 @@ enum ProblemCode: string
             self::NotFound => 404,
             self::EmailTaken, self::UsernameTaken, self::ArtistLimitReached, self::ArtistHasTracks,
             self::TrackNotReady, self::TrackAlreadyInPlaylist, self::PlaylistFull, self::PlaylistLimitReached, self::PlaylistOrderMismatch,
-            self::AlreadyReported, self::TooManyPendingUploads, self::UploadAlreadyUsed, self::UploadExpired,
+            self::AlreadyReported, self::AlreadyAcknowledged, self::TooManyPendingUploads, self::UploadAlreadyUsed, self::UploadExpired,
             self::UploadIncomplete, self::EmailAlreadyVerified => 409,
             self::StreamTokenExpired => 410,
             self::PayloadTooLarge => 413,
@@ -99,6 +100,7 @@ enum ProblemCode: string
             self::PlaylistLimitReached => 'Playlist limit reached',
             self::PlaylistOrderMismatch => 'Playlist order mismatch',
             self::AlreadyReported => 'Already reported',
+            self::AlreadyAcknowledged => 'Already acknowledged',
             self::TooManyPendingUploads => 'Too many pending uploads',
             self::UploadAlreadyUsed => 'Upload already used',
             self::UploadExpired => 'Upload expired',

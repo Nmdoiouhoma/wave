@@ -11,23 +11,18 @@ use App\Activity\ActivityJournal;
 use App\ApiResource\TrackView;
 use App\Dto\Input\UpdateTrackInput;
 use App\Entity\Genre;
-use App\Entity\Track;
 use App\Enum\ActivityType;
 use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\TrackMapper;
-use App\Message\PurgeObjects;
-use App\Post\PostCleanup;
+use App\Moderation\ContentDeleter;
 use App\Problem\ApiProblemException;
 use App\Repository\ArtistRepository;
 use App\Repository\GenreRepository;
-use App\Repository\PlaylistRepository;
 use App\Security\CurrentUser;
 use App\State\Provider\TrackLookup;
-use App\Storage\StorageArea;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -44,10 +39,8 @@ final readonly class TrackProcessor implements ProcessorInterface
         private GenreRepository $genres,
         private ArtistRepository $artists,
         private EntityManagerInterface $em,
-        private MessageBusInterface $bus,
         private TrackMapper $mapper,
-        private PostCleanup $postCleanup,
-        private PlaylistRepository $playlists,
+        private ContentDeleter $deleter,
         private ActivityJournal $journal,
     ) {
     }
@@ -60,7 +53,7 @@ final readonly class TrackProcessor implements ProcessorInterface
         if ($operation instanceof DeleteOperationInterface) {
             $trackId = $track->getId();
             $ownerId = $track->getOwner()->getId();
-            $this->delete($track);
+            $this->em->wrapInTransaction(fn () => $this->deleter->deleteTrack($track));
             $this->journal->record(ActivityType::TrackDeleted, $viewer, $ownerId, ReportTargetType::Track, $trackId);
 
             return null;
@@ -97,32 +90,5 @@ final readonly class TrackProcessor implements ProcessorInterface
         $this->em->flush();
 
         return $this->mapper->toView($track, $viewer);
-    }
-
-    /**
-     * DATA_MODEL §0 deletion order: fix counters the cascade would leave stale, collect
-     * keys and purge them asynchronously, delete polymorphic reports, then delete.
-     * Posts and reports join this with W-30/W-33.
-     */
-    private function delete(Track $track): void
-    {
-        $private = array_values(array_filter([$track->getRawKey(), $track->getAudioKey()]));
-        $public = null === $track->getCoverKey() ? [] : [$track->getCoverKey()];
-
-        $this->em->wrapInTransaction(function () use ($track, $private, $public): void {
-            // Playlists keep exact item_count and contiguous positions (DATA_MODEL §7);
-            // like_count dies with the track, listens/likes go by cascade.
-            $this->playlists->detachTrackEverywhere($track->getId());
-            // DATA_MODEL §9: every post on the track (anyone's) goes with hashtag counts,
-            // reports and stored objects cleaned, before the FK cascade.
-            $this->postCleanup->beforeTrackDeletion($track->getId());
-            $this->em->remove($track);
-            $this->em->flush();
-            foreach ([StorageArea::Private->value => $private, StorageArea::Public->value => $public] as $area => $keys) {
-                foreach (array_chunk($keys, PurgeObjects::MAX_KEYS) as $chunk) {
-                    $this->bus->dispatch(new PurgeObjects($area, $chunk));
-                }
-            }
-        });
     }
 }

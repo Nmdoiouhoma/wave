@@ -18,16 +18,11 @@ use App\Enum\ActivityType;
 use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\ArtistMapper;
-use App\Message\PurgeObjects;
+use App\Moderation\ContentDeleter;
 use App\Problem\ApiProblemException;
-use App\Problem\ProblemCode;
-use App\Repository\ReportRepository;
-use App\Repository\TrackRepository;
 use App\Security\CurrentUser;
-use App\Storage\StorageArea;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * `POST /artists`, `PATCH|DELETE /artists/{slug}`.
@@ -41,11 +36,9 @@ final readonly class ArtistProcessor implements ProcessorInterface
         private CurrentUser $currentUser,
         private ArtistLookup $lookup,
         private ArtistCreator $creator,
-        private TrackRepository $tracks,
         private EntityManagerInterface $em,
         private ArtistMapper $mapper,
-        private MessageBusInterface $bus,
-        private ReportRepository $reports,
+        private ContentDeleter $deleter,
         private ActivityJournal $journal,
     ) {
     }
@@ -58,7 +51,7 @@ final readonly class ArtistProcessor implements ProcessorInterface
 
         if ($operation instanceof DeleteOperationInterface) {
             $artist = $this->lookup->owned($uriVariables['slug'] ?? null);
-            $this->delete($artist);
+            $this->em->wrapInTransaction(fn () => $this->deleter->deleteArtist($artist));
 
             return null;
         }
@@ -86,24 +79,6 @@ final readonly class ArtistProcessor implements ProcessorInterface
         $this->journal->record(ActivityType::ArtistCreated, $viewer, $viewer, ReportTargetType::Artist, $artist->getId());
 
         return $this->mapper->toView($artist, $viewer);
-    }
-
-    private function delete(Artist $artist): void
-    {
-        $this->em->wrapInTransaction(function () use ($artist): void {
-            // Any track, whatever its status (FK RESTRICT is the backstop).
-            if ($this->tracks->countByArtist($artist) > 0) {
-                throw new ApiProblemException(ProblemCode::ArtistHasTracks, 'Delete or move the tracks of this artist first.');
-            }
-            $avatar = $artist->getAvatarKey();
-            // Reports are polymorphic (no FK): removed with the artist, never left in the queue.
-            $this->reports->deleteForTarget(ReportTargetType::Artist, $artist->getId());
-            $this->em->remove($artist);
-            $this->em->flush();
-            if (null !== $avatar) {
-                $this->bus->dispatch(new PurgeObjects(StorageArea::Public->value, [$avatar]));
-            }
-        });
     }
 
     private static function cleanBio(?string $bio): ?string

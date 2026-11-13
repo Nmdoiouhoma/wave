@@ -178,6 +178,8 @@ Messages are `final readonly` in `App\Message`, scalar payloads only (ids as RFC
 | `RecomputeAffinity` | `userId` | async | backend on like/counted listen/completed view, with `DeduplicateStamp("affinity-{userId}", 300 s)` | backend | rewrite `user_affinity` for the user (ADR 005) |
 | `RecomputeAffinityAll` | — (scheduled daily 04:00 UTC) | async | Scheduler | backend | dispatch `RecomputeAffinity` for users active in last 30 days |
 | `RecomputeTrending` | — (scheduled every 15 min) | async | Scheduler | backend | recompute `track.trending_score`, `post.trending_score` (ADR 005) |
+| `PurgeActivityEvents` | — (scheduled daily 03:55 UTC) | async | Scheduler | backend | purge `activity_event` (90 d, admin 365 d) and acknowledged `security_alert` (180 d) in batches (ADR 013) |
+| `EvaluateSecurityRules` | `eventId` | async | backend (`ActivityJournal::record`, after commit) | backend | evaluate DATA_MODEL §16 rules for that event; open or bump a `security_alert` (dedup on `subject_key`) |
 
 Email: Symfony Mailer called **synchronously inside these handlers** (do not also route `SendEmailMessage` to a transport); Twig templates `templates/email/<name>.html.twig` + `.txt.twig`, **French** (subjects and bodies; FB-03; i18n keys in `translations/emails.fr.yaml`), links built from `FRONT_PUBLIC_URL` (`/verify-email?token=…`, `/reset-password?token=…`). Front pages read the token, `history.replaceState` it out of the URL, then POST it; they set `Referrer-Policy: no-referrer`.
 

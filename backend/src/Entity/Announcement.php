@@ -89,4 +89,20 @@ class Announcement
     {
         return $this->updatedAt;
     }
+
+    /**
+     * W-72 partial update (PATCH): null keeps the value, except `$endsAt` when `$setEndsAt`.
+     * Always bumps `updatedAt` so clients show an edited banner again.
+     */
+    public function update(?string $title, ?string $body, ?AnnouncementLevel $level, ?\DateTimeImmutable $startsAt, bool $setEndsAt, ?\DateTimeImmutable $endsAt): void
+    {
+        $this->title = $title ?? $this->title;
+        $this->body = $body ?? $this->body;
+        $this->level = $level ?? $this->level;
+        $this->startsAt = $startsAt ?? $this->startsAt;
+        if ($setEndsAt) {
+            $this->endsAt = $endsAt;
+        }
+        $this->updatedAt = new \DateTimeImmutable();
+    }
 }

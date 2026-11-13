@@ -7,12 +7,14 @@ namespace App\Activity;
 use App\Entity\User;
 use App\Enum\ActivityType;
 use App\Enum\ReportTargetType;
+use App\Message\EvaluateSecurityRules;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Uid\Uuid;
 
 /**
@@ -49,6 +51,7 @@ final class ActivityJournal
         private readonly LoggerInterface $logger,
         #[Autowire(env: 'default::ACTIVITY_IP_PEPPER')]
         private readonly ?string $ipPepper = null,
+        private readonly ?MessageBusInterface $bus = null,
     ) {
     }
 
@@ -69,6 +72,8 @@ final class ActivityJournal
         $row = $this->row($type, $actor, $subject, $targetType, $targetId, $metadata);
         if ($type->isAdmin()) {
             $this->insert($row);
+            // In the caller's transaction too (Doctrine transport): no alert for a rolled-back grant.
+            $this->evaluate($row);
 
             return;
         }
@@ -127,6 +132,12 @@ final class ActivityJournal
                 $this->insert($row);
             } catch (\Throwable $e) {
                 $this->logger->error('ActivityJournal: event not recorded', ['type' => $row['type'], 'exception' => $e]);
+                continue;
+            }
+            try {
+                $this->evaluate($row);
+            } catch (\Throwable $e) {
+                $this->logger->error('ActivityJournal: security rules not dispatched', ['type' => $row['type'], 'exception' => $e]);
             }
         }
     }
@@ -159,6 +170,19 @@ final class ActivityJournal
             'metadata' => json_encode((object) self::metadata($metadata, $type->isAdmin()), \JSON_THROW_ON_ERROR | \JSON_UNESCAPED_UNICODE),
             'created_at' => $this->clock->now()->format('Y-m-d H:i:s.uP'),
         ];
+    }
+
+    /**
+     * Watched types (DATA_MODEL §16) dispatch the async detector once their row is written.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function evaluate(array $row): void
+    {
+        $type = ActivityType::tryFrom((string) $row['type']);
+        if (null !== $this->bus && null !== $type && SecurityRules::watches($type)) {
+            $this->bus->dispatch(new EvaluateSecurityRules((string) $row['id']));
+        }
     }
 
     /** @param array<string, mixed> $row */

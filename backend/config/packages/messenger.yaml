@@ -39,6 +39,7 @@ framework:
             App\Message\SendAccountDeletedEmail: async
             App\Message\PurgeAccountTokens: async
             App\Message\PurgeActivityEvents: async
+            App\Message\EvaluateSecurityRules: async
             App\Message\RecomputeAffinity: async
             App\Message\RecomputeAffinityAll: async
             App\Message\RecomputeTrending: async

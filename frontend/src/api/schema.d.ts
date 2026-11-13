@@ -1330,7 +1330,7 @@ export interface paths {
     };
     /**
      * List report targets
-     * @description ROLE_MODERATOR. Moderation queue grouped by target, most reported first then oldest first (keyset on `(openReportCount DESC, firstReportedAt ASC, targetType, targetId)`, counts may move between pages). With `status` other than `open`, `openReportCount` counts the reports of that status. Non-moderator → 403 `forbidden` on every `/admin` route.
+     * @description ROLE_MODERATOR. Moderation queue grouped by target, most reported first then oldest first (keyset on `(openReportCount DESC, firstReportedAt ASC, targetType, targetId)`, counts may move between pages). With `status` other than `open`, `openReportCount` counts the reports of that status. Non-moderator → 403 `forbidden` on every `/admin` route; routes marked ROLE_ADMIN also answer 403 to a moderator before any lookup (ADR 013).
      */
     get: operations['listReportTargets'];
     put?: never;
@@ -1381,9 +1381,326 @@ export interface paths {
      * @description ROLE_MODERATOR. Applies to every open report of the target (DATA_MODEL §13).
      *     `hide` → target hidden, reports actioned. `dismiss` → target visible again, reports dismissed. `suspend` (user targets only, else 422) → account suspended, refresh tokens revoked, reports actioned.
      *     `hide` on a user target, suspending oneself or an already suspended user → 422 `validation_failed`. Unknown target → 404. Non-moderator → 403 before any lookup.
-     *     A decision is also allowed with no open report (proactive moderation). Unsuspend comes in phase 5.
+     *     A decision is also allowed with no open report (proactive moderation, used by the back-office content list to hide / restore). `suspend` follows the role guard of ADR 013 §2 (a moderator on a moderator or admin, anyone on an admin → 403 `forbidden`, checked after the 404). Unsuspend: `DELETE /admin/users/{userId}/suspension`. Every decision is journaled `admin.report_decided` (FB-28).
      */
     post: operations['decideReportTarget'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/dashboard': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get admin dashboard
+     * @description ROLE_MODERATOR. Live counters (cached 60 s server-side). For a moderator, `alerts` and `announcements` are null.
+     */
+    get: operations['getAdminDashboard'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/users': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List users (admin)
+     * @description ROLE_MODERATOR. Newest accounts first (keyset on `id` DESC). Suspended and unverified users included.
+     *     `q` matches username and display name (prefix + trigram, as `/search?type=users`); for an admin, a `q` containing `@` matches the email exactly (case-insensitive) instead. `email` is null for moderators.
+     */
+    get: operations['listAdminUsers'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/users/{userId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    /**
+     * Get user (admin)
+     * @description ROLE_MODERATOR. Any existing user, suspended included. Unknown id → 404.
+     */
+    get: operations['getAdminUser'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/users/{userId}/suspension': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Suspend user
+     * @description ROLE_MODERATOR. Same effect as the `suspend` decision of W-33 (DATA_MODEL §13): `suspended_at = now()`, every refresh-token family deleted; the next request with a still-valid access JWT → 403 `account_suspended`. Does not touch reports.
+     *     Order: unknown id → 404; target is self → 422 `validation_failed`; role guard (ADR 013 §2: a moderator on a moderator or admin, anyone on an admin) → 403 `forbidden`; already suspended → 422 `validation_failed`. Journaled `admin.user_suspended` with the note.
+     */
+    post: operations['suspendUser'];
+    /**
+     * Unsuspend user
+     * @description ROLE_MODERATOR. Clears `suspended_at`; the user logs in again (no session is restored). Same order and role guard as suspension; not suspended → 422 `validation_failed`. Journaled `admin.user_unsuspended` (with the note when given). Body optional (W-71); the back-office UI always sends a note.
+     */
+    delete: operations['unsuspendUser'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/users/{userId}/role': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set user role
+     * @description ROLE_ADMIN (moderator → 403 before any lookup). Moves a user between `ROLE_USER` and `ROLE_MODERATOR`; `ROLE_ADMIN` is never accepted (422 `validation_failed`: console only, ADR 013 §3).
+     *     Order: body → 422; unknown id → 404; self or target is an admin → 403 `forbidden`; same role as current → 200 unchanged, nothing journaled. Takes effect at the target's next request. Journaled `admin.role_changed` (`from`, `to`).
+     */
+    put: operations['setUserRole'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/users/{userId}/activity': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    /**
+     * List user activity
+     * @description ROLE_ADMIN. Journal of events whose subject or actor is the user (DATA_MODEL §15), newest first (keyset on `id` DESC), within retention (90 days, `admin.*` 1 year).
+     *     Opening the first page (no cursor) is itself journaled as `admin.journal_viewed`. Unknown id → 404.
+     */
+    get: operations['listUserActivity'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/audit-log': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List admin actions
+     * @description ROLE_ADMIN. Every `admin.*` event (DATA_MODEL §15), newest first, optionally for one staff member (`actorId`). Retention 1 year.
+     */
+    get: operations['listAdminAuditLog'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/content': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List content (admin)
+     * @description ROLE_MODERATOR. One content type per call (`type` required), newest first (keyset on `(createdAt, id)` DESC). Hidden, private, processing and failed items included; moderators see everything.
+     *     `q` filters on the item label (title, caption, body, name; trigram, ≥ 2 chars). Hide / restore goes through `POST /admin/report-targets/{targetType}/{targetId}/decision` (`hide` / `dismiss`), which works without open reports.
+     */
+    get: operations['listAdminContent'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/content/{contentType}/{contentId}/deletion': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contentType: components['parameters']['AdminContentTypePath'];
+        contentId: components['parameters']['AdminContentIdPath'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Delete content (admin)
+     * @description ROLE_ADMIN (moderator → 403 before any lookup). Irreversible hard delete with the owner's own delete rules (counters, `PurgeObjects`, reports of the target and of cascaded rows deleted, DATA_MODEL §0; a track takes the posts using it; an artist with tracks → 409 `artist_has_tracks`).
+     *     Unknown id → 404. Journaled `admin.content_deleted` (type, id, owner id, note) in the same transaction; the owner is not notified in v1.
+     */
+    post: operations['deleteAdminContent'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/alerts': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List security alerts
+     * @description ROLE_ADMIN. Default `status=open`; highest severity first, then most recent `lastSeenAt` (keyset on `(severityRank DESC, lastSeenAt DESC, id)`).
+     */
+    get: operations['listSecurityAlerts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/alerts/{alertId}/acknowledgement': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        alertId: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Acknowledge security alert
+     * @description ROLE_ADMIN. Sets `acknowledged`, author, date and note; a new hit of the same rule and subject then opens a new alert. Unknown id → 404; already acknowledged → 409 `already_acknowledged`. Journaled `admin.alert_acknowledged`.
+     */
+    post: operations['acknowledgeSecurityAlert'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/announcements': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List announcements (admin)
+     * @description ROLE_ADMIN. All announcements, past, active and scheduled, newest `startsAt` first.
+     */
+    get: operations['listAdminAnnouncements'];
+    put?: never;
+    /**
+     * Create announcement
+     * @description ROLE_ADMIN. Plain text only (DATA_MODEL §17). `endsAt` must be after `startsAt` (422). Journaled `admin.announcement_created`.
+     */
+    post: operations['createAnnouncement'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/announcements/{announcementId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        announcementId: components['parameters']['AnnouncementIdPath'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete announcement
+     * @description ROLE_ADMIN. Hard delete (to end one early, PATCH `endsAt` instead). Unknown id → 404. Journaled `admin.announcement_deleted`.
+     */
+    delete: operations['deleteAnnouncement'];
+    options?: never;
+    head?: never;
+    /**
+     * Update announcement
+     * @description ROLE_ADMIN. Partial update; bumps `updatedAt` so clients show the banner again. Unknown id → 404. Journaled `admin.announcement_updated`.
+     */
+    patch: operations['updateAnnouncement'];
+    trace?: never;
+  };
+  '/announcements': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List active announcements
+     * @description Any signed-in user. Up to 3 active announcements (DATA_MODEL §17), `warning` first then newest. The client hides one the user dismissed, keyed by `id` + `updatedAt` (local storage), and renders `title`/`body` as text only.
+     */
+    get: operations['listActiveAnnouncements'];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1419,6 +1736,7 @@ export interface components {
       | 'playlist_limit_reached'
       | 'playlist_order_mismatch'
       | 'already_reported'
+      | 'already_acknowledged'
       | 'too_many_pending_uploads'
       | 'upload_already_used'
       | 'upload_expired'
@@ -1944,6 +2262,214 @@ export interface components {
       action: 'hide' | 'dismiss' | 'suspend';
       note?: string | null;
     };
+    /**
+     * @description Highest role of the user.
+     * @enum {string}
+     */
+    AdminRole: 'ROLE_USER' | 'ROLE_MODERATOR' | 'ROLE_ADMIN';
+    AdminUser: {
+      id: components['schemas']['Id'];
+      username: string;
+      displayName: string;
+      avatarUrl: components['schemas']['MediaUrl'];
+      /**
+       * Format: email
+       * @description Null for a moderator caller.
+       */
+      email: string | null;
+      emailVerified: boolean;
+      role: components['schemas']['AdminRole'];
+      /** Format: date-time */
+      suspendedAt: string | null;
+      createdAt: components['schemas']['DateTime'];
+      /** Format: date-time */
+      lastLoginAt: string | null;
+    };
+    AdminUserDetail: components['schemas']['AdminUser'] & {
+      counts: {
+        tracks: number;
+        posts: number;
+        comments: number;
+        playlists: number;
+        artists: number;
+        followers: number;
+        following: number;
+        reportsFiled: number;
+      };
+      /** @description Open reports on the user and on their content. */
+      openReportCount: number;
+      /** @description Open alerts about the user; null for a moderator caller. */
+      openAlertCount: number | null;
+      /** @description Latest `admin.user_suspended` event within retention, else null. */
+      lastSuspension: {
+        at: components['schemas']['DateTime'];
+        by: components['schemas']['UserSummary'] | null;
+        note: string | null;
+      } | null;
+    };
+    SetRoleRequest: {
+      /** @enum {string} */
+      role: 'ROLE_USER' | 'ROLE_MODERATOR';
+      note?: string | null;
+    };
+    AdminNoteRequest: {
+      /** @description Reason, written to the audit journal. */
+      note: string;
+    };
+    /** @enum {string} */
+    ActivityCategory: 'auth' | 'account' | 'content' | 'report' | 'upload' | 'abuse' | 'admin';
+    ActivityEvent: {
+      id: components['schemas']['Id'];
+      category: components['schemas']['ActivityCategory'];
+      /** @description Closed list in DATA_MODEL §15, e.g. `auth.login_failed`, `admin.user_suspended`. */
+      type: string;
+      /** @description Null = anonymous or console. */
+      actor: components['schemas']['UserSummary'] | null;
+      subjectUser: components['schemas']['UserSummary'] | null;
+      targetType: string | null;
+      /** Format: uuid */
+      targetId: string | null;
+      /** @description Truncated address (`203.0.113.0/24`, IPv6 /48), never the full IP. */
+      ipPrefix: string | null;
+      /** @description Hex of the keyed IP hash (32 chars), only to compare events; not reversible. */
+      ipHash: string | null;
+      userAgent: string | null;
+      /** @description Ids, enum values, counts and staff `note` only (DATA_MODEL §15). */
+      metadata: {
+        [key: string]: unknown;
+      };
+      createdAt: components['schemas']['DateTime'];
+    };
+    /** @enum {string} */
+    AdminContentType: 'track' | 'post' | 'comment' | 'playlist' | 'artist';
+    AdminContentItem: {
+      type: components['schemas']['AdminContentType'];
+      id: components['schemas']['Id'];
+      /** @description Title, caption, body (truncated 140) or name. */
+      label: string;
+      imageUrl: components['schemas']['MediaUrl'];
+      owner: components['schemas']['UserSummary'];
+      moderation: components['schemas']['Moderation'];
+      /**
+       * @description Media status for tracks and posts; null otherwise.
+       * @enum {string|null}
+       */
+      status: 'processing' | 'ready' | 'failed' | null;
+      /**
+       * @description Real track visibility, or `public`/`private` for playlists; null otherwise.
+       * @enum {string|null}
+       */
+      visibility: 'public' | 'followers' | 'close_friends' | 'private' | null;
+      openReportCount: number;
+      createdAt: components['schemas']['DateTime'];
+    };
+    /** @enum {string} */
+    AlertRule:
+      | 'login_failures'
+      | 'token_reuse'
+      | 'mass_registration'
+      | 'report_burst'
+      | 'report_spree'
+      | 'upload_abuse'
+      | 'rate_limit_hammering'
+      | 'privilege_granted';
+    /** @enum {string} */
+    AlertSeverity: 'low' | 'medium' | 'high';
+    /** @enum {string} */
+    AlertStatus: 'open' | 'acknowledged';
+    SecurityAlert: {
+      id: components['schemas']['Id'];
+      rule: components['schemas']['AlertRule'];
+      severity: components['schemas']['AlertSeverity'];
+      subjectUser: components['schemas']['UserSummary'] | null;
+      /** @description Hex keyed hash, to filter the journal; never the IP. */
+      subjectIpHash: string | null;
+      subjectTarget: {
+        targetType: components['schemas']['ReportTargetType'];
+        targetId: components['schemas']['Id'];
+      } | null;
+      hitCount: number;
+      firstSeenAt: components['schemas']['DateTime'];
+      lastSeenAt: components['schemas']['DateTime'];
+      status: components['schemas']['AlertStatus'];
+      acknowledgedBy: components['schemas']['UserSummary'] | null;
+      /** Format: date-time */
+      acknowledgedAt: string | null;
+      note: string | null;
+    };
+    /** @enum {string} */
+    AnnouncementLevel: 'info' | 'warning';
+    Announcement: {
+      id: components['schemas']['Id'];
+      title: string;
+      /** @description Plain text; render as text, never as HTML. */
+      body: string;
+      level: components['schemas']['AnnouncementLevel'];
+      startsAt: components['schemas']['DateTime'];
+      /** Format: date-time */
+      endsAt: string | null;
+      updatedAt: components['schemas']['DateTime'];
+    };
+    CreateAnnouncementRequest: {
+      title: string;
+      body: string;
+      level: components['schemas']['AnnouncementLevel'];
+      /**
+       * Format: date-time
+       * @description Default now.
+       */
+      startsAt?: string | null;
+      /** Format: date-time */
+      endsAt?: string | null;
+    };
+    UpdateAnnouncementRequest: {
+      title?: string;
+      body?: string;
+      level?: components['schemas']['AnnouncementLevel'];
+      /** Format: date-time */
+      startsAt?: string;
+      /** Format: date-time */
+      endsAt?: string | null;
+    };
+    ActiveAnnouncements: {
+      items: components['schemas']['Announcement'][];
+    };
+    AdminDashboard: {
+      users: {
+        total: number;
+        new24h: number;
+        new7d: number;
+        suspended: number;
+        unverified: number;
+        moderators: number;
+        admins: number;
+      };
+      moderation: {
+        openReportTargets: number;
+        openReports: number;
+        /** @description Auto-hides and staff hides in the last 24 h. */
+        hiddenContent24h: number;
+      };
+      content: {
+        tracks24h: number;
+        posts24h: number;
+        comments24h: number;
+        failedUploads24h: number;
+      };
+      /** @description Null for a moderator caller. */
+      alerts: {
+        open: number;
+        openHigh: number;
+        openMedium: number;
+        openLow: number;
+      } | null;
+      /** @description Null for a moderator caller. */
+      announcements: {
+        active: number;
+        scheduled: number;
+      } | null;
+      generatedAt: components['schemas']['DateTime'];
+    };
     UserPage: {
       items: components['schemas']['UserListItem'][];
       nextCursor: string | null;
@@ -1982,6 +2508,26 @@ export interface components {
     };
     ReportTargetPage: {
       items: components['schemas']['ReportTarget'][];
+      nextCursor: string | null;
+    };
+    AdminUserPage: {
+      items: components['schemas']['AdminUser'][];
+      nextCursor: string | null;
+    };
+    ActivityEventPage: {
+      items: components['schemas']['ActivityEvent'][];
+      nextCursor: string | null;
+    };
+    AdminContentPage: {
+      items: components['schemas']['AdminContentItem'][];
+      nextCursor: string | null;
+    };
+    SecurityAlertPage: {
+      items: components['schemas']['SecurityAlert'][];
+      nextCursor: string | null;
+    };
+    AnnouncementPage: {
+      items: components['schemas']['Announcement'][];
       nextCursor: string | null;
     };
   };
@@ -2106,6 +2652,11 @@ export interface components {
     HashtagName: string;
     ReportTargetTypePath: components['schemas']['ReportTargetType'];
     ReportTargetIdPath: string;
+    /** @description User id (not username); suspended users included, unknown id → 404. */
+    AdminUserIdPath: string;
+    AdminContentTypePath: components['schemas']['AdminContentType'];
+    AdminContentIdPath: string;
+    AnnouncementIdPath: string;
   };
   requestBodies: never;
   headers: never;
@@ -4287,6 +4838,490 @@ export interface operations {
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
       422: components['responses']['Unprocessable'];
+    };
+  };
+  getAdminDashboard: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Counters. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminDashboard'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  listAdminUsers: {
+    parameters: {
+      query?: {
+        q?: string;
+        role?: components['schemas']['AdminRole'];
+        status?: 'active' | 'suspended' | 'unverified';
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of users. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminUserPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  getAdminUser: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description User. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminUserDetail'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+    };
+  };
+  suspendUser: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AdminNoteRequest'];
+      };
+    };
+    responses: {
+      /** @description User after suspension. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminUserDetail'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  unsuspendUser: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        'application/json': components['schemas']['AdminNoteRequest'];
+      };
+    };
+    responses: {
+      /** @description User after unsuspension. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminUserDetail'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  setUserRole: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetRoleRequest'];
+      };
+    };
+    responses: {
+      /** @description User after the change. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminUserDetail'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  listUserActivity: {
+    parameters: {
+      query?: {
+        category?: components['schemas']['ActivityCategory'];
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path: {
+        /** @description User id (not username); suspended users included, unknown id → 404. */
+        userId: components['parameters']['AdminUserIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of events. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ActivityEventPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+    };
+  };
+  listAdminAuditLog: {
+    parameters: {
+      query?: {
+        actorId?: string;
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of admin events. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ActivityEventPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  listAdminContent: {
+    parameters: {
+      query: {
+        type: components['schemas']['AdminContentType'];
+        moderation?: components['schemas']['Moderation'];
+        /** @description Owner (track, playlist, artist) or author (post, comment). */
+        ownerId?: string;
+        q?: string;
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of content. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminContentPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  deleteAdminContent: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        contentType: components['parameters']['AdminContentTypePath'];
+        contentId: components['parameters']['AdminContentIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AdminNoteRequest'];
+      };
+    };
+    responses: {
+      /** @description Deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  listSecurityAlerts: {
+    parameters: {
+      query?: {
+        status?: components['schemas']['AlertStatus'];
+        severity?: components['schemas']['AlertSeverity'];
+        rule?: components['schemas']['AlertRule'];
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of alerts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SecurityAlertPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  acknowledgeSecurityAlert: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        alertId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AdminNoteRequest'];
+      };
+    };
+    responses: {
+      /** @description Alert after acknowledgement. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SecurityAlert'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['Conflict'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  listAdminAnnouncements: {
+    parameters: {
+      query?: {
+        /** @description Opaque value from a previous `nextCursor`. */
+        cursor?: components['parameters']['Cursor'];
+        limit?: components['parameters']['Limit'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Page of announcements. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AnnouncementPage'];
+        };
+      };
+      400: components['responses']['BadRequest'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  createAnnouncement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateAnnouncementRequest'];
+      };
+    };
+    responses: {
+      /** @description Created. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Announcement'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  deleteAnnouncement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        announcementId: components['parameters']['AnnouncementIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+    };
+  };
+  updateAnnouncement: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        announcementId: components['parameters']['AnnouncementIdPath'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateAnnouncementRequest'];
+        'application/merge-patch+json': components['schemas']['UpdateAnnouncementRequest'];
+      };
+    };
+    responses: {
+      /** @description Updated. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Announcement'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['Unprocessable'];
+    };
+  };
+  listActiveAnnouncements: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Active announcements. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ActiveAnnouncements'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
     };
   };
 }

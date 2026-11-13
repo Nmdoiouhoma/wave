@@ -158,4 +158,13 @@ class SecurityAlert
     {
         return $this->createdAt;
     }
+
+    /** W-72: `open` → `acknowledged`; a new hit of the same rule and subject then opens a new row. */
+    public function acknowledge(User $by, string $note, \DateTimeImmutable $at): void
+    {
+        $this->status = AlertStatus::Acknowledged;
+        $this->acknowledgedBy = $by;
+        $this->acknowledgedAt = $at;
+        $this->note = $note;
+    }
 }

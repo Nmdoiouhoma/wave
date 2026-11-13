@@ -1796,7 +1796,12 @@ paths:
       operationId: unsuspendUser
       summary: Unsuspend user
       description: |
-        ROLE_MODERATOR. Clears `suspended_at`; the user logs in again (no session is restored). Same order and role guard as suspension; not suspended → 422 `validation_failed`. Journaled `admin.user_unsuspended`.
+        ROLE_MODERATOR. Clears `suspended_at`; the user logs in again (no session is restored). Same order and role guard as suspension; not suspended → 422 `validation_failed`. Journaled `admin.user_unsuspended` (with the note when given). Body optional (W-71); the back-office UI always sends a note.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminNoteRequest' }
       responses:
         '200':
           description: User after unsuspension.

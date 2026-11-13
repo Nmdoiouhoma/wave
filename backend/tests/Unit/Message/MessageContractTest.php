@@ -31,6 +31,7 @@ final class MessageContractTest extends TestCase
         yield 'RecomputeAffinity' => [Message\RecomputeAffinity::class, ['userId' => 'string']];
         yield 'RecomputeAffinityAll' => [Message\RecomputeAffinityAll::class, []];
         yield 'RecomputeTrending' => [Message\RecomputeTrending::class, []];
+        yield 'EvaluateSecurityRules' => [Message\EvaluateSecurityRules::class, ['eventId' => 'string']];
     }
 
     /**

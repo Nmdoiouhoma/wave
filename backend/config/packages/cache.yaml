@@ -5,3 +5,14 @@ framework:
             # Shared by every FPM worker (CONVENTIONS §9): rate limiter state lives in Postgres.
             cache.rate_limiter:
                 adapter: cache.adapter.doctrine_dbal
+            # GET /admin/dashboard counters (60 s, ADR 013); per-FPM-worker staleness is acceptable.
+            cache.admin_dashboard:
+                adapter: cache.app
+
+when@test:
+    framework:
+        cache:
+            pools:
+                # In-memory: each test kernel starts with an empty cache.
+                cache.admin_dashboard:
+                    adapter: cache.adapter.array

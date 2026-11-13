@@ -11,12 +11,11 @@ use ApiPlatform\State\ProcessorInterface;
 use App\ApiResource\PlaylistView;
 use App\Dto\Input\PlaylistInput;
 use App\Entity\Playlist;
-use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\PlaylistMapper;
+use App\Moderation\ContentDeleter;
 use App\Problem\ApiProblemException;
 use App\Problem\ProblemCode;
-use App\Repository\ReportRepository;
 use App\Security\CurrentUser;
 use App\State\Provider\PlaylistLookup;
 use Doctrine\ORM\EntityManagerInterface;
@@ -35,7 +34,7 @@ final readonly class PlaylistProcessor implements ProcessorInterface
         private PlaylistLookup $lookup,
         private EntityManagerInterface $em,
         private PlaylistMapper $mapper,
-        private ReportRepository $reports,
+        private ContentDeleter $deleter,
     ) {
     }
 
@@ -45,12 +44,7 @@ final readonly class PlaylistProcessor implements ProcessorInterface
 
         if ($operation instanceof DeleteOperationInterface) {
             $playlist = $this->lookup->owned($uriVariables['playlistId'] ?? null);
-            // Items and likes go by FK cascade; reports (polymorphic, no FK) in the same transaction.
-            $this->em->wrapInTransaction(function () use ($playlist): void {
-                $this->reports->deleteForTarget(ReportTargetType::Playlist, $playlist->getId());
-                $this->em->remove($playlist);
-                $this->em->flush();
-            });
+            $this->em->wrapInTransaction(fn () => $this->deleter->deletePlaylist($playlist));
 
             return null;
         }
