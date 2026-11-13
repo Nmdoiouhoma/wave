@@ -6,12 +6,15 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\ApiResource\PostView;
 use App\Entity\Post;
 use App\Entity\Track;
 use App\Entity\User;
+use App\Enum\ActivityType;
 use App\Enum\MediaStatus;
 use App\Enum\Moderation;
+use App\Enum\ReportTargetType;
 use App\Enum\Visibility;
 use App\Enum\VisualType;
 use App\Http\RequestEncodingListener;
@@ -60,6 +63,7 @@ final readonly class CreatePostProcessor implements ProcessorInterface
         private MessageBusInterface $bus,
         private PostMapper $mapper,
         private TrackAudience $audience,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -107,6 +111,7 @@ final readonly class CreatePostProcessor implements ProcessorInterface
             return $post;
         });
 
+        $this->journal->record(ActivityType::PostCreated, $user, $user, ReportTargetType::Post, $post->getId());
         $request->attributes->set(ResponseHeadersListener::LOCATION_ATTRIBUTE, '/api/v1/posts/'.$post->getId()->toRfc4122());
 
         return $this->mapper->toView($post, $user);

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Media\MessageHandler;
 
+use App\Activity\ActivityJournal;
 use App\Entity\Track;
+use App\Enum\ActivityType;
 use App\Enum\FailureReason;
 use App\Enum\MediaStatus;
+use App\Enum\ReportTargetType;
 use App\Media\Exception\MediaRejected;
 use App\Media\LockedFind;
 use App\Media\MediaKeys;
@@ -38,6 +41,7 @@ final class ProcessTrackHandler
         private readonly ObjectStorage $storage,
         private readonly TrackAudioProcessor $audio,
         private readonly LoggerInterface $logger,
+        private readonly ?ActivityJournal $journal = null,
     ) {
     }
 
@@ -141,12 +145,18 @@ final class ProcessTrackHandler
      */
     private function fail(Uuid $trackId, FailureReason $reason, string $detail, array $context): void
     {
-        $this->em->wrapInTransaction(function (EntityManagerInterface $em) use ($trackId, $reason): void {
+        $owner = $this->em->wrapInTransaction(static function (EntityManagerInterface $em) use ($trackId, $reason): ?Uuid {
             $track = LockedFind::find($em, Track::class, $trackId);
-            if (null !== $track && MediaStatus::Processing === $track->getStatus()) {
-                $track->markFailed($reason);
+            if (null === $track || MediaStatus::Processing !== $track->getStatus()) {
+                return null;
             }
+            $track->markFailed($reason);
+
+            return $track->getOwner()->getId();
         });
+        if ($owner instanceof Uuid) {
+            $this->journal?->record(ActivityType::UploadRejected, $owner, $owner, ReportTargetType::Track, $trackId, ['reason' => $reason]);
+        }
         $this->logger->notice('ProcessTrack: rejected', $context + ['reason' => $reason->value, 'detail' => $detail]);
     }
 }

@@ -21,6 +21,7 @@
         <env name="MEDIA_PUBLIC_BASE_URL" value="http://wave.test/media" force="true" />
         <env name="FRONT_PUBLIC_URL" value="http://front.test" force="true" />
         <env name="STREAM_SIGNING_KEY" value="test-stream-signing-key" force="true" />
+        <env name="ACTIVITY_IP_PEPPER" value="test-activity-ip-pepper" force="true" />
         <env name="STREAM_URL_TTL" value="300" force="true" />
         <env name="JWT_SECRET_KEY" value="%kernel.project_dir%/config/jwt/test_private.pem" force="true" />
         <env name="JWT_PUBLIC_KEY" value="%kernel.project_dir%/config/jwt/test_public.pem" force="true" />

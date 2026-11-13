@@ -27,6 +27,7 @@ final class MessageContractTest extends TestCase
         yield 'SendPasswordResetEmail' => [Message\SendPasswordResetEmail::class, ['email' => 'string']];
         yield 'SendAccountDeletedEmail' => [Message\SendAccountDeletedEmail::class, ['email' => 'string', 'displayName' => 'string']];
         yield 'PurgeAccountTokens' => [Message\PurgeAccountTokens::class, []];
+        yield 'PurgeActivityEvents' => [Message\PurgeActivityEvents::class, []];
         yield 'RecomputeAffinity' => [Message\RecomputeAffinity::class, ['userId' => 'string']];
         yield 'RecomputeAffinityAll' => [Message\RecomputeAffinityAll::class, []];
         yield 'RecomputeTrending' => [Message\RecomputeTrending::class, []];

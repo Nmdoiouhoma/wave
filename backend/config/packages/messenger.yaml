@@ -38,6 +38,7 @@ framework:
             App\Message\SendPasswordResetEmail: async
             App\Message\SendAccountDeletedEmail: async
             App\Message\PurgeAccountTokens: async
+            App\Message\PurgeActivityEvents: async
             App\Message\RecomputeAffinity: async
             App\Message\RecomputeAffinityAll: async
             App\Message\RecomputeTrending: async

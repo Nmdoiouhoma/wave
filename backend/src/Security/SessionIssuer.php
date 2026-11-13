@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Security;
 
+use App\Activity\ActivityJournal;
 use App\Entity\RefreshToken;
 use App\Entity\User;
+use App\Enum\ActivityType;
 use App\Http\RequestEncodingListener;
 use App\Http\ViewNormalizer;
 use App\Mapper\UserMapper;
@@ -52,6 +54,7 @@ final readonly class SessionIssuer
         private int $refreshTtl,
         #[Autowire(env: 'bool:REFRESH_COOKIE_SECURE')]
         private bool $cookieSecure,
+        private ?ActivityJournal $journal = null,
     ) {
     }
 
@@ -109,9 +112,11 @@ final readonly class SessionIssuer
             ['t' => $raw],
         );
         if (false === $row) {
-            $family = $this->connection->fetchOne('SELECT family_id FROM refresh_token WHERE refresh_token = :t AND rotated_at IS NOT NULL', ['t' => $raw]);
+            $replayed = $this->connection->fetchAssociative('SELECT family_id, username FROM refresh_token WHERE refresh_token = :t AND rotated_at IS NOT NULL', ['t' => $raw]);
+            $family = false === $replayed ? null : $replayed['family_id'];
             if (\is_string($family)) {
                 $this->connection->executeStatement('DELETE FROM refresh_token WHERE family_id = :f', ['f' => $family]);
+                $this->journal?->record(ActivityType::TokenReused, null, self::userIdOf($replayed['username'] ?? null));
 
                 return $this->invalid($request, ProblemCode::TokenReused);
             }
@@ -186,10 +191,13 @@ final readonly class SessionIssuer
         $raw = $this->presentedToken($request);
         if (null !== $raw) {
             // The whole session goes: the presented token and its family.
-            $this->connection->executeStatement(
-                'DELETE FROM refresh_token WHERE family_id = (SELECT family_id FROM refresh_token WHERE refresh_token = :t)',
+            $owner = $this->connection->fetchOne(
+                'DELETE FROM refresh_token WHERE family_id = (SELECT family_id FROM refresh_token WHERE refresh_token = :t) RETURNING username',
                 ['t' => $raw],
             );
+            if (null !== ($userId = self::userIdOf($owner))) {
+                $this->journal?->record(ActivityType::Logout, $userId, $userId);
+            }
         }
         $response = new Response(null, Response::HTTP_NO_CONTENT);
         if (!self::isMobile($request)) {
@@ -203,6 +211,12 @@ final readonly class SessionIssuer
     public function revokeAll(User $user): void
     {
         $this->connection->executeStatement('DELETE FROM refresh_token WHERE username = :u', ['u' => $user->getUserIdentifier()]);
+    }
+
+    /** Refresh tokens are keyed by user id (UserProvider identifier). */
+    private static function userIdOf(mixed $username): ?Uuid
+    {
+        return \is_string($username) && Uuid::isValid($username) ? Uuid::fromString($username) : null;
     }
 
     private function invalid(Request $request, ProblemCode $code = ProblemCode::RefreshTokenInvalid): Response

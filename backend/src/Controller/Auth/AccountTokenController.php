@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace App\Controller\Auth;
 
 use App\Account\AccountTokenIssuer;
+use App\Activity\ActivityJournal;
 use App\Dto\Input\AccountTokenInput;
 use App\Dto\Input\PasswordResetConfirmInput;
 use App\Dto\Input\PasswordResetInput;
+use App\Entity\User;
 use App\Enum\AccountTokenPurpose;
+use App\Enum\ActivityType;
 use App\Http\JsonInputDecoder;
 use App\Message\SendPasswordResetEmail;
 use App\Problem\ApiProblemException;
@@ -31,6 +34,7 @@ final readonly class AccountTokenController
         private MessageBusInterface $bus,
         private UserPasswordHasherInterface $hasher,
         private SessionIssuer $sessions,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -39,11 +43,14 @@ final readonly class AccountTokenController
     {
         $input = $this->decodeToken($request, AccountTokenInput::class);
 
-        $this->em->wrapInTransaction(function () use ($input): void {
+        $user = $this->em->wrapInTransaction(function () use ($input): User {
             $user = $this->tokens->consume((string) $input->token, AccountTokenPurpose::EmailVerification);
             $user->markEmailVerified();
             $this->em->flush();
+
+            return $user;
         });
+        $this->journal->record(ActivityType::EmailVerified, $user, $user);
 
         return new Response(null, Response::HTTP_NO_CONTENT);
     }
@@ -66,13 +73,16 @@ final readonly class AccountTokenController
     {
         $input = $this->decodeToken($request, PasswordResetConfirmInput::class);
 
-        $this->em->wrapInTransaction(function () use ($input): void {
+        $user = $this->em->wrapInTransaction(function () use ($input): User {
             $user = $this->tokens->consume((string) $input->token, AccountTokenPurpose::PasswordReset);
             $user->setPassword($this->hasher->hashPassword($user, (string) $input->newPassword));
             $user->markEmailVerified();
             $this->em->flush();
             $this->sessions->revokeAll($user);
+
+            return $user;
         });
+        $this->journal->record(ActivityType::PasswordResetCompleted, $user, $user);
 
         return new Response(null, Response::HTTP_NO_CONTENT);
     }

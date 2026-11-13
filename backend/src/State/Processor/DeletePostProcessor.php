@@ -6,6 +6,9 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
+use App\Enum\ActivityType;
+use App\Enum\ReportTargetType;
 use App\Post\PostCleanup;
 use App\Problem\ApiProblemException;
 use App\Security\CurrentUser;
@@ -27,6 +30,7 @@ final readonly class DeletePostProcessor implements ProcessorInterface
         private PostCleanup $cleanup,
         private EntityManagerInterface $em,
         private TrackAudience $audience,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -37,8 +41,11 @@ final readonly class DeletePostProcessor implements ProcessorInterface
         if (!$post->isAuthoredBy($viewer) && !$viewer->isModerator()) {
             throw $this->audience->isPostVisible($post, $viewer) ? ApiProblemException::forbidden('Only the author or a moderator can delete this post.') : ApiProblemException::notFound();
         }
-        $this->em->wrapInTransaction(fn () => $this->cleanup->deletePost($post->getId()));
+        $postId = $post->getId();
+        $authorId = $post->getAuthor()->getId();
+        $this->em->wrapInTransaction(fn () => $this->cleanup->deletePost($postId));
         $this->em->detach($post);
+        $this->journal->record(ActivityType::PostDeleted, $viewer, $authorId, ReportTargetType::Post, $postId);
 
         return null;
     }

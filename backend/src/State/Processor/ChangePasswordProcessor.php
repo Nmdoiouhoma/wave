@@ -6,7 +6,9 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\Dto\Input\ChangePasswordInput;
+use App\Enum\ActivityType;
 use App\Http\JsonInputDecoder;
 use App\Problem\ApiProblemException;
 use App\Security\CurrentUser;
@@ -30,6 +32,7 @@ final readonly class ChangePasswordProcessor implements ProcessorInterface
         private UserPasswordHasherInterface $hasher,
         private EntityManagerInterface $em,
         private SessionIssuer $sessions,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -46,11 +49,14 @@ final readonly class ChangePasswordProcessor implements ProcessorInterface
 
         $hash = $this->hasher->hashPassword($user, (string) $input->newPassword);
 
-        return $this->em->wrapInTransaction(function () use ($user, $hash, $request): Response {
+        $response = $this->em->wrapInTransaction(function () use ($user, $hash, $request): Response {
             $user->setPassword($hash);
             $this->em->flush();
 
             return $this->sessions->keepOnlyCurrent($user, $request);
         });
+        $this->journal->record(ActivityType::PasswordChanged, $user, $user);
+
+        return $response;
     }
 }

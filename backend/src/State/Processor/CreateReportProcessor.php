@@ -6,9 +6,11 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\ApiResource\ReportReceipt;
 use App\Dto\Input\CreateReportInput;
 use App\Entity\Report;
+use App\Enum\ActivityType;
 use App\Enum\Moderation;
 use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
@@ -45,6 +47,7 @@ final readonly class CreateReportProcessor implements ProcessorInterface
         private ReportRepository $reports,
         private ModerationApplier $moderation,
         private EntityManagerInterface $em,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -67,19 +70,25 @@ final readonly class CreateReportProcessor implements ProcessorInterface
         $targetId = $target->getId();
 
         $report = new Report($user, $type, $targetId, $input->reason, '' === $details ? null : $details);
-        $inserted = $this->em->wrapInTransaction(function () use ($report, $type, $targetId): bool {
+        /** @var array{bool, int} $outcome inserted, reporters when this report hid the target (else 0) */
+        $outcome = $this->em->wrapInTransaction(function () use ($report, $type, $targetId): array {
             $this->reports->lockTarget($type, $targetId);
             if (!$this->reports->insertOpen($report)) {
-                return false;
+                return [false, 0];
             }
-            if (ReportTargetType::User !== $type && $this->reports->countOpenReporters($type, $targetId) >= self::AUTO_HIDE_REPORTERS) {
-                $this->moderation->setModeration($type, $targetId, Moderation::Hidden);
+            if (ReportTargetType::User !== $type && ($reporters = $this->reports->countOpenReporters($type, $targetId)) >= self::AUTO_HIDE_REPORTERS) {
+                return [true, $this->moderation->setModeration($type, $targetId, Moderation::Hidden) ? $reporters : 0];
             }
 
-            return true;
+            return [true, 0];
         });
-        if (!$inserted) {
+        if (!$outcome[0]) {
             throw new ApiProblemException(ProblemCode::AlreadyReported, 'You already reported this.');
+        }
+        $owner = ReportTargetResolver::ownerOf($target)->getId();
+        $this->journal->record(ActivityType::ReportCreated, $user, $owner, $type, $targetId, ['reason' => $input->reason]);
+        if ($outcome[1] > 0) {
+            $this->journal->record(ActivityType::ReportAutoHidden, $user, $owner, $type, $targetId, ['reportCount' => $outcome[1]]);
         }
 
         return new ReportReceipt($report->getId()->toRfc4122(), $report->getStatus()->value, DateFormat::format($report->getCreatedAt()));

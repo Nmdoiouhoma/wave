@@ -6,6 +6,7 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\ApiResource\TrackView;
 use App\Artist\ArtistCreator;
 use App\Dto\Input\CreateTrackInput;
@@ -14,6 +15,8 @@ use App\Entity\Genre;
 use App\Entity\Track;
 use App\Entity\TrackUpload;
 use App\Entity\User;
+use App\Enum\ActivityType;
+use App\Enum\ReportTargetType;
 use App\Enum\TrackUploadStatus;
 use App\Http\JsonInputDecoder;
 use App\Http\ResponseHeadersListener;
@@ -57,6 +60,7 @@ final readonly class CreateTrackProcessor implements ProcessorInterface
         private MessageBusInterface $bus,
         private TrackMapper $mapper,
         private ClockInterface $clock,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -90,7 +94,8 @@ final readonly class CreateTrackProcessor implements ProcessorInterface
         $trackId = Uuid::v7();
         $rawKey = 'quarantine/tracks/'.$trackId->toRfc4122().'/source';
 
-        $track = $this->em->wrapInTransaction(function () use ($user, $input, $genre, $upload, $key, $rawKey, $trackId, $now): Track {
+        $createdArtist = null;
+        $track = $this->em->wrapInTransaction(function () use ($user, $input, $genre, $upload, $key, $rawKey, $trackId, $now, &$createdArtist): Track {
             // F2: serialise this user's track creations before reading their artists, so N
             // parallel first uploads auto-create exactly one artist.
             $conn = $this->em->getConnection();
@@ -104,7 +109,7 @@ final readonly class CreateTrackProcessor implements ProcessorInterface
             if (!$this->storage->exists(StorageArea::Private, $key)) {
                 throw new ApiProblemException(ProblemCode::UploadIncomplete, 'The file has not been received yet.');
             }
-            $artist = $this->resolveArtist($user, $input->artistId);
+            $artist = $this->resolveArtist($user, $input->artistId, $createdArtist);
 
             // F3: the presigned form stays valid 15 min, so the browser-writable upload key must
             // not be what the worker processes: snapshot it server-side to a key only PHP writes.
@@ -128,6 +133,11 @@ final readonly class CreateTrackProcessor implements ProcessorInterface
             return $track;
         });
 
+        if ($createdArtist instanceof Artist) {
+            $this->journal->record(ActivityType::ArtistCreated, $user, $user, ReportTargetType::Artist, $createdArtist->getId());
+        }
+        $this->journal->record(ActivityType::TrackCreated, $user, $user, ReportTargetType::Track, $track->getId());
+
         // Best effort: an object left behind is swept by CleanupQuarantine.
         try {
             $this->storage->delete(StorageArea::Private, $key);
@@ -139,7 +149,7 @@ final readonly class CreateTrackProcessor implements ProcessorInterface
         return $this->mapper->toView($track, $user);
     }
 
-    private function resolveArtist(User $user, ?string $artistId): Artist
+    private function resolveArtist(User $user, ?string $artistId, ?Artist &$created): Artist
     {
         if (null !== $artistId) {
             $artist = $this->artists->find(Uuid::fromString($artistId));
@@ -152,7 +162,7 @@ final readonly class CreateTrackProcessor implements ProcessorInterface
         $owned = $this->artists->findByOwner($user, includeHidden: true);
 
         return match (\count($owned)) {
-            0 => $this->artistCreator->create($user, $user->getDisplayName()),
+            0 => $created = $this->artistCreator->create($user, $user->getDisplayName()),
             1 => $owned[0],
             default => throw new ApiProblemException(ProblemCode::ArtistRequired, 'Choose the artist of this track (artistId).'),
         };

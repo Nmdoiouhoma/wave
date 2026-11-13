@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\RateLimit;
 
+use App\Activity\ActivityJournal;
 use App\Entity\User;
 use App\Problem\ApiProblemException;
 use App\Problem\ProblemCode;
@@ -67,6 +68,7 @@ final readonly class RateLimitListener
         #[AutowireLocator('rate_limiter', indexAttribute: 'name')]
         private ServiceLocator $limiters,
         private Security $security,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -89,6 +91,8 @@ final readonly class RateLimitListener
             $limit = $this->limiters->get($name)->create($key)->consume();
             if (!$limit->isAccepted()) {
                 $retryAfter = max(1, $limit->getRetryAfter()->getTimestamp() - time());
+                $user = $this->security->getUser();
+                $this->journal->recordRateLimited($name, $user instanceof User ? $user : null);
 
                 throw new ApiProblemException(ProblemCode::RateLimited, 'Too many requests, retry later.', [], ['Retry-After' => (string) $retryAfter]);
             }

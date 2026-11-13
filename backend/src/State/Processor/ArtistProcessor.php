@@ -8,11 +8,13 @@ use ApiPlatform\Metadata\DeleteOperationInterface;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\ApiResource\ArtistView;
 use App\Artist\ArtistCreator;
 use App\Artist\ArtistLookup;
 use App\Dto\Input\CreateArtistInput;
 use App\Entity\Artist;
+use App\Enum\ActivityType;
 use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\ArtistMapper;
@@ -44,6 +46,7 @@ final readonly class ArtistProcessor implements ProcessorInterface
         private ArtistMapper $mapper,
         private MessageBusInterface $bus,
         private ReportRepository $reports,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -80,6 +83,7 @@ final readonly class ArtistProcessor implements ProcessorInterface
             throw ApiProblemException::validation('name', 'This value should not be blank.');
         }
         $artist = $this->em->wrapInTransaction(fn (): Artist => $this->creator->create($viewer, trim((string) $input->name), self::cleanBio($input->bio)));
+        $this->journal->record(ActivityType::ArtistCreated, $viewer, $viewer, ReportTargetType::Artist, $artist->getId());
 
         return $this->mapper->toView($artist, $viewer);
     }

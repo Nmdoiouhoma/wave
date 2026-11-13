@@ -7,10 +7,13 @@ namespace App\State\Processor;
 use ApiPlatform\Metadata\DeleteOperationInterface;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\ApiResource\TrackView;
 use App\Dto\Input\UpdateTrackInput;
 use App\Entity\Genre;
 use App\Entity\Track;
+use App\Enum\ActivityType;
+use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\TrackMapper;
 use App\Message\PurgeObjects;
@@ -45,6 +48,7 @@ final readonly class TrackProcessor implements ProcessorInterface
         private TrackMapper $mapper,
         private PostCleanup $postCleanup,
         private PlaylistRepository $playlists,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -54,7 +58,10 @@ final readonly class TrackProcessor implements ProcessorInterface
         $track = $this->lookup->owned($uriVariables['trackId'] ?? null);
 
         if ($operation instanceof DeleteOperationInterface) {
+            $trackId = $track->getId();
+            $ownerId = $track->getOwner()->getId();
             $this->delete($track);
+            $this->journal->record(ActivityType::TrackDeleted, $viewer, $ownerId, ReportTargetType::Track, $trackId);
 
             return null;
         }

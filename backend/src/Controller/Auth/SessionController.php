@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Controller\Auth;
 
+use App\Activity\ActivityJournal;
 use App\Dto\Input\LoginInput;
 use App\Dto\Input\RegisterInput;
 use App\Entity\User;
+use App\Enum\ActivityType;
 use App\Http\JsonInputDecoder;
 use App\Message\SendVerificationEmail;
 use App\Problem\ApiProblemException;
@@ -15,6 +17,7 @@ use App\Repository\UserRepository;
 use App\Security\SessionIssuer;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Clock\ClockInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -31,6 +34,8 @@ final readonly class SessionController
         private UserPasswordHasherInterface $hasher,
         private SessionIssuer $sessions,
         private MessageBusInterface $bus,
+        private ActivityJournal $journal,
+        private ClockInterface $clock,
     ) {
     }
 
@@ -63,6 +68,7 @@ final readonly class SessionController
 
             throw new ApiProblemException($code, null, [], [], $e);
         }
+        $this->journal->record(ActivityType::Registered, $user, $user);
 
         return $this->sessions->open($user, $request, Response::HTTP_CREATED);
     }
@@ -85,21 +91,30 @@ final readonly class SessionController
         if (null === $user) {
             // Same cost as a real check: response time does not reveal unknown emails.
             $this->hasher->hashPassword(new User('nobody@invalid', 'nobody', 'nobody'), $password);
+            $this->journal->record(ActivityType::LoginFailed, metadata: ['reason' => 'unknown_account']);
 
             throw new ApiProblemException(ProblemCode::InvalidCredentials, 'Invalid email or password.');
         }
         if (!$this->hasher->isPasswordValid($user, $password)) {
+            $this->journal->record(ActivityType::LoginFailed, null, $user, metadata: ['reason' => 'bad_password']);
+
             throw new ApiProblemException(ProblemCode::InvalidCredentials, 'Invalid email or password.');
         }
         if ($user->isSuspended()) {
+            $this->journal->record(ActivityType::LoginFailed, null, $user, metadata: ['reason' => 'suspended']);
+
             throw new ApiProblemException(ProblemCode::AccountSuspended);
         }
         if ($this->hasher->needsRehash($user)) {
             $user->setPassword($this->hasher->hashPassword($user, $password));
-            $this->em->flush();
         }
+        $user->markLoggedIn($this->clock->now());
+        $this->em->flush();
 
-        return $this->sessions->open($user, $request);
+        $response = $this->sessions->open($user, $request);
+        $this->journal->record(ActivityType::LoginSucceeded, $user, $user);
+
+        return $response;
     }
 
     #[Route('/api/v1/auth/refresh', name: 'refresh', methods: ['POST'])]

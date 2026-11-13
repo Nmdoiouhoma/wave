@@ -6,9 +6,11 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\ApiResource\ReportTargetView;
 use App\Dto\Input\ModerationDecisionInput;
 use App\Entity\User;
+use App\Enum\ActivityType;
 use App\Enum\Moderation;
 use App\Enum\ReportStatus;
 use App\Enum\ReportTargetType;
@@ -26,7 +28,9 @@ use Symfony\Component\HttpFoundation\Request;
 /**
  * `POST /admin/report-targets/{targetType}/{targetId}/decision` (ROLE_MODERATOR, 200), DATA_MODEL
  * §13. Order: body (422) → unknown target (404) → action not allowed for the type, suspending
- * oneself or an already suspended user (422 `validation_failed`). Applies to every open report
+ * oneself (422 `validation_failed`) → suspending an admin, or a moderator when not admin (403,
+ * ADR 013) → an already suspended user (422). `admin.report_decided` is journaled in the
+ * decision's transaction. Applies to every open report
  * of the target, also with none (proactive moderation), under the target's advisory lock.
  *
  * Response: the target after the decision; counts and reasons are those of the reports holding
@@ -44,6 +48,7 @@ final readonly class ModerationDecisionProcessor implements ProcessorInterface
         private ModerationApplier $moderation,
         private ReportMapper $mapper,
         private EntityManagerInterface $em,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -65,6 +70,10 @@ final readonly class ModerationDecisionProcessor implements ProcessorInterface
             if ($target->getId()->equals($moderator->getId())) {
                 throw ApiProblemException::validation('action', 'You cannot suspend yourself.');
             }
+            // ADR 013 §2: never an admin; a moderator only by an admin (W-37). After the 404.
+            if ($target->isAdmin() || ($target->isModerator() && !$moderator->isAdmin())) {
+                throw ApiProblemException::forbidden('You cannot suspend this account.');
+            }
             if ($target->isSuspended()) {
                 throw ApiProblemException::validation('action', 'This account is already suspended.');
             }
@@ -81,7 +90,15 @@ final readonly class ModerationDecisionProcessor implements ProcessorInterface
             } else {
                 $this->moderation->setModeration($type, $id, ModerationDecisionInput::HIDE === $action ? Moderation::Hidden : Moderation::Visible);
             }
-            $this->reports->closeOpen($type, $id, $status, $moderator, $note);
+            $closed = $this->reports->closeOpen($type, $id, $status, $moderator, $note);
+            $this->journal->record(
+                ActivityType::ReportDecided,
+                $moderator,
+                ReportTargetResolver::ownerOf($target),
+                $type,
+                $id,
+                ['action' => $action, 'reportCount' => $closed, 'note' => $note],
+            );
         });
 
         // The writes were native SQL: reload the target for the response, read again by id.

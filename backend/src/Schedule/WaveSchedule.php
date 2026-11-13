@@ -6,6 +6,7 @@ namespace App\Schedule;
 
 use App\Message\CleanupQuarantine;
 use App\Message\PurgeAccountTokens;
+use App\Message\PurgeActivityEvents;
 use Symfony\Component\Console\Messenger\RunCommandMessage;
 use Symfony\Component\Messenger\Message\RedispatchMessage;
 use Symfony\Component\Scheduler\Attribute\AsSchedule;
@@ -44,6 +45,8 @@ final readonly class WaveSchedule implements ScheduleProviderInterface
                 RecurringMessage::cron('45 3 * * *', new RedispatchMessage(new RunCommandMessage('cache:pool:prune'), 'async'), new \DateTimeZone('UTC')),
                 // ADR 010: listen grants older than 1 day.
                 RecurringMessage::cron('50 3 * * *', new RedispatchMessage(new RunCommandMessage('wave:listen-grants:purge'), 'async'), new \DateTimeZone('UTC')),
+                // DATA_MODEL §15/§16: activity journal and acknowledged alerts retention.
+                RecurringMessage::cron('55 3 * * *', new RedispatchMessage(new PurgeActivityEvents(), 'async'), new \DateTimeZone('UTC')),
             );
     }
 }

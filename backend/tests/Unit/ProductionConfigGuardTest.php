@@ -17,6 +17,7 @@ final class ProductionConfigGuardTest extends TestCase
         'STREAM_SIGNING_KEY' => '5e8d2b4a1c7f9e035e8d2b4a1c7f9e03',
         'JWT_PASSPHRASE' => '0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e',
         'S3_SECRET_KEY' => '9f8e7d6c5b4a39281706f5e4d3c2b1a0',
+        'ACTIVITY_IP_PEPPER' => '7c1d9e2f4a6b8c0d7c1d9e2f4a6b8c0d',
     ];
 
     public function testSafeConfigurationPasses(): void
@@ -47,6 +48,12 @@ final class ProductionConfigGuardTest extends TestCase
         $problems = ProductionConfigGuard::problems(['STREAM_SIGNING_KEY' => self::SAFE['APP_SECRET']] + self::SAFE);
 
         self::assertSame(['STREAM_SIGNING_KEY must differ from APP_SECRET.'], $problems);
+    }
+
+    public function testIpPepperIsRequiredAndMustDifferFromAppSecret(): void
+    {
+        self::assertSame(['ACTIVITY_IP_PEPPER is empty or a development placeholder.'], ProductionConfigGuard::problems(['ACTIVITY_IP_PEPPER' => ''] + self::SAFE));
+        self::assertSame(['ACTIVITY_IP_PEPPER must differ from APP_SECRET.'], ProductionConfigGuard::problems(['ACTIVITY_IP_PEPPER' => self::SAFE['APP_SECRET']] + self::SAFE));
     }
 
     public function testProdKernelRefusesToBootWithTheCommittedDevDefaults(): void

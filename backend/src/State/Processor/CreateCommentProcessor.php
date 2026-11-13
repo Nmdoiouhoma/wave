@@ -6,10 +6,13 @@ namespace App\State\Processor;
 
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
+use App\Activity\ActivityJournal;
 use App\ApiResource\CommentView;
 use App\Dto\Input\CreateCommentInput;
 use App\Entity\Comment;
+use App\Enum\ActivityType;
 use App\Enum\NotificationType;
+use App\Enum\ReportTargetType;
 use App\Http\JsonInputDecoder;
 use App\Mapper\CommentMapper;
 use App\Post\VisibleText;
@@ -38,6 +41,7 @@ final readonly class CreateCommentProcessor implements ProcessorInterface
         private CommentMapper $mapper,
         private NotificationRepository $notifications,
         private EntityManagerInterface $em,
+        private ActivityJournal $journal,
     ) {
     }
 
@@ -61,6 +65,7 @@ final readonly class CreateCommentProcessor implements ProcessorInterface
             $this->comments->create($comment);
             $this->notifications->recordOn(NotificationType::Comment, $user, $post->getId());
         });
+        $this->journal->record(ActivityType::CommentCreated, $user, $user, ReportTargetType::Comment, $comment->getId());
 
         return $this->mapper->toView($comment, $user);
     }

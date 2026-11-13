@@ -65,13 +65,17 @@ final readonly class ReportTargetResolver
     /** "Own content": track/artist/playlist owner, post/comment author, user = self. */
     public static function isOwn(Track|Post|Comment|Playlist|Artist|User $target, User $viewer): bool
     {
-        $owner = match (true) {
+        return self::ownerOf($target)->getId()->equals($viewer->getId());
+    }
+
+    /** Owner (track/playlist/artist), author (post/comment) or the user itself. */
+    public static function ownerOf(Track|Post|Comment|Playlist|Artist|User $target): User
+    {
+        return match (true) {
             $target instanceof Track, $target instanceof Playlist, $target instanceof Artist => $target->getOwner(),
             $target instanceof Post, $target instanceof Comment => $target->getAuthor(),
             $target instanceof User => $target,
         };
-
-        return $owner->getId()->equals($viewer->getId());
     }
 
     /**

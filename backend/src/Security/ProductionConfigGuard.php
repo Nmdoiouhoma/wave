@@ -11,7 +11,7 @@ namespace App\Security;
  */
 final class ProductionConfigGuard
 {
-    public const array SECRETS = ['APP_SECRET', 'STREAM_SIGNING_KEY', 'JWT_PASSPHRASE', 'S3_SECRET_KEY'];
+    public const array SECRETS = ['APP_SECRET', 'STREAM_SIGNING_KEY', 'JWT_PASSPHRASE', 'S3_SECRET_KEY', 'ACTIVITY_IP_PEPPER'];
     private const array PLACEHOLDERS = ['change-me', 'wavewave'];
 
     /**
@@ -32,8 +32,10 @@ final class ProductionConfigGuard
             }
         }
         $appSecret = self::value($env, 'APP_SECRET');
-        if ('' !== $appSecret && $appSecret === self::value($env, 'STREAM_SIGNING_KEY')) {
-            $problems[] = 'STREAM_SIGNING_KEY must differ from APP_SECRET.';
+        foreach (['STREAM_SIGNING_KEY', 'ACTIVITY_IP_PEPPER'] as $name) {
+            if ('' !== $appSecret && $appSecret === self::value($env, $name)) {
+                $problems[] = \sprintf('%s must differ from APP_SECRET.', $name);
+            }
         }
 
         return $problems;
