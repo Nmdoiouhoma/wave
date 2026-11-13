@@ -5,3 +5,4 @@
 - 2026-10-27 · « fichier pas un audio valide » sur un MP4 → vidéo sans piste son → `ffprobe` sur son fichier avant toute hypothèse de bug.
 - 2026-10-27 · questions à choix refusées → options incomplètes → toujours une option « comme l'existant » et mon avis en premier.
 - 2026-10-26 · incohérences d'interface (extraits sur morceau privé) → il attend un avis → répondre d'abord par mon avis, puis consigner.
+- 13/11 : un agent backend a modifié une entité (last_login_at) avant d'appliquer la migration pendant que l'utilisateur testait en direct → toute l'API en 500. Brief backend : « migration appliquée en dev AVANT de toucher les entités mappées ».
