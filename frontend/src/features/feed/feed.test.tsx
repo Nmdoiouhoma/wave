@@ -73,6 +73,28 @@ describe('wide feed layout (FB-26)', () => {
     expect(within(panel).getByRole('heading', { name: 'Commentaires' })).toBeInTheDocument();
   });
 
+  it('FB-30: the comment action focuses the side panel field from lg up', async () => {
+    viewport(true);
+    serveFeed('for-you', [{ items: [makePost(1)], nextCursor: null }]);
+    renderRoute(<FeedPage which="for-you" />);
+    const panel = await screen.findByRole('complementary', { name: 'Détails de l’extrait' });
+    const btn = within(activeItem()).getByRole('button', { name: /^Commentaires, \d+$/ });
+    await userEvent.setup().click(btn);
+    await waitFor(() => expect(panel.querySelector('textarea')).toHaveFocus());
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('FB-30: the comment action opens the sheet on a phone', async () => {
+    viewport(false);
+    serveFeed('for-you', [{ items: [makePost(1)], nextCursor: null }]);
+    renderRoute(<FeedPage which="for-you" />);
+    await screen.findByRole('feed');
+    await userEvent
+      .setup()
+      .click(within(activeItem()).getByRole('button', { name: /^Commentaires, \d+$/ }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
   it('has no panel on a phone', async () => {
     viewport(false);
     serveFeed('for-you', [{ items: [makePost(1)], nextCursor: null }]);

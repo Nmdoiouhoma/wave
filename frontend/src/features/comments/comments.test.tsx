@@ -186,9 +186,18 @@ describe('comments sheet in the feed (W-36)', () => {
     server.use(
       http.post(`${API}/posts/:id/comments`, () => json(makeComment(5, { body: 'jk' }), 201)),
     );
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: false,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    );
     renderRoute(<FeedPage which="for-you" />);
     const first = await screen.findByRole('article', { name: /Morceau 1/ });
-    await userEvent.click(within(first).getByRole('button', { name: 'Commentaires' }));
+    await userEvent.click(within(first).getByRole('button', { name: /^Commentaires, \d+$/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Commentaires' });
     expect(first.contains(dialog)).toBe(false);
     const box = within(dialog).getByLabelText('Ton commentaire');
@@ -197,7 +206,7 @@ describe('comments sheet in the feed (W-36)', () => {
     expect(first).toHaveAttribute('aria-current', 'true');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Publier' }));
     await within(dialog).findByText('jk', { selector: 'p' });
-    expect(within(first).getByRole('button', { name: 'Commentaires' })).toHaveTextContent('4');
+    expect(within(first).getByRole('button', { name: /^Commentaires, \d+$/ })).toHaveTextContent('4');
     await act(async () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Fermer' }));
     });

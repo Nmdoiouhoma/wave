@@ -16,13 +16,19 @@ const TABS = [
   { to: '/following', label: 'Abonnements', id: 'following' },
 ] as const;
 
-function FeedTabs({ which }: { which: FeedSource }) {
+function FeedTabs({ which, inline = false }: { which: FeedSource; inline?: boolean }) {
   // W-46: on mobile the bell sits top right of this header (the desktop rail has its own).
   const desktop = useMediaQuery(DESKTOP_QUERY);
   return (
     <nav
       aria-label="Fils"
-      className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center bg-gradient-to-b from-black/60 to-transparent md:from-transparent pt-[max(0.75rem,env(safe-area-inset-top))] pb-6"
+      className={cx(
+        'pointer-events-none z-20 flex justify-center pt-[max(0.75rem,env(safe-area-inset-top))]',
+        // FB-29: inline (feed viewer) = own row above the post on md+, never over the card.
+        inline
+          ? 'absolute inset-x-0 top-0 bg-gradient-to-b from-black/60 to-transparent pb-6 md:static md:shrink-0 md:bg-none md:pt-4 md:pb-0'
+          : 'absolute inset-x-0 top-0 bg-gradient-to-b from-black/60 to-transparent pb-6 md:from-transparent',
+      )}
     >
       <div className="pointer-events-auto flex gap-1">
         {TABS.map((t) => (
@@ -69,6 +75,7 @@ function FeedSessionView({ which }: { which: FeedSource }) {
   const { session, initialIndex, setPosition, posts, query, loadMore, restart } =
     useFeedSession(which);
   const header = <FeedTabs which={which} />;
+  const rowHeader = <FeedTabs which={which} inline />;
 
   if (query.isPending || (query.isSuccess && !posts.length && query.hasNextPage))
     return (
@@ -123,7 +130,7 @@ function FeedSessionView({ which }: { which: FeedSource }) {
     <FeedViewer
       key={session}
       posts={posts}
-      header={header}
+      header={rowHeader}
       footer={footer}
       onNearEnd={loadMore}
       initialIndex={initialIndex}

@@ -5,11 +5,13 @@ import type { LikeState } from '@/api/types';
 import { cx } from '@/components/ui/cx';
 import { HeartIcon, MoreIcon, MusicIcon, PlayIcon } from '@/components/ui/icons';
 import { Avatar, Cover } from '@/components/ui/Media';
+import { WIDE_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
 import { errorMessage } from '@/lib/errorMessages';
 import { formatCount } from '@/lib/format';
 import { toast } from '@/stores/toast';
 import { feedApi, type Post } from './feedApi';
 import type { ClipStatus } from './feedPlayback';
+import { focusSideComment } from './focusSideComment';
 import { CommentsSheet, PostMenuSheet } from './PostSheets';
 
 /** Second tap within this delay = double tap (like); otherwise the tap toggles playback. */
@@ -135,6 +137,7 @@ export function FeedItem({
   onTogglePlay: () => void;
 }) {
   const like = usePostLike(post);
+  const wide = useMediaQuery(WIDE_QUERY);
   // W-36: optimistic comment count (+1 on post, −1 on delete, reverted on error).
   const [commentDelta, setCommentDelta] = useState(0);
   const [sheet, setSheet] = useState<'comments' | 'menu' | null>(null);
@@ -165,6 +168,7 @@ export function FeedItem({
 
   const playing = active && (status === 'playing' || status === 'loading' || status === 'blocked');
   const title = post.track.title;
+  const commentCount = Math.max(0, post.commentCount + commentDelta);
   const likeLabel = like.state.liked ? 'Je n’aime plus' : 'J’aime';
 
   return (
@@ -244,14 +248,14 @@ export function FeedItem({
           </button>
           <button
             type="button"
-            aria-label="Commentaires"
-            aria-haspopup="dialog"
-            onClick={() => setSheet('comments')}
-            // FB-26: from lg up the side panel shows the comments.
-            className="flex flex-col items-center gap-0.5 text-xs font-semibold lg:hidden"
+            aria-label={`Commentaires, ${commentCount}`}
+            aria-haspopup={wide ? undefined : 'dialog'}
+            // FB-30: lg+ focuses the side panel's comment field, below it opens the sheet.
+            onClick={() => (wide && focusSideComment() ? undefined : setSheet('comments'))}
+            className="flex flex-col items-center gap-0.5 text-xs font-semibold"
           >
             <CommentIcon />
-            <span>{formatCount(Math.max(0, post.commentCount + commentDelta))}</span>
+            <span>{formatCount(commentCount)}</span>
           </button>
           <button
             type="button"

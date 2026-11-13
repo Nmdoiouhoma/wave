@@ -164,8 +164,8 @@ export function FeedViewer({
 
   return (
     <div className="bg-bg relative h-full lg:flex">
-      {header}
-      <div className="relative h-full min-w-0 lg:flex-1">
+      <div className="relative h-full min-w-0 md:flex md:flex-col lg:flex-1">
+        {header}
         <div
           ref={scroller}
           role="feed"
@@ -173,7 +173,7 @@ export function FeedViewer({
           aria-busy={false}
           tabIndex={0}
           onScroll={onScroll}
-          className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:border-line md:mx-auto md:my-4 md:h-[calc(100%-2rem)] md:max-w-[min(100%,calc(100dvh*9/16))] md:rounded-[28px] md:border"
+          className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:border-line md:mx-auto md:my-4 md:min-h-0 md:w-full md:flex-1 md:max-w-[min(100%,calc((100dvh-5.5rem)*9/16))] md:rounded-[28px] md:border"
         >
           {posts.map((post, i) => (
             <FeedItem
