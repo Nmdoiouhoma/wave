@@ -21,6 +21,7 @@ sed \
   -e "s|^APP_ENV=.*|APP_ENV=prod|" \
   -e "s|^APP_SECRET=.*|APP_SECRET=$(rnd)|" \
   -e "s|^STREAM_SIGNING_KEY=.*|STREAM_SIGNING_KEY=$(rnd)|" \
+  -e "s|^ACTIVITY_IP_PEPPER=.*|ACTIVITY_IP_PEPPER=$(rnd)|" \
   -e "s|^JWT_PASSPHRASE=.*|JWT_PASSPHRASE=$(rnd)|" \
   -e "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=$(rnd)|" \
   -e "s|^S3_SECRET_KEY=.*|S3_SECRET_KEY=$(rnd)|" \

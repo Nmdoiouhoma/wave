@@ -98,9 +98,9 @@ RUN set -eux; \
     # Throwaway values so the prod config guard lets the kernel boot for the
     # warmup; %env()% are resolved at runtime, nothing here is baked in.
     r="$(php -r 'echo bin2hex(random_bytes(24));')"; \
-    APP_SECRET="$r-a" STREAM_SIGNING_KEY="$r-s" JWT_PASSPHRASE="$r-j" S3_SECRET_KEY="$r-k" REFRESH_COOKIE_SECURE=1 \
+    APP_SECRET="$r-a" STREAM_SIGNING_KEY="$r-s" ACTIVITY_IP_PEPPER="$r-p" JWT_PASSPHRASE="$r-j" S3_SECRET_KEY="$r-k" REFRESH_COOKIE_SECURE=1 \
         php bin/console cache:warmup --no-interaction; \
-    APP_SECRET="$r-a" STREAM_SIGNING_KEY="$r-s" JWT_PASSPHRASE="$r-j" S3_SECRET_KEY="$r-k" REFRESH_COOKIE_SECURE=1 \
+    APP_SECRET="$r-a" STREAM_SIGNING_KEY="$r-s" ACTIVITY_IP_PEPPER="$r-p" JWT_PASSPHRASE="$r-j" S3_SECRET_KEY="$r-k" REFRESH_COOKIE_SECURE=1 \
         php bin/console assets:install public --no-interaction; \
     rm -rf /tmp/composer /tmp/composer-cache tests .env.test .env.local* phpunit.dist.xml phpstan.dist.neon .php-cs-fixer.dist.php
 

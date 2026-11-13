@@ -213,7 +213,7 @@ Dev host port: nginx on **8090** (front, `/api`, `/media` same origin). Mailpit 
 | `MAILER_DSN` | `smtp://mailpit:1025` (dev; Mailpit UI on host port **8027**), real SMTP in prod | worker-async |
 | `MAILER_FROM` | `Wave <no-reply@wave.local>` | worker |
 | `CORS_ALLOW_ORIGIN` | `^http://localhost:8090$` | php |
-| `TRUSTED_PROXIES` | `172.16.0.0/12` | php (real client IP for rate limits) |
+| `TRUSTED_PROXIES` | empty (nginx is the edge and overwrites `X-Forwarded-*`, F1); never a subnet | php (real client IP: rate limits, journal) |
 | `ACTIVITY_IP_PEPPER` | random 32 bytes, ≠ APP_SECRET (boot fails if empty in prod) | php, worker (keyed IP hash of the activity journal, DATA_MODEL §15, ADR 013) |
 | `LOCK_DSN` | `postgresql+advisory://…` (= DATABASE_URL) | php, worker (dedup stamp) |
 | `POSTGRES_DB/USER/PASSWORD`, `MINIO_ROOT_USER/PASSWORD` | | compose |

@@ -17,3 +17,9 @@
 9. **Mise à jour** : étape 3, puis `dc run --rm php php bin/console doctrine:migrations:migrate -n && dc up -d`.
 
 Vérifier : `curl -I https://DOMAINE` (HSTS présent), `dc ps` (tout « Up »), `free -h`.
+
+**Avant d'ouvrir au public (W-76)**
+- Secrets : `gen-env.sh` génère `ACTIVITY_IP_PEPPER` (journal d'activité) ; ne pas le changer après coup (les empreintes d'IP anciennes ne seraient plus comparables). Absent ou égal à `APP_SECRET` : le démarrage prod est refusé.
+- Premier administrateur : s'inscrire dans l'application, puis `dc run --rm php php bin/console app:admin:grant EMAIL`.
+- Journal : purge automatique à 03:55 UTC par `worker-async` (scheduler) ; rétention 90 j (admin 365 j, alertes traitées 180 j). Ajouter à la page de confidentialité : « un journal technique garde 90 jours l'adresse IP tronquée (/24) et une empreinte non réversible, le type d'action et le navigateur ».
+- IP réelle : `TRUSTED_PROXIES` reste vide (nginx est le bord, il réécrit `X-Forwarded-*`). Contrôle : `sh infra/scripts/check-client-ip.sh https://DOMAINE` (doit afficher OK).

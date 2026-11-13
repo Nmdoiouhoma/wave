@@ -15,7 +15,7 @@ help: ## Show this help
 
 .env:
 	@cp .env.example .env
-	@for key in APP_SECRET STREAM_SIGNING_KEY JWT_PASSPHRASE MINIO_ROOT_PASSWORD S3_SECRET_KEY; do \
+	@for key in APP_SECRET STREAM_SIGNING_KEY ACTIVITY_IP_PEPPER JWT_PASSPHRASE MINIO_ROOT_PASSWORD S3_SECRET_KEY; do \
 		val=$$(openssl rand -hex 32); \
 		sed -i.bak "s|^$$key=change-me$$|$$key=$$val|" .env; \
 	done; rm -f .env.bak
