@@ -1,4 +1,4 @@
-# État du projet Wave — 13/11/2026 (retours avant phase 4)
+# État du projet Wave — 13/11/2026 soir (refonte + back-office faits, pause jusqu'au 15/11)
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
@@ -51,16 +51,20 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 - **13/11, lot ux-1113** (`9521029`) : bouton Se déconnecter dans le rail (PC) et sur son profil (téléphone) (FB-25) ; Pour toi sur PC à partir de 1024 px = post centré + panneau morceau/commentaires à droite (FB-26). verif front 223 OK.
 
+- **13/11, refonte FB-27** (`f03e7cc`) : style « Papier » clair ET sombre (suit le système, bascule Clair/Sombre/Système dans le rail PC et Paramètres), DM Sans, maquettes `docs/design/B-*` (clair) et `D-*` (sombre). Pas encore relue à l'œil par l'utilisateur.
+- **13/11, back-office admin FB-28** (ADR 013, W-70..W-77) : contrat `d35ea9c` ; journal d'activité, rôles, `app:admin:grant/revoke` (`57f0e38`) ; API admin (`bacbc20`) ; écrans tableau de bord, utilisateurs, modération, journal, alertes, annonces + bannière (`1e8359c`) ; revue W-77 0 critique/élevé (`1f5a388`), F25-F28 + F30 corrigés (`9bc00c6`) ; prod `ACTIVITY_IP_PEPPER` + contrôle d'IP client (`4abd6d8`). Compte local `nakib.dev@gmail.com` = admin. verif : 540 tests backend, 78 média, 243 frontend.
+- **EC2** : t3.micro gardée (≈ 8 $/mois, choix utilisateur) + swap 2 Go créé (`/swapfile`, fstab, swappiness 10).
+
 ## En cours (non commité)
 
-- Rien. Décidé le 13/11 : FB-25..28 passent AVANT la phase 4 : ux-1113 (fait) → refonte visuelle FB-27 (3 maquettes Nuit / Papier / Vague à choisir, lien dans la mémoire du lead) → back-office admin FB-28 (pages admin dans l'appli d'abord, serveur de logs séparé ensuite ; absorbe W-50).
+- Rien. **Pause des agents jusqu'au 15/11 1 h** : forfait de la semaine à 81 % le 13/11 à 14 h 30 (choix du lead, l'utilisateur peut lever la pause).
 
 ## Prochaines étapes
 
-1. Utilisateur : vérifier le fil à 390 px sur un vrai téléphone (A6 de FB-24) ; commentaires, signalement et cloche pas encore testés à l'écran.
-2. EC2 créée (x86_64, Ubuntu 26.04, **1 Go de mémoire** contre 2 Go visés, Docker absent, connexion par clé seulement). Décider : passer en 2 Go ou mémoire d'échange avant le premier déploiement avec `infra/deploy/`.
-3. Phase 4 (présenter plan + tickets, attendre son feu vert) : recommandations, onglet Découvrir, catalogue Deezer, recherche complète (EXPLAIN de l'index trigramme sur ~100 k morceaux, W-41), données de démo.
-4. Phase 5 : durcissement et bas niveau reportés — revue fb-1109 (`docs/handoff/fb-1109-qa.md`), vague 1 (verrou du morceau à la suppression, ordre des verrous des hashtags, index redondants `post_hashtag`/`post_like`/`post_view`), vague 2 (`phase3-v2-qa.md` bas 1-5), W-37 : F20 regex des hashtags sans `\p{M}` (décision architecte), F21 `dismiss` non définitif (décision), F18 posts d'un propriétaire suspendu encore jouables, un modérateur ne doit pas pouvoir suspendre un admin ; modération, suppression de compte (`ReportRepository::deleteForUserContent` prêt), vrais e-mails (FB-01), README et checklist de mise en prod.
+1. Utilisateur : tester la refonte (clair/sombre) et le back-office (`/admin`, se reconnecter pour le rôle) ; ses retours = lots courts Sonnet.
+2. Après le 15/11 : **phase 4** sans redemander (feu vert donné le 13/11) : architect contrat catalogue Deezer (FB-06) → W-40 recommandations ∥ W-41 recherche (EXPLAIN trigramme ~100 k) ∥ W-42 démo → W-43 Découvrir → W-44 revue.
+3. Premier déploiement EC2 : **la cible n'est pas couverte** : `compose.small.yaml` et `ship.sh` visent t4g.small ARM 2 Go (limites ≈ 1,76 Go) ; il faut un profil t3.micro x86 (1 Go + swap), installer Docker, suivre le bloc « Avant d'ouvrir au public » de `infra/deploy/README-deploy.md`. W-78 serveur de logs après (2e petite instance recommandée, à décider).
+4. Ouverts : F29 (afficher l'agent utilisateur en texte seul, déjà le cas en React), F31 suppression de compte → purger le journal (phase 5), verrou du `suspend` W-33 comme F26 ; test du fil à 390 px sur vrai téléphone ; phase 5 (voir handoffs qa des phases 2-3, FB-01 vrais e-mails).
 
 ## Points d'attention
 
@@ -70,4 +74,5 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **Push** : `gh auth switch -u Nmdoiouhoma`, `git push origin main`, puis revenir sur `nakib-m` (compte de l'utilisateur pour ses autres projets).
 - **/tmp du conteneur php** (tmpfs 64 Mo) : saturé le 07/11 par des fichiers de test (corrigé) ; si « No space left on device », `docker compose restart php`.
 - **Ne pas lancer verif.sh pendant qu'un agent fait tourner PHPUnit** : `doctrine:database:drop` échoue.
+- **Agent backend et migration** : appliquer la migration en dev AVANT de mapper la colonne (l'utilisateur teste en direct, sinon toute l'API en 500).
 - **Tests navigateur** : couper le son avant d'ouvrir `/` (le fil lit tout seul) ; le front doit tourner sur 8090 (médias en `Cross-Origin-Resource-Policy: same-origin`).
