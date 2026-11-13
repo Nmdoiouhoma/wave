@@ -5,22 +5,23 @@ declare(strict_types=1);
 namespace App\MessageHandler;
 
 use App\Message\RecomputeAffinity;
-use Psr\Log\LoggerInterface;
+use App\Recommendation\AffinityRecomputer;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
+use Symfony\Component\Uid\Uuid;
 
-/**
- * Stub until W-40 (phase 4) implements ADR 005: the message is already dispatched by likes
- * and counted listens so that the worker consumes it instead of failing it.
- */
+/** ADR 005: rewrite `user_affinity` for one user (an unknown/deleted user just yields no rows). */
 #[AsMessageHandler]
 final readonly class RecomputeAffinityHandler
 {
-    public function __construct(private LoggerInterface $logger)
+    public function __construct(private AffinityRecomputer $affinity)
     {
     }
 
     public function __invoke(RecomputeAffinity $message): void
     {
-        $this->logger->debug('RecomputeAffinity: not implemented before W-40, skipped', ['userId' => $message->userId]);
+        if (!Uuid::isValid($message->userId)) {
+            return;
+        }
+        $this->affinity->recompute(Uuid::fromString($message->userId));
     }
 }

@@ -12,12 +12,13 @@ use Psr\Clock\ClockInterface;
 use Symfony\Component\Uid\Uuid;
 
 /**
- * "Pour toi" v1 (ADR 011, FB-12): one SQL query per phase on live tables.
- * Phase u = unseen candidates by (score DESC, id DESC); phase s = candidates seen before the
- * session started, least recently seen first. Page assembly caps 2 posts per author across both
- * phases; the cursor points at the last examined row. Replaced by SqlFeedRanker in W-40.
+ * "Pour toi" v1 (ADR 005, W-40): one SQL query per phase over the precomputed signals
+ * (`user_affinity`, `trending_score`). Phase u = unseen candidates of the last 30 days by
+ * (score DESC, id DESC); phase s = candidates seen before the session started, least recently
+ * seen first (ADR 011 behaviour kept). Page assembly caps 2 posts per author across both phases;
+ * the cursor points at the last examined row.
  */
-final readonly class SimpleFeedRanker implements FeedRanker
+final readonly class SqlFeedRanker implements FeedRanker
 {
     public function __construct(
         private Connection $db,
@@ -73,34 +74,38 @@ final readonly class SimpleFeedRanker implements FeedRanker
     }
 
     /**
-     * Phase u query (EXPLAIN ANALYZE in docs/handoff/w39-backend.md). `k` = score as text.
+     * Phase u query (EXPLAIN in docs/handoff/w40-backend.md). `k` = score as text.
      *
      * @internal public for the performance test only
      */
     public static function unseenSql(bool $after): string
     {
         $w = static fn (float $x): string => \sprintf('%.6F', $x);
+        $fl = ForYouWeights::TREND_FLOOR;
         $score = 'round(CAST('
-            .$w(ForYouWeights::FOLLOW).' * (CASE WHEN p.author_id IN (SELECT followed_id FROM follow WHERE follower_id = :v) THEN 1 ELSE 0 END)'
-            .' + '.$w(ForYouWeights::GENRE).' * coalesce(gw.w, 0)'
-            .' + '.$w(ForYouWeights::POPULAR_RECENT).' * least(1.0, ln(1 + 3 * p.like_count + 4 * p.comment_count + p.view_count) / ln('.(ForYouWeights::POPULARITY_CAP + 1).')) * fr.r'
-            .' + '.$w(ForYouWeights::FRESH).' * fr.r'
+            .$w(ForYouWeights::GENRE).' * coalesce(ag.score, 0)'
+            .' + '.$w(ForYouWeights::ARTIST).' * coalesce(aa.score, 0)'
+            .' + '.$w(ForYouWeights::FOLLOW).' * (CASE'
+            .' WHEN p.author_id IN (SELECT followed_id FROM follow WHERE follower_id = :v) THEN 1.0'
+            .' WHEN EXISTS (SELECT 1 FROM post_like fl JOIN follow ff ON ff.followed_id = fl.user_id AND ff.follower_id = :v'
+            .'   WHERE fl.post_id = p.id AND fl.created_at > CAST(:now AS timestamptz) - make_interval(days => '.ForYouWeights::FOLLOWED_LIKE_WINDOW_D.')) THEN '.$w(ForYouWeights::FOLLOWED_LIKE)
+            .' ELSE 0.0 END)'
+            .' + '.$w(ForYouWeights::TRENDING_FRESH).' * fr.r * ('.$w($fl).' + '.$w(1 - $fl).' * (CASE WHEN mx.m > 0 THEN least(1.0, ln(1 + p.trending_score) / ln(1 + mx.m)) ELSE 0.0 END))'
             .' + '.$w(ForYouWeights::JITTER).' * abs(CAST(hashtext(CAST(:seed AS text) || p.id::text) AS bigint)) / 2147483647.0'
             .' AS numeric), 9)';
 
-        return 'WITH liked AS ('
-            .' SELECT tl.track_id FROM track_like tl WHERE tl.user_id = :v AND tl.created_at > CAST(:now AS timestamptz) - make_interval(days => '.ForYouWeights::GENRE_WINDOW_D.') AND tl.created_at <= CAST(:now AS timestamptz)'
-            .' UNION ALL'
-            .' SELECT lp.track_id FROM post_like pl JOIN post lp ON lp.id = pl.post_id WHERE pl.user_id = :v AND pl.created_at > CAST(:now AS timestamptz) - make_interval(days => '.ForYouWeights::GENRE_WINDOW_D.') AND pl.created_at <= CAST(:now AS timestamptz)'
-            .'), genre_count AS (SELECT lt.genre_id, count(*) AS n FROM liked JOIN track lt ON lt.id = liked.track_id GROUP BY lt.genre_id)'
-            .', gw AS (SELECT genre_id, CAST(n AS double precision) / max(n) OVER () AS w FROM genre_count)'
-            // MATERIALIZED: the score is computed once per candidate, not again in the keyset filter and the sort.
+        // MATERIALIZED: the score is computed once per candidate, not again in the keyset filter and the sort.
+        // mx = highest post trending score (ADR 005 T normalization), read from the partial trending index.
+        return 'WITH mx AS MATERIALIZED (SELECT coalesce(max(trending_score), 0) AS m FROM post'
+            ." WHERE status = 'ready' AND moderation = 'visible')"
             .', c AS MATERIALIZED (SELECT p.id, p.author_id, '.$score.' AS score'
-            .' FROM post p JOIN track t ON t.id = p.track_id JOIN app_user a ON a.id = p.author_id'
-            .' LEFT JOIN gw ON gw.genre_id = t.genre_id'
-            .' CROSS JOIN LATERAL (SELECT power(CAST(0.5 AS double precision), CAST(extract(epoch FROM CAST(:now AS timestamptz) - p.created_at) AS double precision) / 3600.0 / '.ForYouWeights::HALF_LIFE_H.') AS r) fr'
+            .' FROM post p JOIN track t ON t.id = p.track_id JOIN app_user a ON a.id = p.author_id CROSS JOIN mx'
+            ." LEFT JOIN user_affinity ag ON ag.user_id = :v AND ag.kind = 'genre' AND ag.key = t.genre_id"
+            ." LEFT JOIN user_affinity aa ON aa.user_id = :v AND aa.kind = 'artist' AND aa.key = CAST(t.artist_id AS text)"
+            .' CROSS JOIN LATERAL (SELECT power(CAST(0.5 AS double precision), CAST(extract(epoch FROM CAST(:now AS timestamptz) - p.created_at) AS double precision) / 3600.0 / '.ForYouWeights::FRESH_HALF_LIFE_H.') AS r) fr'
             .' WHERE '.self::candidateSql()
-            .' AND p.id NOT IN (SELECT post_id FROM post_view WHERE user_id = :v))'
+            .' AND p.created_at > CAST(:now AS timestamptz) - make_interval(days => '.ForYouWeights::CANDIDATE_WINDOW_D.')'
+            .' AND NOT EXISTS (SELECT 1 FROM post_view sv WHERE sv.user_id = :v AND sv.post_id = p.id))'
             .' SELECT c.id, c.author_id, CAST(c.score AS text) AS k FROM c'
             .($after ? ' WHERE (c.score, c.id) < (CAST(:k AS numeric), CAST(:kid AS uuid))' : '')
             .' ORDER BY c.score DESC, c.id DESC LIMIT :n';

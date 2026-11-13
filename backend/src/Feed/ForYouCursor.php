@@ -8,13 +8,13 @@ use App\Pagination\CursorCodec;
 use App\Pagination\Keyset;
 
 /**
- * ADR 011 session cursor: `{"v":1,"r":"simple1","p":"u"|"s","seed":"…","now":"<µs UTC>","k":[…, "<id>"]}`.
+ * ADR 011 session cursor: `{"v":1,"r":"sql1","p":"u"|"s","seed":"…","now":"<µs UTC>","k":[…, "<id>"]}`.
  * `k` = last examined row: `[score, id]` in phase u, `[last_seen_at, id]` in phase s.
  * Any other ranker, phase, key shape or a tampered value → 400 `invalid_cursor`.
  */
 final readonly class ForYouCursor
 {
-    public const string RANKER = 'simple1';
+    public const string RANKER = 'sql1';
     public const string UNSEEN = 'u';
     public const string SEEN = 's';
     /** Canonical lowercase uuid as PostgreSQL prints it (any version: the key is only compared in SQL). */

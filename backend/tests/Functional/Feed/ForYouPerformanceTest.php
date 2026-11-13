@@ -6,7 +6,7 @@ namespace App\Tests\Functional\Feed;
 
 use App\Feed\FeedRanker;
 use App\Feed\ForYouCursor;
-use App\Feed\SimpleFeedRanker;
+use App\Feed\SqlFeedRanker;
 use App\Pagination\CursorCodec;
 use App\Tests\Functional\WaveApiTestCase;
 use Doctrine\DBAL\Connection;
@@ -110,9 +110,9 @@ final class ForYouPerformanceTest extends WaveApiTestCase
         $common = ['v' => $v, 'now' => (string) $payload['now']];
         $k = \is_array($payload['k']) ? $payload['k'] : [];
         foreach ([
-            'phase u, page 1' => [SimpleFeedRanker::unseenSql(false), $common + ['seed' => $payload['seed'], 'n' => 31]],
-            'phase u, next page' => [SimpleFeedRanker::unseenSql(true), $common + ['seed' => $payload['seed'], 'n' => 31, 'k' => $k[0] ?? '1', 'kid' => $k[1] ?? '']],
-            'phase s, next page' => [SimpleFeedRanker::seenSql(true), $common + ['n' => 31, 'k' => '2000-01-01T00:00:00.000000Z', 'kid' => '00000000-0000-0000-0000-000000000000']],
+            'phase u, page 1' => [SqlFeedRanker::unseenSql(false), $common + ['seed' => $payload['seed'], 'n' => 31]],
+            'phase u, next page' => [SqlFeedRanker::unseenSql(true), $common + ['seed' => $payload['seed'], 'n' => 31, 'k' => $k[0] ?? '1', 'kid' => $k[1] ?? '']],
+            'phase s, next page' => [SqlFeedRanker::seenSql(true), $common + ['n' => 31, 'k' => '2000-01-01T00:00:00.000000Z', 'kid' => '00000000-0000-0000-0000-000000000000']],
         ] as $name => [$sql, $params]) {
             $plan = $db->fetchFirstColumn('EXPLAIN (ANALYZE, COSTS OFF, TIMING ON) '.$sql, $params, ['n' => ParameterType::INTEGER]);
             $out .= "── {$name}\n".implode("\n", array_map('strval', $plan))."\n\n";

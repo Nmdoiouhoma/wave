@@ -57,12 +57,12 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 
 ## En cours (non commité)
 
-- 13/11 soir : pause levée par l'utilisateur (« avec le quota restant », jamais de demande d'augmentation à l'admin). En cours : contrat phase 4 + FB-31/32/33 (architect, `p4-contract`) ∥ W-40 recommandations (backend). FB-29/FB-30 livrés (`19ca597`).
+- Rien. 13/11 soir : contrat phase 4 (`473ddfc`, ADR 014 Deezer + ADR 015 repost **à confirmer par l'utilisateur**, W-80..W-87, ordre de lancement dans TICKETS) et W-40 recommandations sur Sonnet (ADR 005 amendé). Forfait semaine ≈ 90 % : **plus rien avant le 15/11 1 h** ; jamais de demande d'augmentation à l'admin. Lots backend non sensibles sur Sonnet.
 
 ## Prochaines étapes
 
 1. Utilisateur : tester la refonte (clair/sombre) et le back-office (`/admin`, se reconnecter pour le rôle) ; ses retours = lots courts Sonnet.
-2. Après le 15/11 : **phase 4** sans redemander (feu vert donné le 13/11) : architect contrat catalogue Deezer (FB-06) → W-40 recommandations ∥ W-41 recherche (EXPLAIN trigramme ~100 k) ∥ W-42 démo → W-43 Découvrir → W-44 revue.
+2. Après le 15/11 : **phase 4** sans redemander, suite de l'ordre « Launch order » de TICKETS (W-40 fait ; repost dans le classement à brancher avec W-80 ; p95 à mesurer sur le seed W-42).
 3. Premier déploiement EC2 : **la cible n'est pas couverte** : `compose.small.yaml` et `ship.sh` visent t4g.small ARM 2 Go (limites ≈ 1,76 Go) ; il faut un profil t3.micro x86 (1 Go + swap), installer Docker, suivre le bloc « Avant d'ouvrir au public » de `infra/deploy/README-deploy.md`. W-78 serveur de logs après (2e petite instance recommandée, à décider).
 4. Ouverts : F29 (afficher l'agent utilisateur en texte seul, déjà le cas en React), F31 suppression de compte → purger le journal (phase 5), verrou du `suspend` W-33 comme F26 ; test du fil à 390 px sur vrai téléphone ; phase 5 (voir handoffs qa des phases 2-3, FB-01 vrais e-mails).
 

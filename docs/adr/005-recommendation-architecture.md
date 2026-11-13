@@ -13,7 +13,9 @@ For-you needs to be decent at launch with tiny data, cheap on PostgreSQL only, a
 - `trending_score` (job `RecomputeTrending`, every 15 min): track = Σ(listen 1, like 3) × `0.5^(age_h/48)` over 7 days; post = Σ(view 1, completed view +1, like 3, comment 4) × `0.5^(age_h/24)` over 3 days.
 
 **Score** for candidate post p (playable, created ≤ 30 days, not own, not in `post_view` for viewer):
-`0.30·G + 0.20·A + 0.20·F + 0.30·T·R + 0.05·J`
+`0.30·G + 0.20·A + 0.20·F + 0.30·R·(0.25 + 0.75·T) + 0.05·J`
+
+*Amended by W-40 (13/11/2026)*: freshness keeps a floor (`TREND_FLOOR` 0.25) so a post with T = 0 still ranks by freshness (cold start); phase 2 orders seen posts least-recently-seen first (ADR 011), not by `trending_score`.
 - G, A = viewer affinity for p's track genre / artist (0 if absent)
 - F = 1 if viewer follows p.author; 0.5 if ≥ 1 followed user liked p in the last 7 days ("followed accounts' popular items"); else 0
 - T = `ln(1+trending)/ln(1+max_trending)`; R = `0.5^(age_h/72)` freshness

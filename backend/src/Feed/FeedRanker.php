@@ -6,7 +6,7 @@ namespace App\Feed;
 
 use Symfony\Component\Uid\Uuid;
 
-/** CONVENTIONS §7. Bound by DI alias (ADR 011: SimpleFeedRanker in phase 3, SqlFeedRanker in W-40). */
+/** CONVENTIONS §7. Bound by DI alias (ADR 011: SqlFeedRanker in phase 3, SqlFeedRanker in W-40). */
 interface FeedRanker
 {
     /**

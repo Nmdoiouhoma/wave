@@ -16,7 +16,7 @@ use App\Tests\Functional\WaveApiTestCase;
 /**
  * Phase 3 wave 2 QA: "playable for the caller" (DATA_MODEL §9, FB-18) is written five times —
  * TrackAudience::isPostPlayable (PHP), postPlayableSql (views), postPlayableDql (following feed),
- * the hand-written DQL of PostRepository::findPageByAuthor and SimpleFeedRanker::candidateSql
+ * the hand-written DQL of PostRepository::findPageByAuthor and SqlFeedRanker::candidateSql
  * (for-you). One matrix of posts, each clause of the rule broken once, checked against all five
  * for a follower V (close friend of some authors) and a stranger W.
  */

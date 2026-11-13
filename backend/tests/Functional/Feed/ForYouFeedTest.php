@@ -9,11 +9,13 @@ use App\Entity\Track;
 use App\Entity\User;
 use App\Enum\Visibility;
 use App\Pagination\CursorCodec;
+use App\Recommendation\AffinityRecomputer;
+use App\Recommendation\TrendingRecomputer;
 use App\Repository\PostRepository;
 use App\Tests\Functional\WaveApiTestCase;
 
 /**
- * W-39 / ADR 011: "Pour toi" v1 behaviour. These tests are ranker-agnostic (W-40 keeps them).
+ * W-39 / ADR 011: "Pour toi" v1 behaviour. Ranker-agnostic (W-40 keeps them); only helpers feed the precomputed signals (setCounts → trending_score, likeTrack → user_affinity).
  * Views are written with `clock_timestamp()`: under DAMA the whole test is one transaction, so
  * `now()` would predate the session start.
  */
@@ -45,6 +47,27 @@ final class ForYouFeedTest extends WaveApiTestCase
 
         $ids = $this->ids($this->page($viewer));
         self::assertSame([(string) $rap->getId(), (string) $pop->getId()], $ids);
+    }
+
+    public function testRecomputeJobsFillAffinityAndTrending(): void
+    {
+        [$viewer, $x] = [$this->createUser('viewer'), $this->createUser('xavier')];
+        $rap = $this->track($x, genre: 'rap');
+        $pop = $this->track($x);
+        $post = $this->post($x, $rap);
+        $this->likeTrack($viewer, $rap); // 3 at age 0 on genre rap and on the artist
+        $this->sql("INSERT INTO listen (id, user_id, track_id, source, listened_ms, created_at) VALUES (:i, :u, :t, 'player', 40000, clock_timestamp() - interval '30 days')", ['i' => '0192f0a0-0000-7000-8000-0000000000aa', 'u' => $viewer->getId()->toRfc4122(), 't' => $pop->getId()->toRfc4122()]);
+        static::getContainer()->get(AffinityRecomputer::class)->recompute($viewer->getId());
+        /** @var array<string, float> $rows */
+        $rows = $this->em()->getConnection()->fetchAllKeyValue("SELECT kind || ':' || key, score FROM user_affinity WHERE user_id = :u", ['u' => $viewer->getId()->toRfc4122()]);
+        self::assertEqualsWithDelta(1.0, $rows['genre:rap'], 1e-9);
+        self::assertEqualsWithDelta(0.5 / 3.0, $rows['genre:pop'], 0.01); // one listen (1) halved by a 30-day age, over the like (3)
+
+        $this->sql('UPDATE post SET trending_score = 99 WHERE id = :id', ['id' => $post->getId()->toRfc4122()]); // stale score
+        static::getContainer()->get(TrendingRecomputer::class)->recompute();
+        $score = fn (string $t, string $id): float => (float) $this->em()->getConnection()->fetchOne("SELECT trending_score FROM $t WHERE id = :id", ['id' => $id]);
+        self::assertEqualsWithDelta(3.0, $score('track', $rap->getId()->toRfc4122()), 0.01); // the like; 0 post signals reset the stale 99
+        self::assertSame(0.0, $score('post', $post->getId()->toRfc4122()));
     }
 
     public function testPopularPostOfTodayRanksAboveUnpopularOne(): void
@@ -225,10 +248,10 @@ final class ForYouFeedTest extends WaveApiTestCase
         $this->assertProblem($this->api('GET', self::URL), 401, 'unauthenticated');
 
         $codec = static::getContainer()->get(CursorCodec::class);
-        $good = ['v' => 1, 'r' => 'simple1', 'p' => 'u', 'seed' => 'abcd0123', 'now' => '2026-11-10T08:00:00.000000Z', 'k' => ['0.5', '0192f0a0-0000-7000-8000-000000000000']];
+        $good = ['v' => 1, 'r' => 'sql1', 'p' => 'u', 'seed' => 'abcd0123', 'now' => '2026-11-10T08:00:00.000000Z', 'k' => ['0.5', '0192f0a0-0000-7000-8000-000000000000']];
         self::assertSame(200, $this->api('GET', self::URL.'?cursor='.$codec->encodePayload($good), $viewer)->getStatusCode());
         foreach ([
-            ['r' => 'sql1'] + $good,
+            ['r' => 'simple1'] + $good, // W-40: cursors of the retired SimpleFeedRanker restart the session
             ['p' => 'x'] + $good,
             ['k' => ['not-a-date', $good['k'][1]], 'p' => 's'] + $good,
             ['seed' => 'zz'] + $good,
@@ -323,7 +346,7 @@ final class ForYouFeedTest extends WaveApiTestCase
 
     private function setCounts(Post $post, int $likes = 0): void
     {
-        $this->sql('UPDATE post SET like_count = :l WHERE id = :id', ['l' => $likes, 'id' => $post->getId()->toRfc4122()]);
+        $this->sql('UPDATE post SET like_count = :l, trending_score = :t WHERE id = :id', ['l' => $likes, 't' => 3.0 * $likes, 'id' => $post->getId()->toRfc4122()]);
     }
 
     private function follow(User $follower, User $followed): void
@@ -334,6 +357,7 @@ final class ForYouFeedTest extends WaveApiTestCase
     private function likeTrack(User $user, Track $track): void
     {
         $this->sql('INSERT INTO track_like (user_id, track_id, created_at) VALUES (:u, :t, now())', ['u' => $user->getId()->toRfc4122(), 't' => $track->getId()->toRfc4122()]);
+        static::getContainer()->get(AffinityRecomputer::class)->recompute($user->getId()); // W-40: the ranker reads user_affinity
     }
 
     private function suspend(User $user): void
