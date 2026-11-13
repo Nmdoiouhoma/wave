@@ -1,4 +1,4 @@
-# État du projet Wave — 12/11/2026 (phase 3 terminée)
+# État du projet Wave — 13/11/2026 (retours avant phase 4)
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
@@ -49,14 +49,16 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **Test utilisateur du fil** (12/11, FB-24, `38e0eaf`) : défilement molette/touches sans focus, cœur aimé visible, retour au fil sur le même post (session gardée 10 min). Entrée sur /login bloquée par une extension, pas par l'appli.
 - **Dernière vérification** (`verif.sh`, 12/11) : 479 tests backend (84 ignorés), 78 média, 219 frontend, PHPStan propre, audit propre. Tout est poussé.
 
+- **13/11, lot ux-1113** (`9521029`) : bouton Se déconnecter dans le rail (PC) et sur son profil (téléphone) (FB-25) ; Pour toi sur PC à partir de 1024 px = post centré + panneau morceau/commentaires à droite (FB-26). verif front 223 OK.
+
 ## En cours (non commité)
 
-- Rien.
+- Rien. Décidé le 13/11 : FB-25..28 passent AVANT la phase 4 : ux-1113 (fait) → refonte visuelle FB-27 (3 maquettes Nuit / Papier / Vague à choisir, lien dans la mémoire du lead) → back-office admin FB-28 (pages admin dans l'appli d'abord, serveur de logs séparé ensuite ; absorbe W-50).
 
 ## Prochaines étapes
 
 1. Utilisateur : vérifier le fil à 390 px sur un vrai téléphone (A6 de FB-24) ; commentaires, signalement et cloche pas encore testés à l'écran.
-2. Création de l'EC2 par l'utilisateur, puis premier déploiement avec `infra/deploy/`.
+2. EC2 créée (x86_64, Ubuntu 26.04, **1 Go de mémoire** contre 2 Go visés, Docker absent, connexion par clé seulement). Décider : passer en 2 Go ou mémoire d'échange avant le premier déploiement avec `infra/deploy/`.
 3. Phase 4 (présenter plan + tickets, attendre son feu vert) : recommandations, onglet Découvrir, catalogue Deezer, recherche complète (EXPLAIN de l'index trigramme sur ~100 k morceaux, W-41), données de démo.
 4. Phase 5 : durcissement et bas niveau reportés — revue fb-1109 (`docs/handoff/fb-1109-qa.md`), vague 1 (verrou du morceau à la suppression, ordre des verrous des hashtags, index redondants `post_hashtag`/`post_like`/`post_view`), vague 2 (`phase3-v2-qa.md` bas 1-5), W-37 : F20 regex des hashtags sans `\p{M}` (décision architecte), F21 `dismiss` non définitif (décision), F18 posts d'un propriétaire suspendu encore jouables, un modérateur ne doit pas pouvoir suspendre un admin ; modération, suppression de compte (`ReportRepository::deleteForUserContent` prêt), vrais e-mails (FB-01), README et checklist de mise en prod.
 
