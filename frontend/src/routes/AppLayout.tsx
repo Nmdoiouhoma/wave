@@ -8,13 +8,16 @@ import {
   HomeIcon,
   LibraryIcon,
   PlusIcon,
+  ShieldIcon,
   UserIcon,
 } from '@/components/ui/icons';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { Toaster } from '@/components/ui/Toaster';
 import { Avatar } from '@/components/ui/Media';
+import { isStaff } from '@/features/admin/permissions';
 import { TrackSheets } from '@/features/playlists/TrackSheets';
 import { LogoutButton } from '@/features/auth/LogoutButton';
+import { AnnouncementBanner } from '@/features/admin/announcements/AnnouncementBanner';
 import { VerifyEmailBanner } from '@/features/auth/VerifyEmailBanner';
 import { BellIcon, NotificationBell, UnreadBadge } from '@/features/notifications/NotificationBell';
 import { useBellLabel, useUnreadCount } from '@/features/notifications/queries';
@@ -138,6 +141,12 @@ function Rail({ active, notificationsOn, createOpen, onCreate, createRef }: NavP
           />
           <span className="truncate">{me.displayName}</span>
         </Link>
+        {isStaff(me.roles) && (
+          <Link to="/admin" className={item(false)}>
+            <ShieldIcon size={20} />
+            Administration
+          </Link>
+        )}
         <ThemeToggle />
         <LogoutButton />
       </div>
@@ -256,6 +265,7 @@ export function AppLayout() {
       <div inert={fullOpen}>
         {!desktop && !feed && <TopBar bell={active === 'profile'} />}
         <VerifyEmailBanner />
+        <AnnouncementBanner />
       </div>
       <main
         inert={fullOpen}

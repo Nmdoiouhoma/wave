@@ -17,6 +17,7 @@ import { ImageUploader } from '@/components/ui/ImageUploader';
 import { Avatar } from '@/components/ui/Media';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { formErrors } from '@/features/auth/formErrors';
+import { isStaff } from '@/features/admin/permissions';
 import { useVerifiedGate } from '@/features/auth/useVerifiedGate';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -45,6 +46,14 @@ export function SettingsPage() {
           @{me.username} · {me.email}
         </p>
       </div>
+
+      {isStaff(me.roles) && (
+        <Section title="Administration">
+          <ButtonLink to="/admin" variant="secondary">
+            Ouvrir le back-office
+          </ButtonLink>
+        </Section>
+      )}
 
       <Section title="Apparence">
         <ThemeToggle />

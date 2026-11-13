@@ -280,3 +280,11 @@ export function FlagIcon(p: IconProps) {
     </svg>
   );
 }
+
+export function ShieldIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z" />
+    </svg>
+  );
+}

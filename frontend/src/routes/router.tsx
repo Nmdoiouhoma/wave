@@ -1,4 +1,4 @@
-import { createBrowserRouter, type RouteObject } from 'react-router';
+import { createBrowserRouter, Outlet, type RouteObject } from 'react-router';
 import { ArtistPage } from '@/features/artists/ArtistPage';
 import { CreateArtistPage } from '@/features/artists/CreateArtistPage';
 import { MyArtistsPage } from '@/features/artists/MyArtistsPage';
@@ -19,6 +19,7 @@ import { FollowListPage } from '@/features/social/FollowListPage';
 import { SettingsPage } from '@/features/profile/SettingsPage';
 import { TrackPage } from '@/features/tracks/TrackPage';
 import { UploadPage } from '@/features/tracks/UploadPage';
+import { adminRoute } from '@/features/admin/adminRoutes';
 import { AppLayout } from './AppLayout';
 import { GuestOnly, RequireAuth } from './guards';
 import { NotFoundPage } from './NotFoundPage';
@@ -93,6 +94,12 @@ export const routes: RouteObject[] = [
       </RequireAuth>
     ),
     children: appChildren,
+  },
+  // W-73: back-office, own shell (not inside AppLayout), lazy chunks; staff guard in AdminLayout.
+  {
+    path: '/',
+    element: <RequireAuth><Outlet /></RequireAuth>,
+    children: [adminRoute],
   },
 ];
 
