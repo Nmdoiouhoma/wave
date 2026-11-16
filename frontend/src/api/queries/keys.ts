@@ -4,6 +4,7 @@ export const keys = {
   user: (username: string) => ['user', username] as const,
   userTracks: (username: string) => ['user', username, 'tracks'] as const,
   userArtists: (username: string) => ['user', username, 'artists'] as const,
+  userReposts: (username: string) => ['user', username, 'reposts'] as const,
   artist: (slug: string) => ['artist', slug] as const,
   artistTracks: (slug: string) => ['artist', slug, 'tracks'] as const,
   track: (id: string) => ['track', id] as const,

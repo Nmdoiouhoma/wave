@@ -87,6 +87,15 @@ describe('notification wording and links', () => {
       'Alice et 4 autres ont commenté ton post « Mon son »',
       '/posts/po1',
     ],
+    [
+      'repost (W-81)',
+      notif({
+        type: 'repost',
+        target: { type: 'post', id: 'po1', label: 'Mon son', imageUrl: null },
+      }),
+      'Alice a reposté ton post « Mon son »',
+      '/posts/po1',
+    ],
   ])('%s', (_name, n, text, href) => {
     expect(sentenceText(n)).toBe(text);
     expect(notificationHref(n)).toBe(href);

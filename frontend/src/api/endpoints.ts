@@ -17,6 +17,7 @@ import type {
   Post,
   PostPage,
   PostViewReport,
+  RepostState,
   FeedSource,
   PlaylistItem,
   PlaylistItemPage,
@@ -123,6 +124,9 @@ export function createWaveApi(client: ApiClient) {
       streamUrl: (id: string) => request<StreamUrl>('GET', `/posts/${enc(id)}/stream-url`),
       like: (id: string) => request<LikeState>('PUT', `/posts/${enc(id)}/like`),
       unlike: (id: string) => request<LikeState>('DELETE', `/posts/${enc(id)}/like`),
+      // ADR 015: both idempotent.
+      repost: (id: string) => request<RepostState>('PUT', `/posts/${enc(id)}/repost`),
+      unrepost: (id: string) => request<RepostState>('DELETE', `/posts/${enc(id)}/repost`),
       /** Batched views (≤ 50), `keepalive` on page hide. */
       reportViews: (views: PostViewReport[], opts: { keepalive?: boolean } = {}) =>
         request<undefined>('POST', '/post-views', { body: { views }, keepalive: opts.keepalive }),
@@ -156,6 +160,8 @@ export function createWaveApi(client: ApiClient) {
       tracks: (username: string, page: PageParams = {}) =>
         request<TrackPage>('GET', `/users/${enc(username)}/tracks`, { query: { ...page } }),
       artists: (username: string) => request<Artist[]>('GET', `/users/${enc(username)}/artists`),
+      reposts: (username: string, page: PageParams = {}) =>
+        request<PostPage>('GET', `/users/${enc(username)}/reposts`, { query: { ...page } }),
     },
     artists: {
       create: (body: CreateArtistRequest) => request<Artist>('POST', '/artists', { body }),

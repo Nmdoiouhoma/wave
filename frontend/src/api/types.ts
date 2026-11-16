@@ -49,6 +49,7 @@ export type CreatePlaylistRequest = S['CreatePlaylistRequest'];
 export type UpdatePlaylistRequest = S['UpdatePlaylistRequest'];
 export type UserPage = S['UserPage'];
 export type LikeState = S['LikeState'];
+export type RepostState = S['RepostState'];
 export type FollowState = S['FollowState'];
 export type UserListItem = S['UserListItem'];
 export type SearchResults = S['SearchResults'];

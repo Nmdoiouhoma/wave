@@ -1574,6 +1574,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/admin/dashboard/supervision': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get admin supervision panel
+     * @description ROLE_MODERATOR guards the route, but the panel is **admin-only in substance**: monitoring and security alerts are not shown to moderators (ADR 013 §2, same split as `alerts` on `/admin/dashboard`). For a moderator caller `global` and `hourly` are null and `signals` is empty — the client shows the panel to admins only.
+     *     A Zabbix-style health rollup computed **only from already-collected data**: open `security_alert` (DATA_MODEL §16) and the `auth.*` / `abuse.*` / `upload.*` journal of `activity_event` (§15). No new table, no new collector.
+     *     Four signals roll worst-wins into four levels (`ok` < `attention` < `alerte` < `critique`); `global` = the worst signal. `suspicious` is computed over open alerts; `logins`, `abuse`, `uploads` over a sliding **1 h** window on `activity_event.created_at`. The histogram is the last **24 h** in hourly buckets (Europe/Paris, DST-aware, like `/admin/dashboard/series`). Thresholds are constants of `SupervisionThresholds` (DATA_MODEL §16 note). Cached ~30 s server-side per role level; the client polls every ~30 s (FB-34). Aggregates only, no per-user data.
+     */
+    get: operations['getAdminDashboardSupervision'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/admin/users': {
     parameters: {
       query?: never;
@@ -2761,6 +2783,40 @@ export interface components {
         low: components['schemas']['DailySeries'];
       } | null;
       generatedAt: components['schemas']['DateTime'];
+    };
+    /**
+     * @description Health degree, worst-wins order `ok` < `attention` < `alerte` < `critique`.
+     *     The client maps it to the fixed status palette (good / warning / serious / critical) and **always** pairs the colour with an icon + label (never colour alone).
+     * @enum {string}
+     */
+    SupervisionLevel: 'ok' | 'attention' | 'alerte' | 'critique';
+    /** @enum {string} */
+    SupervisionSignalKey: 'suspicious' | 'logins' | 'abuse' | 'uploads';
+    SupervisionSignal: {
+      key: components['schemas']['SupervisionSignalKey'];
+      level: components['schemas']['SupervisionLevel'];
+      /** @description Signal-specific headline figure. `suspicious`: number of open `security_alert` rows. `logins`: login failure rate over the last 1 h as a fraction 0–1 (0 when fewer than the minimum attempts). `abuse`: count of `abuse.rate_limited` in the last 1 h. `uploads`: count of `upload.rejected` in the last 1 h. */
+      value: number;
+      /** @description Short human label for the tile (e.g. `3 alertes ouvertes`, `62 % d'échecs sur 1 h`, `trop peu de tentatives`). */
+      detail: string;
+    };
+    SupervisionHour: {
+      /** @description Start of the hourly bucket, Europe/Paris, DST-aware. */
+      hourStart: components['schemas']['DateTime'];
+      /** @description Notable events in the hour (open-alert first-seen + `auth.login_failed` + `abuse.rate_limited` + `upload.rejected`). Bar height. */
+      count: number;
+      /** @description Worst severity of the hour. Bar colour. */
+      level: components['schemas']['SupervisionLevel'];
+    };
+    /** @description Zabbix-style rollup (FB-34). For a **moderator** caller `global` and `hourly` are null and `signals` is empty (the panel is admin-only in substance, same split as `alerts` on `/admin/dashboard`). */
+    SupervisionState: {
+      /** @description Worst of the four signals; null for a moderator. */
+      global: components['schemas']['SupervisionLevel'] | null;
+      /** @description The four signals (suspicious, logins, abuse, uploads), always in that order; empty for a moderator. */
+      signals: components['schemas']['SupervisionSignal'][];
+      /** @description Last 24 hourly buckets, oldest first; null for a moderator. */
+      hourly: components['schemas']['SupervisionHour'][] | null;
+      updatedAt: components['schemas']['DateTime'];
     };
     UserPage: {
       items: components['schemas']['UserListItem'][];
@@ -5368,6 +5424,28 @@ export interface operations {
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
       422: components['responses']['Unprocessable'];
+    };
+  };
+  getAdminDashboardSupervision: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Supervision state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SupervisionState'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
     };
   };
   listAdminUsers: {

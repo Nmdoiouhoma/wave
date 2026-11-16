@@ -11,6 +11,8 @@ export const feedApi = {
   streamUrl: (id: string) => api.posts.streamUrl(id),
   like: (id: string) => api.posts.like(id),
   unlike: (id: string) => api.posts.unlike(id),
+  repost: (id: string) => api.posts.repost(id),
+  unrepost: (id: string) => api.posts.unrepost(id),
   reportViews: (views: PostViewReport[], opts: { keepalive?: boolean } = {}) =>
     api.posts.reportViews(views, opts),
   /** DATA_MODEL §11: feed listen, reference = clip duration, grant from the clip URL. */

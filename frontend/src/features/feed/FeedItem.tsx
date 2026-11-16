@@ -1,12 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, type SVGProps } from 'react';
 import { Link } from 'react-router';
-import type { LikeState } from '@/api/types';
+import type { LikeState, RepostState } from '@/api/types';
 import { cx } from '@/components/ui/cx';
-import { HeartIcon, MoreIcon, MusicIcon, PlayIcon } from '@/components/ui/icons';
+import { HeartIcon, MoreIcon, MusicIcon, PlayIcon, RepostIcon } from '@/components/ui/icons';
 import { Avatar, Cover } from '@/components/ui/Media';
 import { WIDE_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
-import { errorMessage } from '@/lib/errorMessages';
+import { errorMessage, repostErrorMessage } from '@/lib/errorMessages';
 import { formatCount } from '@/lib/format';
 import { toast } from '@/stores/toast';
 import { feedApi, type Post } from './feedApi';
@@ -53,6 +53,32 @@ function usePostLike(post: Post) {
   });
   const set = (like: boolean) => {
     if (!mutation.isPending && like !== state.liked) mutation.mutate(like);
+  };
+  return { state, set };
+}
+
+/** W-81 (ADR 015): same optimistic mechanics as the post like. */
+function usePostRepost(post: Post) {
+  const [override, setOverride] = useState<RepostState | null>(null);
+  const state = override ?? { reposted: post.repostedByMe, repostCount: post.repostCount };
+  const mutation = useMutation({
+    mutationFn: (repost: boolean) => (repost ? feedApi.repost(post.id) : feedApi.unrepost(post.id)),
+    onMutate: (repost) => {
+      const previous = override;
+      setOverride({
+        reposted: repost,
+        repostCount: Math.max(0, state.repostCount + (repost ? 1 : -1)),
+      });
+      return { previous };
+    },
+    onError: (e, _repost, ctx) => {
+      setOverride(ctx?.previous ?? null);
+      toast(repostErrorMessage(e), 'error');
+    },
+    onSuccess: (server) => setOverride(server),
+  });
+  const set = (repost: boolean) => {
+    if (!mutation.isPending && repost !== state.reposted) mutation.mutate(repost);
   };
   return { state, set };
 }
@@ -137,6 +163,7 @@ export function FeedItem({
   onTogglePlay: () => void;
 }) {
   const like = usePostLike(post);
+  const repost = usePostRepost(post);
   const wide = useMediaQuery(WIDE_QUERY);
   // W-36: optimistic comment count (+1 on post, −1 on delete, reverted on error).
   const [commentDelta, setCommentDelta] = useState(0);
@@ -170,6 +197,9 @@ export function FeedItem({
   const title = post.track.title;
   const commentCount = Math.max(0, post.commentCount + commentDelta);
   const likeLabel = like.state.liked ? 'Je n’aime plus' : 'J’aime';
+  // ADR 015: hidden when not repostable, but an existing repost can always be undone.
+  const showRepost = post.canRepost || repost.state.reposted;
+  const repostLabel = repost.state.reposted ? 'Annuler le repost' : 'Reposter';
 
   return (
     <article
@@ -197,6 +227,15 @@ export function FeedItem({
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end gap-3 p-4 pb-6">
         <div className="pointer-events-auto min-w-0 flex-1 space-y-2">
+          {post.repostedBy && (
+            <Link
+              to={`/u/${encodeURIComponent(post.repostedBy.username)}`}
+              className="flex w-fit max-w-full items-center gap-1.5 text-xs font-semibold text-white/85"
+            >
+              <RepostIcon size={14} className="shrink-0" />
+              <span className="truncate">Reposté par {post.repostedBy.displayName}</span>
+            </Link>
+          )}
           <Link
             to={`/u/${encodeURIComponent(post.author.username)}`}
             className="flex w-fit items-center gap-2 font-semibold"
@@ -257,6 +296,18 @@ export function FeedItem({
             <CommentIcon />
             <span>{formatCount(commentCount)}</span>
           </button>
+          {showRepost && (
+            <button
+              type="button"
+              aria-pressed={repost.state.reposted}
+              aria-label={repostLabel}
+              onClick={() => repost.set(!repost.state.reposted)}
+              className="flex flex-col items-center gap-0.5 text-xs font-semibold"
+            >
+              <RepostIcon size={28} className={cx(repost.state.reposted && 'text-emerald-400')} />
+              <span>{formatCount(repost.state.repostCount)}</span>
+            </button>
+          )}
           <button
             type="button"
             aria-label="Plus d’options"

@@ -23,3 +23,13 @@ export function useUserArtists(username: string | undefined) {
     enabled: !!username,
   });
 }
+
+/** ADR 015: posts reposted by this user, newest repost first. */
+export function useUserReposts(username: string) {
+  return useInfiniteQuery({
+    queryKey: keys.userReposts(username),
+    queryFn: ({ pageParam }) => api.users.reposts(username, { cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+  });
+}

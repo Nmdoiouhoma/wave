@@ -1,24 +1,31 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { useUserArtists, useUserProfile, useUserTracks } from '@/api/queries/users';
+import { useUserArtists, useUserProfile, useUserReposts, useUserTracks } from '@/api/queries/users';
 import { LogoutButton } from '@/features/auth/LogoutButton';
 import { ButtonLink } from '@/components/ui/Button';
 import { cx } from '@/components/ui/cx';
-import { EditIcon, LibraryIcon, MicIcon, MusicIcon, UploadIcon } from '@/components/ui/icons';
+import {
+  EditIcon,
+  LibraryIcon,
+  MicIcon,
+  MusicIcon,
+  RepostIcon,
+  UploadIcon,
+} from '@/components/ui/icons';
 import { InfiniteSentinel } from '@/components/ui/InfiniteSentinel';
 import { useUserPlaylists } from '@/api/queries/playlists';
 import { useFollowState } from '@/api/queries/social';
 import type { UserProfile } from '@/api/types';
 import { PlaylistGrid } from '@/features/playlists/PlaylistGrid';
 import { FollowButton } from '@/features/social/FollowButton';
-import { Avatar } from '@/components/ui/Media';
+import { Avatar, Cover } from '@/components/ui/Media';
 import { PageSpinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
-import { formatCount, formatMonthYear } from '@/lib/format';
+import { formatCount, formatDate, formatMonthYear } from '@/lib/format';
 import { PlayAllButton, TrackList } from '@/features/tracks/TrackList';
 import { ReportButton } from '@/features/reports/ReportButton';
 
-type Tab = 'tracks' | 'playlists' | 'artists';
+type Tab = 'tracks' | 'playlists' | 'reposts' | 'artists';
 
 export function ProfilePage() {
   const { username = '' } = useParams();
@@ -80,6 +87,7 @@ export function ProfilePage() {
           [
             ['tracks', 'Titres'],
             ['playlists', 'Playlists'],
+            ['reposts', 'Reposts'],
             ['artists', 'Artistes'],
           ] as const
         ).map(([value, label]) => (
@@ -106,6 +114,8 @@ export function ProfilePage() {
           <UserTracks username={u.username} isMe={u.isMe} />
         ) : tab === 'playlists' ? (
           <UserPlaylists username={u.username} isMe={u.isMe} />
+        ) : tab === 'reposts' ? (
+          <UserReposts username={u.username} isMe={u.isMe} />
         ) : (
           <UserArtists username={u.username} isMe={u.isMe} />
         )}
@@ -145,6 +155,63 @@ function UserTracks({ username, isMe }: { username: string; isMe: boolean }) {
         onLoadMore={() => void q.fetchNextPage()}
       />
     </div>
+  );
+}
+
+/** W-81 (ADR 015): posts this user reposted, newest repost first; each opens in the post viewer. */
+function UserReposts({ username, isMe }: { username: string; isMe: boolean }) {
+  const q = useUserReposts(username);
+  if (q.isPending) return <PageSpinner />;
+  if (q.isError) return <ErrorState error={q.error} onRetry={() => void q.refetch()} />;
+  const items = q.data.pages.flatMap((p) => p.items);
+  if (!items.length)
+    return (
+      <EmptyState
+        icon={<RepostIcon size={28} />}
+        title={isMe ? 'Tu n’as encore rien reposté' : 'Aucun repost'}
+      />
+    );
+  return (
+    <>
+      <ul aria-label="Reposts" className="flex flex-col gap-1">
+        {items.map((post) => (
+          <li key={post.id}>
+            <Link
+              to={`/posts/${encodeURIComponent(post.id)}`}
+              className="hover:bg-surface-2 flex items-center gap-3 rounded-2xl p-2 transition"
+            >
+              <Cover
+                url={
+                  (post.visual?.type === 'video' ? post.visual.posterUrl : post.visual?.url) ??
+                  post.track.coverUrl
+                }
+                seed={post.track.id}
+                className="size-14 shrink-0"
+                rounded="rounded-xl"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">
+                  {post.caption ?? post.track.title}
+                </span>
+                <span className="text-muted block truncate text-sm">
+                  {post.author.displayName} · {post.track.title}
+                </span>
+                {post.repostedAt && (
+                  <span className="text-faint block text-xs">
+                    Reposté le {formatDate(post.repostedAt)}
+                  </span>
+                )}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <InfiniteSentinel
+        hasMore={!!q.hasNextPage}
+        loading={q.isFetchingNextPage}
+        onLoadMore={() => void q.fetchNextPage()}
+      />
+    </>
   );
 }
 

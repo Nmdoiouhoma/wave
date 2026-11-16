@@ -40,6 +40,8 @@ const MESSAGES: Partial<Record<ErrorCode, string>> = {
   clips_not_allowed: 'Tu ne peux pas utiliser d’extrait de ce morceau.',
   clip_out_of_range: 'L’extrait dépasse la fin du morceau : choisis un autre début.',
   not_a_follower: 'Cette personne ne te suit plus.',
+  cannot_repost_own: 'Tu ne peux pas reposter ton propre post.',
+  repost_not_allowed: 'Ce post n’est pas public : il ne peut pas être reposté.',
   internal_error: 'Une erreur est survenue. Réessaie dans un instant.',
 };
 
@@ -104,6 +106,18 @@ export function postErrorMessage(error: unknown): string {
     if (error.code === 'not_found') return 'Ce morceau n’est plus disponible.';
     if (error.code === 'track_not_ready')
       return 'Ce morceau est encore en cours de traitement. Réessaie dans un instant.';
+  }
+  return errorMessage(error);
+}
+
+/** W-81 `PUT/DELETE /posts/{id}/repost`: 403 unverified, 404 gone, 422 and 429 from the generic table. */
+export function repostErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.code === 'email_not_verified')
+      return 'Confirme ton adresse e-mail pour pouvoir reposter.';
+    if (error.code === 'not_found') return 'Ce post n’est plus disponible.';
+    if (error.code === 'rate_limited')
+      return `Trop de reposts d’affilée. ${retryHint(error.retryAfter)}`;
   }
   return errorMessage(error);
 }

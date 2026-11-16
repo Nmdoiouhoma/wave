@@ -194,6 +194,16 @@ export function HeartIcon(p: IconProps & { filled?: boolean }) {
     </svg>
   );
 }
+export function RepostIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M17 2.5 21 6.5l-4 4" />
+      <path d="M3 11.5v-1a4 4 0 0 1 4-4h14" />
+      <path d="M7 21.5 3 17.5l4-4" />
+      <path d="M21 12.5v1a4 4 0 0 1-4 4H3" />
+    </svg>
+  );
+}
 export function MoreIcon(p: IconProps) {
   return (
     <svg {...base(p)} fill="currentColor" stroke="none">
