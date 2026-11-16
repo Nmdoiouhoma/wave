@@ -8,6 +8,11 @@ framework:
             # GET /admin/dashboard counters (60 s, ADR 013); per-FPM-worker staleness is acceptable.
             cache.admin_dashboard:
                 adapter: cache.app
+            # ADR 014: external catalogue cache, shared by FPM workers (search/chart 1 h, artist
+            # metadata 24 h, top tracks 10 min). Nothing stored in tables; pruned daily by the
+            # scheduler's `cache:pool:prune` (WaveSchedule).
+            cache.catalog:
+                adapter: cache.adapter.doctrine_dbal
 
 when@test:
     framework:
@@ -15,4 +20,6 @@ when@test:
             pools:
                 # In-memory: each test kernel starts with an empty cache.
                 cache.admin_dashboard:
+                    adapter: cache.adapter.array
+                cache.catalog:
                     adapter: cache.adapter.array

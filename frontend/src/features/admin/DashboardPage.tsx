@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { Spinner } from '@/components/ui/Spinner';
 import { AdminError } from './AdminError';
 import { useAdminDashboard } from './queries';
+import { SeriesCharts } from './SeriesCharts';
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -77,6 +78,7 @@ export function DashboardPage() {
           </Card>
         )}
       </div>
+      <SeriesCharts />
       <p className="text-muted text-xs">
         Chiffres mis à jour toutes les minutes au plus.
       </p>

@@ -37,6 +37,14 @@ services:
 
     App\Search\SearchProvider: '@App\Search\PostgresSearchProvider'
 
+    # ADR 014: external catalogue flag and provider selection (`CATALOG_PROVIDER` none|deezer).
+    # CatalogFeature is public so functional tests can toggle the flag per test.
+    App\Catalog\CatalogFeature:
+        arguments: ['%env(CATALOG_PROVIDER)%']
+        public: true
+    App\Catalog\CatalogProvider:
+        factory: ['@App\Catalog\CatalogProviderFactory', 'create']
+
     # ADR 005 (W-40): replaces the phase 3 SimpleFeedRanker.
     App\Feed\FeedRanker: '@App\Feed\SqlFeedRanker'
 

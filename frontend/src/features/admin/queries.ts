@@ -5,11 +5,12 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import { adminApi, type AdminUserDetail, type AdminUserFilters, type SetRoleRequest } from './adminApi';
+import { adminApi, type AdminUserDetail, type SeriesRange, type AdminUserFilters, type SetRoleRequest } from './adminApi';
 
 export const adminKeys = {
   all: () => ['admin'] as const,
   dashboard: () => ['admin', 'dashboard'] as const,
+  series: (range: SeriesRange) => ['admin', 'dashboard', 'series', range] as const,
   users: (f: AdminUserFilters) => ['admin', 'users', f] as const,
   usersAll: () => ['admin', 'users'] as const,
   user: (id: string) => ['admin', 'user', id] as const,
@@ -20,6 +21,15 @@ export function useAdminDashboard() {
     queryKey: adminKeys.dashboard(),
     queryFn: adminApi.dashboard,
     staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function useAdminSeries(range: SeriesRange) {
+  return useQuery({
+    queryKey: adminKeys.series(range),
+    queryFn: () => adminApi.dashboardSeries(range),
+    staleTime: 60_000,
     retry: false,
   });
 }

@@ -51,6 +51,7 @@ enum ProblemCode: string
     case NotAFollower = 'not_a_follower';
     case RateLimited = 'rate_limited';
     case InternalError = 'internal_error';
+    case CatalogUnavailable = 'catalog_unavailable';
 
     public function status(): int
     {
@@ -70,6 +71,7 @@ enum ProblemCode: string
             self::CannotFollowSelf, self::CannotReportOwn, self::NotAFollower => 422,
             self::RateLimited => 429,
             self::InternalError => 500,
+            self::CatalogUnavailable => 503,
         };
     }
 
@@ -118,6 +120,7 @@ enum ProblemCode: string
             self::NotAFollower => 'Not a follower',
             self::RateLimited => 'Too many requests',
             self::InternalError => 'Internal error',
+            self::CatalogUnavailable => 'Catalogue unavailable',
         };
     }
 }

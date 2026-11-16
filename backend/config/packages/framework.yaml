@@ -7,6 +7,9 @@ framework:
     trusted_headers: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port']
     php_errors:
         log: true
+    # ADR 014: outbound HTTP for the external catalogue (Deezer). Per-request timeouts are set by
+    # DeezerCatalogProvider; this only registers the default client (autowired HttpClientInterface).
+    http_client: ~
 
 when@test:
     framework:

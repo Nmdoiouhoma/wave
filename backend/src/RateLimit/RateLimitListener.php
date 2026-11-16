@@ -61,6 +61,10 @@ final readonly class RateLimitListener
         'addPlaylistItem' => [['playlist_write_user', self::BY_USER]],
         'reportListen' => [['listen_user', self::BY_USER]],
         'search' => [['search_minute_user', self::BY_USER], ['search_day_user', self::BY_USER]],
+        // ADR 014: bucket `catalog` 30 / min and 500 / day per user (inbound).
+        'searchCatalogArtists' => [['catalog_minute_user', self::BY_USER], ['catalog_day_user', self::BY_USER]],
+        'listCatalogChartArtists' => [['catalog_minute_user', self::BY_USER], ['catalog_day_user', self::BY_USER]],
+        'getCatalogArtist' => [['catalog_minute_user', self::BY_USER], ['catalog_day_user', self::BY_USER]],
     ];
 
     /** @param ServiceLocator<RateLimiterFactoryInterface> $limiters */

@@ -76,6 +76,7 @@ describe('back-office shell', () => {
 describe('dashboard', () => {
   it('hides alert and announcement cards for a moderator (null blocks)', async () => {
     await loginWithRoles(['ROLE_MODERATOR']);
+    server.use(http.get(`${API}/admin/dashboard/series`, () => problem(500, 'n/a')));
     server.use(
       http.get(`${API}/admin/dashboard`, () =>
         json({
@@ -98,6 +99,76 @@ describe('dashboard', () => {
     server.use(http.get(`${API}/admin/dashboard`, () => problem(403, 'forbidden')));
     renderRoute(<DashboardPage />, { path: '/admin' });
     expect(await screen.findByText('Accès réservé')).toBeInTheDocument();
+  });
+});
+
+describe('dashboard series (W-83)', () => {
+  const days7 = ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16'];
+  const z = [0, 1, 0, 2, 0, 3, 1];
+  const series = (staff: boolean) => ({
+    range: '7d',
+    timezone: 'Europe/Paris',
+    days: days7,
+    activity: staff ? { registrations: z, logins: z } : null,
+    content: staff ? { tracks: z, posts: z, comments: z, rejectedUploads: z } : null,
+    moderation: { reports: z, hidden: z },
+    alerts: staff ? { high: z, medium: z, low: z } : null,
+    generatedAt: '2026-11-16T10:00:00+00:00',
+  });
+  const stub = () =>
+    server.use(
+      http.get(`${API}/admin/dashboard`, () =>
+        json({
+          users: null,
+          moderation: { openReportTargets: 0, openReports: 0, hiddenContent24h: 0 },
+          content: null,
+          alerts: null,
+          announcements: null,
+          generatedAt: '2026-11-16T10:00:00+00:00',
+        }),
+      ),
+    );
+
+  it('admin: four charts with accessible table, French day labels, range toggle', async () => {
+    await loginWithRoles(['ROLE_ADMIN']);
+    stub();
+    const ranges: (string | null)[] = [];
+    server.use(
+      http.get(`${API}/admin/dashboard/series`, ({ request }) => {
+        ranges.push(new URL(request.url).searchParams.get('range'));
+        return json(series(true));
+      }),
+    );
+    renderRoute(<DashboardPage />, { path: '/admin' });
+    expect(await screen.findByRole('region', { name: 'Alertes par gravité' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Contenus publiés' })).toBeInTheDocument();
+    expect(screen.getAllByRole('table', { hidden: true })).toHaveLength(4);
+    expect(screen.getAllByText(/mardi 10 novembre/i).length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', { name: '30 j' }));
+    await waitFor(() => expect(ranges).toContain('30d'));
+  });
+
+  it('moderator: moderation chart only', async () => {
+    await loginWithRoles(['ROLE_MODERATOR']);
+    stub();
+    server.use(http.get(`${API}/admin/dashboard/series`, () => json(series(false))));
+    renderRoute(<DashboardPage />, { path: '/admin' });
+    expect(await screen.findByRole('region', { name: 'Signalements et masquages' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Alertes par gravité' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Contenus publiés' })).toBeNull();
+  });
+
+  it('empty and error states', async () => {
+    await loginWithRoles(['ROLE_MODERATOR']);
+    stub();
+    const zero = { ...series(false), moderation: { reports: [0, 0, 0, 0, 0, 0, 0], hidden: [0, 0, 0, 0, 0, 0, 0] } };
+    server.use(http.get(`${API}/admin/dashboard/series`, () => json(zero)));
+    const { unmount } = renderRoute(<DashboardPage />, { path: '/admin' });
+    expect(await screen.findByText('Aucune donnée sur la période.')).toBeInTheDocument();
+    unmount();
+    server.use(http.get(`${API}/admin/dashboard/series`, () => problem(500, 'boom')));
+    renderRoute(<DashboardPage />, { path: '/admin' });
+    expect(await screen.findByRole('button', { name: /réessayer/i })).toBeInTheDocument();
   });
 });
 

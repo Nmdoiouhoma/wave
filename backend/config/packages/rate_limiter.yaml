@@ -28,3 +28,8 @@ framework:
         post_view_user: { policy: sliding_window, limit: 60, interval: '1 minute', cache_pool: cache.rate_limiter }
         notifications_user: { policy: sliding_window, limit: 120, interval: '1 minute', cache_pool: cache.rate_limiter }
         report_user: { policy: sliding_window, limit: 20, interval: '1 hour', cache_pool: cache.rate_limiter }
+        # ADR 014: inbound catalogue limits per user (bucket `catalog`).
+        catalog_minute_user: { policy: sliding_window, limit: 30, interval: '1 minute', cache_pool: cache.rate_limiter }
+        catalog_day_user: { policy: sliding_window, limit: 500, interval: '1 day', cache_pool: cache.rate_limiter }
+        # ADR 014 §7: shared outbound limiter protecting the provider (40 requests / 5 s, one key).
+        catalog_outbound: { policy: token_bucket, limit: 40, rate: { interval: '5 seconds', amount: 40 }, cache_pool: cache.rate_limiter }

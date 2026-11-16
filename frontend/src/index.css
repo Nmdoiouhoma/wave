@@ -15,6 +15,13 @@
   --danger: #c62a2f;
   --success: #12794f;
   --warning: #8a5a00;
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-high: #d03b3b;
+  --viz-medium: #ec835a;
+  --viz-low: #fab219;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -31,6 +38,10 @@
     --danger: #ff6b6f;
     --success: #3ddc97;
     --warning: #ffc24b;
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
     color-scheme: dark;
   }
 }
@@ -47,6 +58,10 @@
   --danger: #ff6b6f;
   --success: #3ddc97;
   --warning: #ffc24b;
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
   color-scheme: dark;
 }
 

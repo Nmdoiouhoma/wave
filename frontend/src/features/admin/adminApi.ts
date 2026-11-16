@@ -5,6 +5,8 @@ import type { components } from '@/api/schema';
 
 type S = components['schemas'];
 export type AdminDashboard = S['AdminDashboard'];
+export type AdminDashboardSeries = S['AdminDashboardSeries'];
+export type SeriesRange = AdminDashboardSeries['range'];
 export type AdminUser = S['AdminUser'];
 export type AdminUserDetail = S['AdminUserDetail'];
 export type AdminUserPage = S['AdminUserPage'];
@@ -24,6 +26,8 @@ const r = apiClient.request.bind(apiClient);
 
 export const adminApi = {
   dashboard: () => r<AdminDashboard>('GET', '/admin/dashboard'),
+  dashboardSeries: (range: SeriesRange) =>
+    r<AdminDashboardSeries>('GET', '/admin/dashboard/series', { query: { range } }),
   users: (filters: AdminUserFilters, page: PageParams = {}) =>
     r<AdminUserPage>('GET', '/admin/users', { query: { ...filters, ...page } }),
   user: (id: string) => r<AdminUserDetail>('GET', `/admin/users/${enc(id)}`),

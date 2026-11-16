@@ -57,6 +57,7 @@ final readonly class MeView
         public string $email,
         public bool $emailVerified,
         public array $roles,
+        public MeFeaturesView $features,
     ) {
     }
 }

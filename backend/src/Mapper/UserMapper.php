@@ -4,18 +4,23 @@ declare(strict_types=1);
 
 namespace App\Mapper;
 
+use App\ApiResource\MeFeaturesView;
 use App\ApiResource\MeView;
 use App\ApiResource\UserListItem;
 use App\ApiResource\UserProfileView;
 use App\ApiResource\UserSummary;
+use App\Catalog\CatalogFeature;
 use App\Entity\User;
 use App\Repository\FollowRepository;
 use App\Storage\ObjectStorage;
 
 final readonly class UserMapper
 {
-    public function __construct(private ObjectStorage $storage, private FollowRepository $follows)
-    {
+    public function __construct(
+        private ObjectStorage $storage,
+        private FollowRepository $follows,
+        private CatalogFeature $catalog,
+    ) {
     }
 
     /**
@@ -75,6 +80,7 @@ final readonly class UserMapper
             $user->getEmail(),
             $user->isEmailVerified(),
             $user->getRoles(),
+            new MeFeaturesView($this->catalog->enabled()),
         );
     }
 

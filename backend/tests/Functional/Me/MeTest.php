@@ -24,8 +24,10 @@ final class MeTest extends WaveApiTestCase
         $me = $this->json($response);
         self::assertSame([
             'id', 'username', 'displayName', 'avatarUrl', 'bio', 'followersCount', 'followingCount', 'createdAt',
-            'isMe', 'isFollowedByMe', 'email', 'emailVerified', 'roles',
+            'isMe', 'isFollowedByMe', 'email', 'emailVerified', 'roles', 'features',
         ], array_keys($me));
+        // ADR 014: the catalogue flag is `deezer` under test, so the feature is on.
+        self::assertSame(['catalog' => true], $me['features']);
         self::assertSame($alice->getId()->toRfc4122(), $me['id']);
         self::assertNull($me['avatarUrl']);
         self::assertNull($me['bio']);
