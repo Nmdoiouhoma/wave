@@ -100,6 +100,8 @@ export interface MockState {
 }
 
 export const mockConfig = {
+  /** Me.features.catalog (ADR 014); the tests flip it. */
+  catalog: false,
   accessTtlMs: 900_000,
   streamTtlMs: 300_000,
   /** Fake worker latency. */
@@ -400,7 +402,7 @@ export function toMe(u: MockUser): Me {
     ...toProfile(u, u),
     email: u.email,
     emailVerified: u.emailVerified,
-    features: { catalog: false },
+    features: { catalog: mockConfig.catalog },
     roles: u.roles,
   };
 }

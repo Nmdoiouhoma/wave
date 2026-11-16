@@ -20,6 +20,7 @@ import { SettingsPage } from '@/features/profile/SettingsPage';
 import { TrackPage } from '@/features/tracks/TrackPage';
 import { UploadPage } from '@/features/tracks/UploadPage';
 import { adminRoute } from '@/features/admin/adminRoutes';
+import { CatalogArtistPage } from '@/features/catalog/CatalogArtistPage';
 import { AppLayout } from './AppLayout';
 import { GuestOnly, RequireAuth } from './guards';
 import { NotFoundPage } from './NotFoundPage';
@@ -32,6 +33,7 @@ const appChildren: RouteObject[] = [
   { path: 'posts/new', element: <PostComposerPage /> },
   { path: 'posts/:id', element: <PostPage /> },
   { path: 'discover', element: <SearchPage /> },
+  { path: 'discover/artists/:externalId', element: <CatalogArtistPage /> },
   { path: 'upload', element: <UploadPage /> },
   { path: 'me/artists', element: <MyArtistsPage /> },
   { path: 'me/artists/new', element: <CreateArtistPage /> },

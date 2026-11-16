@@ -76,7 +76,7 @@ describe('back-office shell', () => {
 describe('dashboard', () => {
   it('hides alert and announcement cards for a moderator (null blocks)', async () => {
     await loginWithRoles(['ROLE_MODERATOR']);
-    server.use(http.get(`${API}/admin/dashboard/series`, () => problem(500, 'n/a')));
+    server.use(http.get(`${API}/admin/dashboard/series`, () => problem(500, 'internal_error')));
     server.use(
       http.get(`${API}/admin/dashboard`, () =>
         json({
@@ -166,7 +166,7 @@ describe('dashboard series (W-83)', () => {
     const { unmount } = renderRoute(<DashboardPage />, { path: '/admin' });
     expect(await screen.findByText('Aucune donnée sur la période.')).toBeInTheDocument();
     unmount();
-    server.use(http.get(`${API}/admin/dashboard/series`, () => problem(500, 'boom')));
+    server.use(http.get(`${API}/admin/dashboard/series`, () => problem(500, 'internal_error')));
     renderRoute(<DashboardPage />, { path: '/admin' });
     expect(await screen.findByRole('button', { name: /réessayer/i })).toBeInTheDocument();
   });

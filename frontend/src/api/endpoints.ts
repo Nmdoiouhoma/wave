@@ -3,6 +3,8 @@ import type { ApiClient, UploadOptions } from './client';
 import type {
   Comment,
   CommentPage,
+  CatalogArtist,
+  CatalogArtistList,
   CreateReportRequest,
   ReportReceipt,
   SearchResults,
@@ -180,6 +182,16 @@ export function createWaveApi(client: ApiClient) {
           query: { q, type: 'tracks', ...page },
           signal: opts.signal,
         }).then((r): TrackPage => r.tracks ?? { items: [], nextCursor: null }),
+    },
+    catalog: {
+      chartArtists: () => request<CatalogArtistList>('GET', '/catalog/charts/artists'),
+      searchArtists: (q: string, opts: { signal?: AbortSignal } = {}) =>
+        request<CatalogArtistList>('GET', '/catalog/artists', {
+          query: { q, limit: 10 },
+          signal: opts.signal,
+        }),
+      artist: (externalId: string) =>
+        request<CatalogArtist>('GET', `/catalog/artists/${enc(externalId)}`),
     },
     genres: {
       list: () => request<Genre[]>('GET', '/genres', { auth: false }),

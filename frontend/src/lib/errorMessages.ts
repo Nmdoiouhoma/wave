@@ -2,6 +2,8 @@ import { isApiError, type ErrorCode } from '@/api/errors';
 import type { FailureReason } from '@/api/types';
 
 const MESSAGES: Partial<Record<ErrorCode, string>> = {
+  catalog_unavailable:
+    'Le catalogue Deezer est momentanément indisponible. Réessaie dans un instant.',
   network_error: 'Connexion impossible. Vérifie ton réseau et réessaie.',
   aborted: 'Opération annulée.',
   malformed_request: 'La requête est invalide.',

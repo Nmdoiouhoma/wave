@@ -17,5 +17,8 @@ export const keys = {
   likedPlaylists: () => ['me', 'likes', 'playlists'] as const,
   closeFriends: (scope: 'members' | 'followers') => ['me', 'close-friends', scope] as const,
   searchUsers: (q: string) => ['search', 'users', q] as const,
+  catalogChart: () => ['catalog', 'chart'] as const,
+  catalogSearch: (q: string) => ['catalog', 'search', q] as const,
+  catalogArtist: (id: string) => ['catalog', 'artist', id] as const,
   searchTracks: (q: string) => ['search', 'tracks', q] as const,
 };

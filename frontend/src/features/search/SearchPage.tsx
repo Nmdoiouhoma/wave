@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { isApiError } from '@/api/errors';
+import { useCurrentUser } from '@/api/queries/me';
 import { useUserSearch } from '@/api/queries/social';
 import { Alert } from '@/components/ui/Alert';
 import { SearchIcon, UserIcon } from '@/components/ui/icons';
 import { InfiniteSentinel } from '@/components/ui/InfiniteSentinel';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
+import { CatalogSearchBlock, FamousArtistsSection } from '@/features/catalog/CatalogSections';
 import { UserList } from '@/features/social/UserList';
 import { retryHint } from '@/lib/errorMessages';
 import { useDebounced } from '@/lib/useDebounced';
@@ -16,6 +18,7 @@ export const SEARCH_MIN_CHARS = 2;
 
 /** W-28, mounted on `/discover` since W-38: people search (phase 2 = users only). `?q=` keeps the query in the URL (back button). */
 export function SearchPage() {
+  const catalog = useCurrentUser().features.catalog;
   const [params, setParams] = useSearchParams();
   // The field owns the text while typing; the URL only follows (debounced) and never rewrites it.
   const [input, setInput] = useState(() => params.get('q') ?? '');
@@ -93,6 +96,8 @@ export function SearchPage() {
           </EmptyState>
         )}
       </div>
+      {catalog &&
+        (q.length >= SEARCH_MIN_CHARS ? <CatalogSearchBlock q={q} /> : <FamousArtistsSection />)}
     </div>
   );
 }

@@ -145,7 +145,7 @@ function SeriesChart({ title, days, lines }: { title: string; days: string[]; li
 
 const c = (i: number) => `var(--viz-${i})`;
 
-export function buildGroups(d: AdminDashboardSeries) {
+function buildGroups(d: AdminDashboardSeries) {
   const groups: { title: string; lines: Line[] }[] = [];
   if (d.activity)
     groups.push({

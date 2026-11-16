@@ -70,3 +70,9 @@ export type ReportTargetType = S['ReportTargetType'];
 export type ReportReason = S['ReportReason'];
 export type CreateReportRequest = S['CreateReportRequest'];
 export type ReportReceipt = S['ReportReceipt'];
+
+export type CatalogArtistSummary = S['CatalogArtistSummary'];
+export type CatalogArtist = S['CatalogArtist'];
+export type CatalogTrack = S['CatalogTrack'];
+export type CatalogArtistList = S['CatalogArtistList'];
+export type CatalogAttribution = S['CatalogAttribution'];
