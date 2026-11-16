@@ -20,6 +20,8 @@ services:
         limits: { memory: 1G }
     environment:
       PHP_OPCACHE_VALIDATE_TIMESTAMPS: "1"
+      # Catalogue on in dev (ADR 014); prod default stays none. Override via .env.
+      CATALOG_PROVIDER: ${CATALOG_PROVIDER:-deezer}
       # Dev is plain HTTP on localhost: a Secure cookie would never be sent back.
       REFRESH_COOKIE_SECURE: "0"
     volumes:

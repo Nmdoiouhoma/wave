@@ -23,3 +23,8 @@ Vérifier : `curl -I https://DOMAINE` (HSTS présent), `dc ps` (tout « Up »), 
 - Premier administrateur : s'inscrire dans l'application, puis `dc run --rm php php bin/console app:admin:grant EMAIL`.
 - Journal : purge automatique à 03:55 UTC par `worker-async` (scheduler) ; rétention 90 j (admin 365 j, alertes traitées 180 j). Ajouter à la page de confidentialité : « un journal technique garde 90 jours l'adresse IP tronquée (/24) et une empreinte non réversible, le type d'action et le navigateur ».
 - IP réelle : `TRUSTED_PROXIES` reste vide (nginx est le bord, il réécrit `X-Forwarded-*`). Contrôle : `sh infra/scripts/check-client-ip.sh https://DOMAINE` (doit afficher OK).
+
+**Catalogue externe Deezer (W-85, ADR 014)**
+- `CATALOG_PROVIDER` reste `none` (défaut prod, `/catalog/*` répond 404) tant qu'il n'y a pas d'accord : l'API Deezer est réservée à un usage non commercial. Ne passer à `deezer` qu'après vérification des conditions en vigueur.
+- Vie privée : la lecture d'un extrait est servie par le CDN de Deezer (`*.dzcdn.net`) : l'IP du visiteur lui est exposée. À ajouter à la page de confidentialité.
+- La CSP du front autorise `https://*.dzcdn.net` en `img-src` et `media-src` uniquement ; pas de COEP `require-corp` (il bloquerait les extraits).
