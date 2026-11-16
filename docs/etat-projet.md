@@ -1,4 +1,4 @@
-# État du projet Wave — 13/11/2026 soir (refonte + back-office faits, pause jusqu'au 15/11)
+# État du projet Wave — 16/11/2026 (phase 4 en cours, étape 1 de l'ordre de lancement livrée)
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
@@ -55,9 +55,16 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 - **13/11, back-office admin FB-28** (ADR 013, W-70..W-77) : contrat `d35ea9c` ; journal d'activité, rôles, `app:admin:grant/revoke` (`57f0e38`) ; API admin (`bacbc20`) ; écrans tableau de bord, utilisateurs, modération, journal, alertes, annonces + bannière (`1e8359c`) ; revue W-77 0 critique/élevé (`1f5a388`), F25-F28 + F30 corrigés (`9bc00c6`) ; prod `ACTIVITY_IP_PEPPER` + contrôle d'IP client (`4abd6d8`). Compte local `nakib.dev@gmail.com` = admin. verif : 540 tests backend, 78 média, 243 frontend.
 - **EC2** : t3.micro gardée (≈ 8 $/mois, choix utilisateur) + swap 2 Go créé (`/swapfile`, fstab, swappiness 10).
 
+## Phase 4 — Reco v1, recherche, seed, catalogue, repost, charts admin (en cours)
+
+Contrat phase 4 posé le 13/11 (`473ddfc`, ADR 014 Deezer, ADR 015 repost, W-80..W-87, ordre de lancement dans TICKETS). W-40 recommandations déjà fait (`44c4c00`).
+- **16/11 — ADR 015 repost confirmée par l'utilisateur** : repost réservé aux posts à audience **publique** (abonnés/amis proches/privé non reposables) ; alternative à double vérif par spectateur écartée. ADR 015 passée en `accepted`.
+- **16/11 — étape 1 de l'ordre de lancement livrée** : W-82 (séries dashboard admin FB-31, `AdminDashboardSeriesView`/`Provider`, cache 5 min, EXPLAIN 100 k ~91 ms sans Seq Scan, pas de migration) ∥ W-85 (câblage catalogue : CSP `*.dzcdn.net` sur img-src/media-src, `CATALOG_PROVIDER` none/deezer, checklist prod Deezer). `make qa` complet vert : phpstan, cs-fixer, 545 tests (84 ignorés), test-media 78, audit. Piège rencontré : connexion orpheline `idle in transaction` sur `wave_test` qui bloque le drop de la base de test → purger les connexions avant `make test`.
+- Reste de l'ordre : `W-84∥W-83` → `W-80∥W-86` → `W-81` (W-40 fait) → `W-41∥W-42` → `W-87` → `W-43` → `W-44 qa`, puis test utilisateur.
+
 ## En cours (non commité)
 
-- Rien. 13/11 soir : contrat phase 4 (`473ddfc`, ADR 014 Deezer + ADR 015 repost **à confirmer par l'utilisateur**, W-80..W-87, ordre de lancement dans TICKETS) et W-40 recommandations sur Sonnet (ADR 005 amendé). Forfait semaine ≈ 90 % : **plus rien avant le 15/11 1 h** ; jamais de demande d'augmentation à l'admin. Lots backend non sensibles sur Sonnet.
+- Rien.
 
 ## Prochaines étapes
 

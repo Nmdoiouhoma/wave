@@ -1,6 +1,6 @@
 # ADR 015 — Repost of a post (FB-33)
 
-Status: proposed (1 point to confirm by the user, see end) · 2026-11-13 · Lot `p4-contract`, phase 4.
+Status: accepted · 2026-11-13 (confirmed by the user 2026-11-16) · Lot `p4-contract`, phase 4.
 
 ## Context
 FB-33: republish someone else's post to my followers and on my profile, with a visible count. Audiences are viewer-dependent (ADR 012, DATA_MODEL §9 "playable"), evaluated live, never denormalised; feeds are Abonnements (keyset on time) and Pour toi (`FeedRanker`, ADR 005 / W-40).
@@ -21,5 +21,5 @@ FB-33: republish someone else's post to my followers and on my profile, with a v
 − Abonnements query becomes a UNION + GROUP BY over followed authors and followed reposters: index `repost (user_id, created_at DESC)` and EXPLAIN on demo seed required (p95 < 150 ms).
 − `repost_count` counts reposts the viewer may no longer see (same accepted drift as `like_count`).
 
-## Point to confirm by the user
-Only posts with a public audience can be reposted; followers / close-friends posts cannot (recommended; the alternative needs per-viewer double audience checks).
+## Confirmed by the user (2026-11-16)
+Only posts with a public audience can be reposted; followers / close-friends posts cannot. The alternative (allowing restricted-audience reposts via per-viewer double audience checks) was declined.
