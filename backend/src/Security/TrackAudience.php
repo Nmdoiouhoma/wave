@@ -143,6 +143,37 @@ final readonly class TrackAudience
         return $out;
     }
 
+    /**
+     * ADR 015 `Post.canRepost`: playable for $viewer, a public repost audience, and not $viewer's
+     * own. Batched like postVisibility (one membership query for a whole page).
+     *
+     * @param list<Post> $posts
+     *
+     * @return array<string, bool> post id => can repost
+     */
+    public function canRepost(array $posts, ?User $viewer): array
+    {
+        $members = $this->memberships($viewer, array_map(static fn (Post $p): Track => $p->getTrack(), $posts));
+        $out = [];
+        foreach ($posts as $post) {
+            $out[$post->getId()->toRfc4122()] = null !== $viewer
+                && !$post->isAuthoredBy($viewer)
+                && self::hasPublicRepostAudience($post)
+                && $this->playable($post, $viewer, $members);
+        }
+
+        return $out;
+    }
+
+    /** ADR 015: a post has a public repost audience iff its track is public and clippable or author-owned. */
+    public static function hasPublicRepostAudience(Post $post): bool
+    {
+        $track = $post->getTrack();
+
+        return Visibility::Public === $track->getVisibility()
+            && ($track->isAllowClips() || $track->isOwnedBy($post->getAuthor()));
+    }
+
     /** @param array<string, bool> $members owner id => is close friend (key present = follower) */
     private function visible(Track $track, ?User $viewer, array $members, bool $asModerator): bool
     {

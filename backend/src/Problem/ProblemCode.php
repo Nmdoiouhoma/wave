@@ -48,6 +48,8 @@ enum ProblemCode: string
     case ClipOutOfRange = 'clip_out_of_range';
     case CannotFollowSelf = 'cannot_follow_self';
     case CannotReportOwn = 'cannot_report_own';
+    case CannotRepostOwn = 'cannot_repost_own';
+    case RepostNotAllowed = 'repost_not_allowed';
     case NotAFollower = 'not_a_follower';
     case RateLimited = 'rate_limited';
     case InternalError = 'internal_error';
@@ -68,7 +70,7 @@ enum ProblemCode: string
             self::PayloadTooLarge => 413,
             self::UnsupportedMediaType => 415,
             self::ValidationFailed, self::ArtistRequired, self::ClipsNotAllowed, self::ClipOutOfRange,
-            self::CannotFollowSelf, self::CannotReportOwn, self::NotAFollower => 422,
+            self::CannotFollowSelf, self::CannotReportOwn, self::CannotRepostOwn, self::RepostNotAllowed, self::NotAFollower => 422,
             self::RateLimited => 429,
             self::InternalError => 500,
             self::CatalogUnavailable => 503,
@@ -117,6 +119,8 @@ enum ProblemCode: string
             self::ClipOutOfRange => 'Clip out of range',
             self::CannotFollowSelf => 'Cannot follow yourself',
             self::CannotReportOwn => 'Cannot report own content',
+            self::CannotRepostOwn => 'Cannot repost your own post',
+            self::RepostNotAllowed => 'Repost not allowed',
             self::NotAFollower => 'Not a follower',
             self::RateLimited => 'Too many requests',
             self::InternalError => 'Internal error',

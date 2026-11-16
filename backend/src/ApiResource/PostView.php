@@ -16,6 +16,7 @@ use App\State\Provider\FollowingFeedProvider;
 use App\State\Provider\ForYouFeedProvider;
 use App\State\Provider\PostListProvider;
 use App\State\Provider\PostProvider;
+use App\State\Provider\UserRepostsProvider;
 
 /** `Post` schema. Visibility: DATA_MODEL §9 (non-visible → 404 identical to an unknown id). */
 #[ApiResource(
@@ -35,6 +36,7 @@ use App\State\Provider\PostProvider;
         new Get(uriTemplate: '/posts/{postId}', uriVariables: ['postId'], name: 'getPost', provider: PostProvider::class),
         new Delete(uriTemplate: '/posts/{postId}', uriVariables: ['postId'], name: 'deletePost', read: false, deserialize: false, output: false, processor: DeletePostProcessor::class),
         new Get(uriTemplate: '/users/{username}/posts', uriVariables: ['username'], name: 'listUserPosts', output: PostPage::class, provider: PostListProvider::class),
+        new Get(uriTemplate: '/users/{username}/reposts', uriVariables: ['username'], name: 'listUserReposts', output: PostPage::class, provider: UserRepostsProvider::class),
         new Get(uriTemplate: '/feed/following', name: 'getFollowingFeed', output: PostPage::class, provider: FollowingFeedProvider::class),
         new Get(uriTemplate: '/feed/for-you', name: 'getForYouFeed', output: PostPage::class, provider: ForYouFeedProvider::class),
     ],
@@ -59,7 +61,12 @@ final readonly class PostView
         public int $likeCount,
         public int $commentCount,
         public int $viewCount,
+        public int $repostCount,
         public bool $likedByMe,
+        public bool $repostedByMe,
+        public bool $canRepost,
+        public ?UserSummary $repostedBy,
+        public ?string $repostedAt,
         public bool $isOwner,
         public string $createdAt,
     ) {

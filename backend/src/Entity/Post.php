@@ -86,6 +86,9 @@ class Post
     #[ORM\Column(options: ['default' => 0])]
     private int $viewCount = 0;
 
+    #[ORM\Column(options: ['default' => 0])]
+    private int $repostCount = 0;
+
     #[ORM\Column(type: Types::FLOAT, options: ['default' => 0])]
     private float $trendingScore = 0.0;
 
@@ -235,6 +238,11 @@ class Post
     public function getViewCount(): int
     {
         return $this->viewCount;
+    }
+
+    public function getRepostCount(): int
+    {
+        return $this->repostCount;
     }
 
     public function getTrendingScore(): float

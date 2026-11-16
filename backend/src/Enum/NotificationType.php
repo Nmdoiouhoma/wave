@@ -12,4 +12,5 @@ enum NotificationType: string
     case PlaylistLike = 'playlist_like';
     case PostLike = 'post_like';
     case Comment = 'comment';
+    case Repost = 'repost';
 }

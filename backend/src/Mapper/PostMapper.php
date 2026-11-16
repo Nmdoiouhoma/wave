@@ -14,6 +14,7 @@ use App\Enum\MediaStatus;
 use App\Repository\LikeRepository;
 use App\Repository\ListenGrantRepository;
 use App\Repository\PostRepository;
+use App\Repository\RepostRepository;
 use App\Security\TrackAudience;
 use App\Storage\ObjectStorage;
 use App\Stream\StreamTokenSigner;
@@ -31,6 +32,7 @@ final readonly class PostMapper
         private TrackMapper $tracks,
         private UserMapper $users,
         private LikeRepository $likes,
+        private RepostRepository $reposts,
         private PostRepository $posts,
         private ListenGrantRepository $grants,
         private StreamTokenSigner $signer,
@@ -47,17 +49,21 @@ final readonly class PostMapper
     }
 
     /**
-     * @param list<Post> $posts
+     * @param list<Post>                                             $posts
+     * @param array<string, array{by: User, at: \DateTimeImmutable}> $attribution post id => latest
+     *                                                                            repost (feed/following, user reposts)
      *
      * @return list<PostView>
      */
-    public function toViews(array $posts, ?User $viewer): array
+    public function toViews(array $posts, ?User $viewer, array $attribution = []): array
     {
         if ([] === $posts) {
             return [];
         }
         $ids = array_map(static fn (Post $p): Uuid => $p->getId(), $posts);
         $liked = $this->likes->likedAmong('post', $viewer, $ids);
+        $reposted = $this->reposts->repostedAmong($viewer, $ids);
+        $canRepost = $this->audience->canRepost($posts, $viewer);
         $hashtags = $this->posts->hashtagsOf($ids);
 
         $uniqueTracks = [];
@@ -80,7 +86,7 @@ final readonly class PostMapper
                 $trackId = $post->getTrack()->getId()->toRfc4122();
                 $grants[$trackId] = max($grants[$trackId] ?? 0, $post->getClipDurationMs());
             }
-            $views[] = $this->build($post, $viewer, $trackViews[$post->getTrack()->getId()->toRfc4122()], $clip, $hashtags[$id] ?? [], isset($liked[$id]));
+            $views[] = $this->build($post, $viewer, $trackViews[$post->getTrack()->getId()->toRfc4122()], $clip, $hashtags[$id] ?? [], isset($liked[$id]), isset($reposted[$id]), $canRepost[$id] ?? false, $attribution[$id] ?? null);
         }
         if (null !== $viewer) {
             $this->grants->grantMany($viewer->getId(), $grants);
@@ -97,8 +103,11 @@ final readonly class PostMapper
         return new StreamUrlView(rtrim($this->publicUrl, '/').'/api/v1/stream/'.$signed['token'], DateFormat::format($signed['expiresAt']));
     }
 
-    /** @param list<string> $hashtags */
-    private function build(Post $post, ?User $viewer, TrackView $track, ?StreamUrlView $clip, array $hashtags, bool $likedByMe): PostView
+    /**
+     * @param list<string>                                 $hashtags
+     * @param array{by: User, at: \DateTimeImmutable}|null $repost   latest repost attributed to this post
+     */
+    private function build(Post $post, ?User $viewer, TrackView $track, ?StreamUrlView $clip, array $hashtags, bool $likedByMe, bool $repostedByMe, bool $canRepost, ?array $repost): PostView
     {
         $visual = null;
         if (null !== $post->getVisualType() && null !== $post->getVisualKey()) {
@@ -122,7 +131,12 @@ final readonly class PostMapper
             likeCount: $post->getLikeCount(),
             commentCount: $post->getCommentCount(),
             viewCount: $post->getViewCount(),
+            repostCount: $post->getRepostCount(),
             likedByMe: $likedByMe,
+            repostedByMe: $repostedByMe,
+            canRepost: $canRepost,
+            repostedBy: null === $repost ? null : $this->users->toSummary($repost['by']),
+            repostedAt: null === $repost ? null : DateFormat::format($repost['at']),
             isOwner: $post->isAuthoredBy($viewer),
             createdAt: DateFormat::format($post->getCreatedAt()),
         );

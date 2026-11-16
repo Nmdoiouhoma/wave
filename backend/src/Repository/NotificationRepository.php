@@ -29,6 +29,7 @@ final readonly class NotificationRepository
         'playlist_like' => ['table' => 'playlist', 'owner' => 'owner_id', 'column' => 'playlist_id'],
         'post_like' => ['table' => 'post', 'owner' => 'author_id', 'column' => 'post_id'],
         'comment' => ['table' => 'post', 'owner' => 'author_id', 'column' => 'post_id'],
+        'repost' => ['table' => 'post', 'owner' => 'author_id', 'column' => 'post_id'],
     ];
 
     public function __construct(private Connection $db)
