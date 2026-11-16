@@ -347,7 +347,7 @@ Lots: **1** W-70 · **2** W-71 ∥ W-72 · **3** W-73 ∥ W-74 · **4** W-75 · 
 
 Contract (lot `p4-contract`): ADR 014 (Deezer catalogue, FB-06), ADR 015 (repost, FB-33), DATA_MODEL §9b + §18, `openapi.yaml` `/catalog/*`, `/discover`, `/posts/{postId}/repost`, `/users/{username}/reposts`, `/admin/dashboard/series`, `Post.repost*`/`canRepost`, `Me.features`, `NotificationType.repost`.
 **Launch order** (one backend agent at a time: PHPUnit drops the test database; front and media-infra run beside it):
-1. W-82 backend ∥ W-85 media-infra · 2. W-84 backend ∥ W-83 front · 3. W-80 backend ∥ W-86 front · 4. W-40 backend ∥ W-81 front · 5. W-41 backend ∥ W-42 media-infra · 6. W-87 backend · 7. W-43 front · 8. W-44 qa, then user test.
+1. W-82 backend ∥ W-85 media-infra · 2. W-84 backend ∥ W-83 front · 3. W-80 backend ∥ W-86 front · 4. W-40 backend ∥ W-81 front · 5. W-41 backend ∥ W-42 media-infra · 6. W-87 backend · 7. W-88 backend (supervision FB-34) ∥ W-43 front · 8. W-89 front · 9. W-44 qa, then user test.
 
 **W-80 · backend · W-32, W-45** Repost (ADR 015)
 - One new migration (SQL shown to the lead): `repost` + indexes, `post.repost_count`, notification CHECKs extended to `repost`; hand-written objects of CLAUDE.md never dropped.
@@ -398,13 +398,25 @@ Contract (lot `p4-contract`): ADR 014 (Deezer catalogue, FB-06), ADR 015 (repost
 **W-87 · backend · W-40, W-41** Discover home (FB-32)
 - `GET /discover` per contract: 4 sections always present, public-only (ADR 012 §6), tests for each exclusion (self, followed, suspended, restricted track, hidden post, empty hashtag) and the ordering rules; global parts cached 15 min, per-viewer hydration without N+1; EXPLAIN on demo seed in the handoff.
 
+**W-88 · backend · W-82** Admin supervision panel (FB-34)
+- `GET /admin/dashboard/supervision` per contract (`SupervisionState`): four signals (suspicious, logins, abuse, uploads) rolled worst-wins into four levels, `global` = worst, 24 hourly buckets (Europe/Paris, DST-aware, like `/series`), `updatedAt`.
+- No new table, no new collector: `suspicious` over open `security_alert` (§16, index `idx_security_alert_status`); `logins`/`abuse`/`uploads` over a sliding 1 h window on `activity_event` (index `(category, type, created_at)`); login rate = `auth.login_failed` / (`auth.login_failed` + `auth.login_succeeded`), **0 below the minimum-attempts constant**.
+- Thresholds in a `SupervisionThresholds` class (constants), unit-tested per boundary: each login-rate step (20/50/80 %, and the min-attempts floor), each alert severity → level (medium→alerte, high→critique, low→attention), the abuse/upload steps, and the global worst-wins rollup.
+- Role split: moderator caller → `global` and `hourly` null, `signals` empty (same split as `alerts`, ADR 013 §2); test both roles. Cache ~30 s server-side per role level. Aggregates only, no per-user data (test no personal field leaks).
+- DST bucket test (a 23 h / 25 h local day) and EXPLAIN of the 1 h-window and 24 h-bucket queries on 100 k events in the handoff.
+
+**W-89 · frontend · W-88** Supervision panel UI (FB-34)
+- Panel at the top of `/admin` matching the validated mock-up: health banner (worst-of `global` + icon + label), four status tiles (suspicious with severity chips, connections with failure-rate gauge, abuse/limits, uploads), **24 h bar chart** (bar height = `count`, bar colour = hourly `level`, y-axis max/mid/0, hover tooltip per bar), open-alerts list, 4-level legend.
+- Status palette from the dataviz skill (good/warning/serious/critical); colour **never alone** — always icon + label. Light and dark tokens (FB-27). Poll every 30 s (TanStack Query `refetchInterval`), pause when the tab is hidden.
+- Admin-only in substance: for a moderator the panel is hidden (empty `signals`, null `global`/`hourly`). Empty/zero and error states.
+
 **W-43 · frontend · W-41, W-87 (W-86 optional)** Discovery UI + fill empty pages (FB-32)
 - Mock-up first (light and dark, `docs/design/`), validated by the user before code.
 - Découvrir (`/discover`, W-38 shell): with an empty search box, `/discover` sections (trending tracks, genre chips, accounts to follow with inline follow, trending hashtags) + catalogue block when enabled; while typing: search page with type tabs, debounced input (300 ms); hashtag page.
 - Desktop side columns: Abonnements (≥ 1024 px) right column = accounts to follow + trending hashtags; Pour toi (≥ 1280 px) left column = same, keeping the FB-26 right panel; Abonnements with no follow shows the suggestions inline instead of an empty state. One shared query (`/discover`, stale 5 min).
 - Empty and error states for every list.
 
-**W-44 · qa-security · W-40, W-41, W-80, W-82, W-84, W-87** Phase 4 review
+**W-44 · qa-security · W-40, W-41, W-80, W-82, W-84, W-87, W-88** Phase 4 review
 - Search SQL injection / tsquery syntax fuzzing (no 500); query-cost check on 100-char inputs. EXPLAIN review of feed and search on seed data.
 - Repost: no audience leak (restricted post never reachable through a repost, after audience change, unfollow, suspension, hiding), counters and notifications under concurrency, rate limits.
 - Catalogue: SSRF/path injection through `externalId` and `q`, no Deezer audio through Wave, CSP limited to `*.dzcdn.net`, provider errors never 500, flag off hides everything. Admin series: role split, no per-user data.
