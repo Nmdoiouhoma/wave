@@ -17,7 +17,12 @@ const LEVEL_LABEL: Record<SupervisionLevel, string> = {
   alerte: 'Alerte',
   critique: 'Critique',
 };
-const LEVEL_ICON = { ok: CheckIcon, attention: AlertIcon, alerte: WarningIcon, critique: CriticalIcon };
+const LEVEL_ICON = {
+  ok: CheckIcon,
+  attention: AlertIcon,
+  alerte: WarningIcon,
+  critique: CriticalIcon,
+};
 const GLOBAL_TEXT: Record<SupervisionLevel, string> = {
   ok: 'Aucun signal ne demande ton attention.',
   attention: 'Au moins un signal est à surveiller.',
@@ -39,22 +44,46 @@ const SEVERITY_LEVEL: Record<AlertSeverity, SupervisionLevel> = {
 const fill = (l: SupervisionLevel) => `var(--status-${l})`;
 
 const TZ = 'Europe/Paris';
-const hourPart = new Intl.DateTimeFormat('fr-FR', { hour: 'numeric', hourCycle: 'h23', timeZone: TZ });
-const dayPart = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: TZ });
+const hourPart = new Intl.DateTimeFormat('fr-FR', {
+  hour: 'numeric',
+  hourCycle: 'h23',
+  timeZone: TZ,
+});
+const dayPart = new Intl.DateTimeFormat('fr-FR', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: TZ,
+});
 // ICU does not always append the "h" unit in French: read the hour part and write the unit ourselves.
 const hourOf = (iso: string) =>
   `${hourPart.formatToParts(new Date(iso)).find((p) => p.type === 'hour')?.value ?? ''} h`;
 const hourLong = (iso: string) => `${dayPart.format(new Date(iso))}, ${hourOf(iso)}`;
 const timeFmt = new Intl.DateTimeFormat('fr-FR', { timeStyle: 'short', timeZone: TZ });
-const dateTimeFmt = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short', timeZone: TZ });
+const dateTimeFmt = new Intl.DateTimeFormat('fr-FR', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: TZ,
+});
 const int = (n: number) => n.toLocaleString('fr-FR');
 const events = (n: number) => `${int(n)} événement${n > 1 ? 's' : ''}`;
 
 /** Status-coloured square holding a dark icon (fixed ink, readable on the four fills in both themes) + label. */
-function LevelBadge({ level, label, size = 20 }: { level: SupervisionLevel; label?: string; size?: number }) {
+function LevelBadge({
+  level,
+  label,
+  size = 20,
+}: {
+  level: SupervisionLevel;
+  label?: string;
+  size?: number;
+}) {
   const Icon = LEVEL_ICON[level];
   return (
-    <span data-level={level} className="text-fg inline-flex items-center gap-1.5 text-sm font-semibold">
+    <span
+      data-level={level}
+      className="text-fg inline-flex items-center gap-1.5 text-sm font-semibold"
+    >
       <span
         className="inline-flex shrink-0 items-center justify-center rounded-md text-[#16161a]"
         style={{ background: fill(level), width: size, height: size }}
@@ -66,9 +95,20 @@ function LevelBadge({ level, label, size = 20 }: { level: SupervisionLevel; labe
   );
 }
 
-function Box({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
+function Box({
+  title,
+  children,
+  className = '',
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <section className={`bg-surface border-line rounded-[20px] border p-5 ${className}`} aria-label={title}>
+    <section
+      className={`bg-surface border-line rounded-[20px] border p-5 ${className}`}
+      aria-label={title}
+    >
       <h3 className="text-muted mb-3 text-xs font-semibold tracking-wide uppercase">{title}</h3>
       {children}
     </section>
@@ -81,30 +121,49 @@ function Tile({ signal }: { signal: SupervisionSignal }) {
     <Box title={SIGNAL_TITLE[signal.key]}>
       <LevelBadge level={signal.level} />
       <p className="mt-2 text-2xl font-bold tabular-nums">
-        {signal.key === 'logins' ? (signal.measured ? `${pct} %` : 'Pas assez de tentatives') : int(signal.value)}
+        {signal.key === 'logins'
+          ? signal.measured
+            ? `${pct} %`
+            : 'Pas assez de tentatives'
+          : int(signal.value)}
       </p>
       <p className="text-muted text-xs">{signal.detail}</p>
       {signal.key === 'logins' && signal.measured && (
         // Failure-rate gauge; ticks at the backend thresholds (`thresholds`, fractions). The figure above carries the value.
-        <div className="bg-surface-2 relative mt-3 h-2 overflow-hidden rounded-full" aria-hidden="true">
-          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: fill(signal.level) }} />
+        <div
+          className="bg-surface-2 relative mt-3 h-2 overflow-hidden rounded-full"
+          aria-hidden="true"
+        >
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${pct}%`, background: fill(signal.level) }}
+          />
           {(signal.thresholds ?? []).map((t) => (
-            <span key={t} className="bg-muted absolute top-0 h-full w-px" style={{ left: `${t * 100}%` }} />
+            <span
+              key={t}
+              className="bg-muted absolute top-0 h-full w-px"
+              style={{ left: `${t * 100}%` }}
+            />
           ))}
         </div>
       )}
       {signal.key === 'suspicious' && signal.severities && (
         <ul className="mt-3 flex flex-wrap gap-1.5 text-xs">
-          {(['high', 'medium', 'low'] as const).map((sev) => [sev, signal.severities![sev]] as const).map(([sev, n]) => (
-            <li key={sev} className="bg-surface-2 flex items-center gap-1.5 rounded-full px-2 py-0.5">
-              <span
-                className="size-2 rounded-full"
-                style={{ background: fill(SEVERITY_LEVEL[sev]) }}
-                aria-hidden="true"
-              />
-              {SEVERITY_LABEL[sev]} <span className="font-semibold tabular-nums">{int(n)}</span>
-            </li>
-          ))}
+          {(['high', 'medium', 'low'] as const)
+            .map((sev) => [sev, signal.severities![sev]] as const)
+            .map(([sev, n]) => (
+              <li
+                key={sev}
+                className="bg-surface-2 flex items-center gap-1.5 rounded-full px-2 py-0.5"
+              >
+                <span
+                  className="size-2 rounded-full"
+                  style={{ background: fill(SEVERITY_LEVEL[sev]) }}
+                  aria-hidden="true"
+                />
+                {SEVERITY_LABEL[sev]} <span className="font-semibold tabular-nums">{int(n)}</span>
+              </li>
+            ))}
         </ul>
       )}
     </Box>
@@ -137,10 +196,22 @@ function Histogram({ hours }: { hours: SupervisionHour[] }) {
         </p>
       ) : (
         <>
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-hidden="true" onMouseLeave={() => setHover(null)}>
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            className="w-full"
+            aria-hidden="true"
+            onMouseLeave={() => setHover(null)}
+          >
             {[0, max / 2, max].map((t) => (
               <g key={t}>
-                <line x1={M.l} x2={W - M.r} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth="1" />
+                <line
+                  x1={M.l}
+                  x2={W - M.r}
+                  y1={y(t)}
+                  y2={y(t)}
+                  stroke="var(--line)"
+                  strokeWidth="1"
+                />
                 <text x={M.l - 5} y={y(t) + 3} textAnchor="end" fontSize="10" fill="var(--muted)">
                   {Math.round(t)}
                 </text>
@@ -151,7 +222,13 @@ function Histogram({ hours }: { hours: SupervisionHour[] }) {
               return (
                 <g key={h.hourStart} onMouseEnter={() => setHover(i)}>
                   {/* Full-height transparent hit area so empty hours also get a tooltip. */}
-                  <rect x={M.l + i * slot} y={M.t} width={slot} height={H - M.t - M.b} fill="transparent" />
+                  <rect
+                    x={M.l + i * slot}
+                    y={M.t}
+                    width={slot}
+                    height={H - M.t - M.b}
+                    fill="transparent"
+                  />
                   <rect
                     data-testid="supervision-bar"
                     x={M.l + i * slot + 2}
@@ -163,7 +240,13 @@ function Histogram({ hours }: { hours: SupervisionHour[] }) {
                     opacity={hover === null || hover === i ? 1 : 0.55}
                   />
                   {i % 6 === 0 && (
-                    <text x={M.l + i * slot + slot / 2} y={H - 5} fontSize="10" fill="var(--muted)" textAnchor="middle">
+                    <text
+                      x={M.l + i * slot + slot / 2}
+                      y={H - 5}
+                      fontSize="10"
+                      fill="var(--muted)"
+                      textAnchor="middle"
+                    >
                       {hourOf(h.hourStart)}
                     </text>
                   )}
@@ -171,7 +254,10 @@ function Histogram({ hours }: { hours: SupervisionHour[] }) {
               );
             })}
           </svg>
-          <p className="text-fg bg-surface-2 mt-1 min-h-6 rounded-lg px-2 py-1 text-xs" aria-hidden="true">
+          <p
+            className="text-fg bg-surface-2 mt-1 min-h-6 rounded-lg px-2 py-1 text-xs"
+            aria-hidden="true"
+          >
             {hovered
               ? `${hourLong(hovered.hourStart)} · ${events(hovered.count)} · ${LEVEL_LABEL[hovered.level]}`
               : 'Survole une barre pour le détail de l’heure (heure de Paris).'}
@@ -275,8 +361,8 @@ export function SupervisionPanel() {
           <p className="text-sm">{GLOBAL_TEXT[d.global]}</p>
           <p className="text-muted ml-auto text-xs">
             {q.isError ? 'Dernière actualisation en échec · ' : ''}
-            Mis à jour à <time dateTime={d.updatedAt}>{timeFmt.format(new Date(d.updatedAt))}</time>, actualisé
-            toutes les 30 secondes
+            Mis à jour à <time dateTime={d.updatedAt}>{timeFmt.format(new Date(d.updatedAt))}</time>
+            , actualisé toutes les 30 secondes
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

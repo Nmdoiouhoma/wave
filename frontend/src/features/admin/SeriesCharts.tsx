@@ -16,7 +16,11 @@ const W = 320;
 const H = 140;
 const M = { l: 30, r: 8, t: 8, b: 20 };
 
-const dayFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const dayFmt = new Intl.DateTimeFormat('fr-FR', {
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+});
 const dayLong = new Intl.DateTimeFormat('fr-FR', {
   weekday: 'long',
   day: 'numeric',
@@ -52,17 +56,37 @@ function SeriesChart({ title, days, lines }: { title: string; days: string[]; li
             {lines.map((l, i) => (
               <li key={l.key} className="flex items-center gap-1.5">
                 <svg width="22" height="8" aria-hidden="true">
-                  <line x1="1" x2="21" y1="4" y2="4" stroke={l.color} strokeWidth="2" strokeDasharray={DASHES[i]} />
+                  <line
+                    x1="1"
+                    x2="21"
+                    y1="4"
+                    y2="4"
+                    stroke={l.color}
+                    strokeWidth="2"
+                    strokeDasharray={DASHES[i]}
+                  />
                 </svg>
                 {l.label}
               </li>
             ))}
           </ul>
           <div className="relative">
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-hidden="true" onMouseLeave={() => setHover(null)}>
+            <svg
+              viewBox={`0 0 ${W} ${H}`}
+              className="w-full"
+              aria-hidden="true"
+              onMouseLeave={() => setHover(null)}
+            >
               {ticks.map((t) => (
                 <g key={t}>
-                  <line x1={M.l} x2={W - M.r} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth="1" />
+                  <line
+                    x1={M.l}
+                    x2={W - M.r}
+                    y1={y(t)}
+                    y2={y(t)}
+                    stroke="var(--line)"
+                    strokeWidth="1"
+                  />
                   <text x={M.l - 4} y={y(t) + 3} textAnchor="end" fontSize="9" fill="var(--muted)">
                     {Math.round(t)}
                   </text>
@@ -81,7 +105,14 @@ function SeriesChart({ title, days, lines }: { title: string; days: string[]; li
                 </text>
               ))}
               {hover !== null && (
-                <line x1={x(hover)} x2={x(hover)} y1={M.t} y2={H - M.b} stroke="var(--muted)" strokeWidth="1" />
+                <line
+                  x1={x(hover)}
+                  x2={x(hover)}
+                  y1={M.t}
+                  y2={H - M.b}
+                  stroke="var(--muted)"
+                  strokeWidth="1"
+                />
               )}
               {lines.map((l, li) => (
                 <g key={l.key}>
@@ -93,7 +124,14 @@ function SeriesChart({ title, days, lines }: { title: string; days: string[]; li
                     strokeDasharray={DASHES[li]}
                     points={l.values.map((v, i) => `${x(i)},${y(v)}`).join(' ')}
                   />
-                  <circle cx={x(hover ?? n - 1)} cy={y(l.values[hover ?? n - 1] ?? 0)} r="3.5" fill={l.color} stroke="var(--surface)" strokeWidth="2" />
+                  <circle
+                    cx={x(hover ?? n - 1)}
+                    cy={y(l.values[hover ?? n - 1] ?? 0)}
+                    r="3.5"
+                    fill={l.color}
+                    stroke="var(--surface)"
+                    strokeWidth="2"
+                  />
                 </g>
               ))}
               {days.map((d, i) => (
@@ -109,8 +147,12 @@ function SeriesChart({ title, days, lines }: { title: string; days: string[]; li
               ))}
             </svg>
             {hover !== null && (
-              <p className="text-fg bg-surface-2 mt-1 rounded-lg px-2 py-1 text-xs" aria-hidden="true">
-                {dayLong.format(parse(days[hover]!))} · {lines.map((l) => `${l.label} ${l.values[hover]}`).join(' · ')}
+              <p
+                className="text-fg bg-surface-2 mt-1 rounded-lg px-2 py-1 text-xs"
+                aria-hidden="true"
+              >
+                {dayLong.format(parse(days[hover]!))} ·{' '}
+                {lines.map((l) => `${l.label} ${l.values[hover]}`).join(' · ')}
               </p>
             )}
           </div>
@@ -151,7 +193,12 @@ function buildGroups(d: AdminDashboardSeries) {
     groups.push({
       title: 'Inscriptions et connexions',
       lines: [
-        { key: 'registrations', label: 'Inscriptions', color: c(1), values: d.activity.registrations },
+        {
+          key: 'registrations',
+          label: 'Inscriptions',
+          color: c(1),
+          values: d.activity.registrations,
+        },
         { key: 'logins', label: 'Connexions', color: c(2), values: d.activity.logins },
       ],
     });
@@ -162,7 +209,12 @@ function buildGroups(d: AdminDashboardSeries) {
         { key: 'tracks', label: 'Morceaux', color: c(1), values: d.content.tracks },
         { key: 'posts', label: 'Posts', color: c(2), values: d.content.posts },
         { key: 'comments', label: 'Commentaires', color: c(3), values: d.content.comments },
-        { key: 'rejected', label: 'Envois refusés', color: c(4), values: d.content.rejectedUploads },
+        {
+          key: 'rejected',
+          label: 'Envois refusés',
+          color: c(4),
+          values: d.content.rejectedUploads,
+        },
       ],
     });
   groups.push({
@@ -191,7 +243,11 @@ export function SeriesCharts() {
     <section className="flex flex-col gap-4" aria-label="Évolution">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold tracking-tight">Évolution</h2>
-        <div role="group" aria-label="Période" className="bg-surface-2 flex rounded-full p-0.5 text-sm">
+        <div
+          role="group"
+          aria-label="Période"
+          className="bg-surface-2 flex rounded-full p-0.5 text-sm"
+        >
           {(['7d', '30d'] as const).map((r) => (
             <button
               key={r}

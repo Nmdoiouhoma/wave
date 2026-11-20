@@ -27,7 +27,16 @@ function detail(over: Partial<AdminUserDetail> = {}): AdminUserDetail {
     suspendedAt: null,
     createdAt: '2026-10-01T10:00:00+00:00',
     lastLoginAt: null,
-    counts: { tracks: 1, posts: 2, comments: 3, playlists: 4, artists: 0, followers: 5, following: 6, reportsFiled: 0 },
+    counts: {
+      tracks: 1,
+      posts: 2,
+      comments: 3,
+      playlists: 4,
+      artists: 0,
+      followers: 5,
+      following: 6,
+      reportsFiled: 0,
+    },
     openReportCount: 0,
     openAlertCount: 0,
     lastSuspension: null,
@@ -80,7 +89,15 @@ describe('dashboard', () => {
     server.use(
       http.get(`${API}/admin/dashboard`, () =>
         json({
-          users: { total: 10, new24h: 1, new7d: 2, suspended: 0, unverified: 3, moderators: 1, admins: 1 },
+          users: {
+            total: 10,
+            new24h: 1,
+            new7d: 2,
+            suspended: 0,
+            unverified: 3,
+            moderators: 1,
+            admins: 1,
+          },
           moderation: { openReportTargets: 2, openReports: 4, hiddenContent24h: 0 },
           content: { tracks24h: 0, posts24h: 0, comments24h: 0, failedUploads24h: 0 },
           alerts: null,
@@ -103,7 +120,15 @@ describe('dashboard', () => {
 });
 
 describe('dashboard series (W-83)', () => {
-  const days7 = ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16'];
+  const days7 = [
+    '2026-11-10',
+    '2026-11-11',
+    '2026-11-12',
+    '2026-11-13',
+    '2026-11-14',
+    '2026-11-15',
+    '2026-11-16',
+  ];
   const z = [0, 1, 0, 2, 0, 3, 1];
   const series = (staff: boolean) => ({
     range: '7d',
@@ -153,7 +178,9 @@ describe('dashboard series (W-83)', () => {
     stub();
     server.use(http.get(`${API}/admin/dashboard/series`, () => json(series(false))));
     renderRoute(<DashboardPage />, { path: '/admin' });
-    expect(await screen.findByRole('region', { name: 'Signalements et masquages' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('region', { name: 'Signalements et masquages' }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Alertes par gravité' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'Contenus publiés' })).toBeNull();
   });
@@ -161,7 +188,10 @@ describe('dashboard series (W-83)', () => {
   it('empty and error states', async () => {
     await loginWithRoles(['ROLE_MODERATOR']);
     stub();
-    const zero = { ...series(false), moderation: { reports: [0, 0, 0, 0, 0, 0, 0], hidden: [0, 0, 0, 0, 0, 0, 0] } };
+    const zero = {
+      ...series(false),
+      moderation: { reports: [0, 0, 0, 0, 0, 0, 0], hidden: [0, 0, 0, 0, 0, 0, 0] },
+    };
     server.use(http.get(`${API}/admin/dashboard/series`, () => json(zero)));
     const { unmount } = renderRoute(<DashboardPage />, { path: '/admin' });
     expect(await screen.findByText('Aucune donnée sur la période.')).toBeInTheDocument();
@@ -193,18 +223,46 @@ describe('supervision panel (W-89)', () => {
     global,
     signals: [
       {
-        key: 'suspicious', level: global, value: zero ? 0 : 3, measured: true, thresholds: null,
+        key: 'suspicious',
+        level: global,
+        value: zero ? 0 : 3,
+        measured: true,
+        thresholds: null,
         severities: zero ? { high: 0, medium: 0, low: 0 } : { high: 1, medium: 2, low: 0 },
         detail: zero ? 'aucune alerte ouverte' : '3 alertes ouvertes',
       },
       {
-        key: 'logins', level: 'ok', value: zero ? 0 : 0.12, measured: !zero, severities: null, thresholds: [0.2, 0.5, 0.8],
+        key: 'logins',
+        level: 'ok',
+        value: zero ? 0 : 0.12,
+        measured: !zero,
+        severities: null,
+        thresholds: [0.2, 0.5, 0.8],
         detail: zero ? 'trop peu de tentatives (4 sur 1 h)' : '12 % d\u2019échecs sur 1 h',
       },
-      { key: 'abuse', level: 'ok', value: 0, measured: true, severities: null, thresholds: [1, 10, 50], detail: 'aucune limite atteinte' },
-      { key: 'uploads', level: 'ok', value: 0, measured: true, severities: null, thresholds: [1, 10, 50], detail: 'aucun envoi refusé' },
+      {
+        key: 'abuse',
+        level: 'ok',
+        value: 0,
+        measured: true,
+        severities: null,
+        thresholds: [1, 10, 50],
+        detail: 'aucune limite atteinte',
+      },
+      {
+        key: 'uploads',
+        level: 'ok',
+        value: 0,
+        measured: true,
+        severities: null,
+        thresholds: [1, 10, 50],
+        detail: 'aucun envoi refusé',
+      },
     ],
-    hourly: hourly((i) => (zero ? 0 : i), (i) => (zero || i < 23 ? 'ok' : global)),
+    hourly: hourly(
+      (i) => (zero ? 0 : i),
+      (i) => (zero || i < 23 ? 'ok' : global),
+    ),
     updatedAt: '2026-11-16T13:30:00+00:00',
   });
   const alertItem = {
@@ -222,7 +280,11 @@ describe('supervision panel (W-89)', () => {
     acknowledgedAt: null,
     note: null,
   };
-  const setup = async (staff: boolean, supervision: () => Response, items: unknown[] = [alertItem]) => {
+  const setup = async (
+    staff: boolean,
+    supervision: () => Response,
+    items: unknown[] = [alertItem],
+  ) => {
     await loginWithRoles([staff ? 'ROLE_ADMIN' : 'ROLE_MODERATOR']);
     server.use(
       http.get(`${API}/admin/dashboard`, () => json(dashboard(staff))),
@@ -242,12 +304,18 @@ describe('supervision panel (W-89)', () => {
     expect(within(panel).getByText('12 %')).toBeInTheDocument();
     expect(within(panel).getByText('3 alertes ouvertes')).toBeInTheDocument();
     const suspicious = within(panel).getByRole('region', { name: 'Activité suspecte' });
-    expect(within(suspicious).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+    expect(
+      within(suspicious)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([
       expect.stringMatching(/1$/),
       expect.stringMatching(/2$/),
       expect.stringMatching(/0$/),
     ]);
-    const gauge = within(panel).getByRole('region', { name: 'Connexions' }).querySelectorAll('span.w-px');
+    const gauge = within(panel)
+      .getByRole('region', { name: 'Connexions' })
+      .querySelectorAll('span.w-px');
     expect([...gauge].map((t) => (t as HTMLElement).style.left)).toEqual(['20%', '50%', '80%']);
     expect(within(panel).getAllByTestId('supervision-bar')).toHaveLength(24);
     const table = within(panel).getByRole('table', { hidden: true });
@@ -269,7 +337,12 @@ describe('supervision panel (W-89)', () => {
     let calls = 0;
     const hidden = () => {
       calls++;
-      return json({ global: null, signals: [], hourly: null, updatedAt: '2026-11-16T13:30:00+00:00' });
+      return json({
+        global: null,
+        signals: [],
+        hourly: null,
+        updatedAt: '2026-11-16T13:30:00+00:00',
+      });
     };
     const { unmount } = await setup(false, hidden);
     expect(await screen.findByRole('region', { name: 'Modération' })).toBeInTheDocument();
@@ -298,7 +371,9 @@ describe('supervision panel (W-89)', () => {
     expect(within(logins).getAllByText(/pas assez de tentatives/i).length).toBeGreaterThan(0);
     expect(within(logins).queryByText('0 %')).toBeNull();
     expect(logins.querySelector('span.w-px')).toBeNull();
-    expect(screen.getByText('Aucun événement notable sur les 24 dernières heures.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Aucun événement notable sur les 24 dernières heures.'),
+    ).toBeInTheDocument();
     expect(screen.queryAllByTestId('supervision-bar')).toHaveLength(0);
     expect(await screen.findByText('Aucune alerte ouverte.')).toBeInTheDocument();
   });
@@ -319,7 +394,10 @@ describe('user detail', () => {
         json(detail({ role: 'ROLE_MODERATOR', email: null, openAlertCount: null })),
       ),
     );
-    renderRoute(<UserDetailPage />, { path: '/admin/users/:userId', url: `/admin/users/${TARGET}` });
+    renderRoute(<UserDetailPage />, {
+      path: '/admin/users/:userId',
+      url: `/admin/users/${TARGET}`,
+    });
     expect(await screen.findByRole('heading', { name: 'Target' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Suspendre' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Changer le rôle' })).toBeNull();
@@ -339,7 +417,10 @@ describe('user detail', () => {
       }),
     );
     const user = userEvent.setup();
-    renderRoute(<UserDetailPage />, { path: '/admin/users/:userId', url: `/admin/users/${TARGET}` });
+    renderRoute(<UserDetailPage />, {
+      path: '/admin/users/:userId',
+      url: `/admin/users/${TARGET}`,
+    });
     await user.click(await screen.findByRole('button', { name: 'Suspendre' }));
     const confirm = screen.getByRole('button', { name: 'Confirmer' });
     expect(confirm).toBeDisabled();
@@ -357,7 +438,10 @@ describe('user detail', () => {
       http.put(`${API}/admin/users/${TARGET}/role`, () => problem(403, 'forbidden')),
     );
     const user = userEvent.setup();
-    renderRoute(<UserDetailPage />, { path: '/admin/users/:userId', url: `/admin/users/${TARGET}` });
+    renderRoute(<UserDetailPage />, {
+      path: '/admin/users/:userId',
+      url: `/admin/users/${TARGET}`,
+    });
     await user.click(await screen.findByRole('button', { name: 'Changer le rôle' }));
     await user.type(screen.getByLabelText(/Motif/), 'promotion');
     await user.click(screen.getByRole('button', { name: 'Confirmer' }));

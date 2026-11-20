@@ -32,7 +32,9 @@ function Row({ e }: { e: ActivityEvent }) {
   return (
     <li className="bg-surface border-line flex flex-col gap-1.5 rounded-2xl border p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={e.category === 'admin' ? 'warning' : e.category === 'abuse' ? 'danger' : 'neutral'}>
+        <Badge
+          tone={e.category === 'admin' ? 'warning' : e.category === 'abuse' ? 'danger' : 'neutral'}
+        >
           {CATEGORY_LABEL[e.category]}
         </Badge>
         <code className="text-sm font-medium">{e.type}</code>

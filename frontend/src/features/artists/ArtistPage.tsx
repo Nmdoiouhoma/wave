@@ -27,10 +27,7 @@ export function ArtistPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <header
-        className="-mx-4 -mt-4 flex flex-col items-center gap-4 px-4 pt-10 pb-6 text-center sm:flex-row sm:items-end sm:text-left md:-mx-8 md:px-8"
-        
-      >
+      <header className="-mx-4 -mt-4 flex flex-col items-center gap-4 px-4 pt-10 pb-6 text-center sm:flex-row sm:items-end sm:text-left md:-mx-8 md:px-8">
         <Avatar
           url={a.avatarUrl}
           name={a.name}

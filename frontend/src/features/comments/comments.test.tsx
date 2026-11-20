@@ -206,7 +206,9 @@ describe('comments sheet in the feed (W-36)', () => {
     expect(first).toHaveAttribute('aria-current', 'true');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Publier' }));
     await within(dialog).findByText('jk', { selector: 'p' });
-    expect(within(first).getByRole('button', { name: /^Commentaires, \d+$/ })).toHaveTextContent('4');
+    expect(within(first).getByRole('button', { name: /^Commentaires, \d+$/ })).toHaveTextContent(
+      '4',
+    );
     await act(async () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Fermer' }));
     });

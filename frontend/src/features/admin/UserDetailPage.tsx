@@ -35,7 +35,15 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 type Action = 'suspend' | 'unsuspend' | 'role';
 
 /** Confirmation dialog: a note of 1..500 characters is required before any action. */
-function ActionDialog({ user, action, onClose }: { user: AdminUserDetail; action: Action; onClose: () => void }) {
+function ActionDialog({
+  user,
+  action,
+  onClose,
+}: {
+  user: AdminUserDetail;
+  action: Action;
+  onClose: () => void;
+}) {
   const [note, setNote] = useState('');
   const [role, setRole] = useState<'ROLE_USER' | 'ROLE_MODERATOR'>(
     user.role === 'ROLE_MODERATOR' ? 'ROLE_USER' : 'ROLE_MODERATOR',
@@ -82,11 +90,16 @@ function ActionDialog({ user, action, onClose }: { user: AdminUserDetail; action
         <p className="text-muted text-sm">
           {action === 'suspend' &&
             'Le compte est déconnecté partout et ne peut plus se connecter tant qu’il est suspendu.'}
-          {action === 'unsuspend' && 'La personne pourra se reconnecter (aucune session n’est restaurée).'}
+          {action === 'unsuspend' &&
+            'La personne pourra se reconnecter (aucune session n’est restaurée).'}
           {action === 'role' && 'Le nouveau rôle s’applique à sa prochaine requête.'}
         </p>
         {action === 'role' && (
-          <SelectField label="Nouveau rôle" value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
+          <SelectField
+            label="Nouveau rôle"
+            value={role}
+            onChange={(e) => setRole(e.target.value as typeof role)}
+          >
             <option value="ROLE_USER">{ROLE_LABELS.ROLE_USER}</option>
             <option value="ROLE_MODERATOR">{ROLE_LABELS.ROLE_MODERATOR}</option>
           </SelectField>
@@ -105,7 +118,12 @@ function ActionDialog({ user, action, onClose }: { user: AdminUserDetail; action
           <Button variant="ghost" onClick={onClose}>
             Annuler
           </Button>
-          <Button type="submit" variant={action === 'suspend' ? 'danger' : 'primary'} disabled={!valid} loading={m.isPending}>
+          <Button
+            type="submit"
+            variant={action === 'suspend' ? 'danger' : 'primary'}
+            disabled={!valid}
+            loading={m.isPending}
+          >
             Confirmer
           </Button>
         </div>
@@ -174,9 +192,14 @@ export function UserDetailPage() {
           )}
         </div>
       )}
-      {u.id === me.id && <Alert tone="info">C’est ton compte : aucune action n’est possible sur toi-même.</Alert>}
+      {u.id === me.id && (
+        <Alert tone="info">C’est ton compte : aucune action n’est possible sur toi-même.</Alert>
+      )}
 
-      <section className="bg-surface border-line rounded-[20px] border px-5 py-2" aria-label="Compte">
+      <section
+        className="bg-surface border-line rounded-[20px] border px-5 py-2"
+        aria-label="Compte"
+      >
         <dl className="divide-line divide-y">
           {u.email !== null && (
             <Row label="E-mail">
@@ -201,7 +224,9 @@ export function UserDetailPage() {
               <>
                 {when(u.lastSuspension.at)}
                 {u.lastSuspension.by ? ` par @${u.lastSuspension.by.username}` : ''}
-                {u.lastSuspension.note ? <span className="text-muted block">« {u.lastSuspension.note} »</span> : null}
+                {u.lastSuspension.note ? (
+                  <span className="text-muted block">« {u.lastSuspension.note} »</span>
+                ) : null}
               </>
             ) : (
               'Aucune'
@@ -212,7 +237,10 @@ export function UserDetailPage() {
         </dl>
       </section>
 
-      <section className="bg-surface border-line rounded-[20px] border p-5" aria-label="Activité du compte">
+      <section
+        className="bg-surface border-line rounded-[20px] border p-5"
+        aria-label="Activité du compte"
+      >
         <dl className="grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
           {counts.map(([label, n]) => (
             <div key={label}>

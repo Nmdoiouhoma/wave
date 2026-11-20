@@ -37,7 +37,7 @@ export function PostPage() {
 
   if (query.isPending)
     return (
-      <div className="flex h-full items-center justify-center bg-bg text-fg">
+      <div className="bg-bg text-fg flex h-full items-center justify-center">
         <Spinner />
       </div>
     );

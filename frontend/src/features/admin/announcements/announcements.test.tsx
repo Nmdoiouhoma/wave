@@ -41,7 +41,10 @@ describe('announcement banner', () => {
   });
 
   it('shows again when the announcement was updated', async () => {
-    localStorage.setItem('wave.announcements.dismissed', JSON.stringify(['a1:2026-11-12T00:00:00Z']));
+    localStorage.setItem(
+      'wave.announcements.dismissed',
+      JSON.stringify(['a1:2026-11-12T00:00:00Z']),
+    );
     server.use(http.get(`${API}/announcements`, () => json({ items: [ann] })));
     renderRoute(<AnnouncementBanner />);
     expect(await screen.findByText('Maintenance')).toBeInTheDocument();

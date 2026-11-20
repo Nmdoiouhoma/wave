@@ -18,4 +18,3 @@ export function writeDismissed(keys: string[]) {
     /* storage unavailable: the banner just comes back next time */
   }
 }
-

@@ -5,7 +5,13 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import { adminApi, type AdminUserDetail, type SeriesRange, type AdminUserFilters, type SetRoleRequest } from './adminApi';
+import {
+  adminApi,
+  type AdminUserDetail,
+  type SeriesRange,
+  type AdminUserFilters,
+  type SetRoleRequest,
+} from './adminApi';
 
 export const adminKeys = {
   all: () => ['admin'] as const,

@@ -14,13 +14,21 @@ export const ROLE_LABELS: Record<AdminRole, string> = {
 };
 
 /** Suspend / unsuspend: moderator → plain users only; admin → users and moderators; never self. */
-export function canSuspend(viewer: Roles, viewerId: string, target: Pick<AdminUser, 'id' | 'role'>) {
+export function canSuspend(
+  viewer: Roles,
+  viewerId: string,
+  target: Pick<AdminUser, 'id' | 'role'>,
+) {
   if (viewerId === target.id || target.role === 'ROLE_ADMIN') return false;
   if (isAdmin(viewer)) return true;
   return isStaff(viewer) && target.role === 'ROLE_USER';
 }
 
 /** Role change: admin only, never self, never an admin. */
-export function canSetRole(viewer: Roles, viewerId: string, target: Pick<AdminUser, 'id' | 'role'>) {
+export function canSetRole(
+  viewer: Roles,
+  viewerId: string,
+  target: Pick<AdminUser, 'id' | 'role'>,
+) {
   return isAdmin(viewer) && viewerId !== target.id && target.role !== 'ROLE_ADMIN';
 }

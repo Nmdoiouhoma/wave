@@ -23,7 +23,10 @@ export function AdminLayout() {
             wave<span className="text-accent">.</span>
             <span className="text-muted ml-2 text-sm font-medium tracking-normal">admin</span>
           </span>
-          <Link to="/" className="text-muted hover:text-fg text-sm underline-offset-2 hover:underline">
+          <Link
+            to="/"
+            className="text-muted hover:text-fg text-sm underline-offset-2 hover:underline"
+          >
             Retour à Wave
           </Link>
         </div>

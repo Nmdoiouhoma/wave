@@ -33,7 +33,8 @@ function Stat({ label, value, to }: { label: string; value: number; to?: string 
 
 export function DashboardPage() {
   const q = useAdminDashboard();
-  if (q.isPending) return <Spinner label="Chargement du tableau de bord" className="mx-auto mt-16" />;
+  if (q.isPending)
+    return <Spinner label="Chargement du tableau de bord" className="mx-auto mt-16" />;
   if (q.isError) return <AdminError error={q.error} onRetry={() => void q.refetch()} />;
   const d = q.data;
   return (
@@ -48,13 +49,29 @@ export function DashboardPage() {
             <Stat label="Nouveaux (24 h)" value={d.users.new24h} />
             <Stat label="Nouveaux (7 j)" value={d.users.new7d} />
             <Stat label="Suspendus" value={d.users.suspended} to="/admin/users?status=suspended" />
-            <Stat label="E-mail non vérifié" value={d.users.unverified} to="/admin/users?status=unverified" />
-            <Stat label="Modérateurs" value={d.users.moderators} to="/admin/users?role=ROLE_MODERATOR" />
-            <Stat label="Administrateurs" value={d.users.admins} to="/admin/users?role=ROLE_ADMIN" />
+            <Stat
+              label="E-mail non vérifié"
+              value={d.users.unverified}
+              to="/admin/users?status=unverified"
+            />
+            <Stat
+              label="Modérateurs"
+              value={d.users.moderators}
+              to="/admin/users?role=ROLE_MODERATOR"
+            />
+            <Stat
+              label="Administrateurs"
+              value={d.users.admins}
+              to="/admin/users?role=ROLE_ADMIN"
+            />
           </Card>
         )}
         <Card title="Modération">
-          <Stat label="Cibles signalées" value={d.moderation.openReportTargets} to="/admin/reports" />
+          <Stat
+            label="Cibles signalées"
+            value={d.moderation.openReportTargets}
+            to="/admin/reports"
+          />
           <Stat label="Signalements ouverts" value={d.moderation.openReports} to="/admin/reports" />
           <Stat label="Masqués (24 h)" value={d.moderation.hiddenContent24h} />
         </Card>
@@ -82,9 +99,7 @@ export function DashboardPage() {
         )}
       </div>
       <SeriesCharts />
-      <p className="text-muted text-xs">
-        Chiffres mis à jour toutes les minutes au plus.
-      </p>
+      <p className="text-muted text-xs">Chiffres mis à jour toutes les minutes au plus.</p>
     </div>
   );
 }

@@ -12,11 +12,7 @@ import { errorMessage } from '@/lib/errorMessages';
 import { toast } from '@/stores/toast';
 import { AdminError } from '../AdminError';
 import { Badge } from '../moderation/parts';
-import {
-  announcementsApi,
-  type Announcement,
-  type AnnouncementLevel,
-} from './announcementsApi';
+import { announcementsApi, type Announcement, type AnnouncementLevel } from './announcementsApi';
 
 const dateTime = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -28,9 +24,13 @@ function toLocal(iso: string | null): string {
 }
 const toIso = (local: string) => new Date(local).toISOString();
 
-function status(a: Announcement, now = Date.now()): { label: string; tone: 'success' | 'neutral' | 'warning' } {
+function status(
+  a: Announcement,
+  now = Date.now(),
+): { label: string; tone: 'success' | 'neutral' | 'warning' } {
   if (new Date(a.startsAt).getTime() > now) return { label: 'Programmée', tone: 'warning' };
-  if (a.endsAt && new Date(a.endsAt).getTime() <= now) return { label: 'Terminée', tone: 'neutral' };
+  if (a.endsAt && new Date(a.endsAt).getTime() <= now)
+    return { label: 'Terminée', tone: 'neutral' };
   return { label: 'Active', tone: 'success' };
 }
 
@@ -267,7 +267,11 @@ export function AnnouncementsPage() {
               <Button variant="ghost" onClick={() => setDeleting(null)}>
                 Annuler
               </Button>
-              <Button variant="danger" loading={del.isPending} onClick={() => del.mutate(deleting.id)}>
+              <Button
+                variant="danger"
+                loading={del.isPending}
+                onClick={() => del.mutate(deleting.id)}
+              >
                 Supprimer
               </Button>
             </div>

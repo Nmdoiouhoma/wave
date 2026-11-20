@@ -48,7 +48,9 @@ export const adminRoute: RouteObject = {
     },
     {
       path: 'announcements',
-      lazy: async () => ({ Component: (await import('./announcements/AnnouncementsPage')).AnnouncementsPage }),
+      lazy: async () => ({
+        Component: (await import('./announcements/AnnouncementsPage')).AnnouncementsPage,
+      }),
     },
     { path: '*', element: <ComingSoon title="Page introuvable" /> },
   ],

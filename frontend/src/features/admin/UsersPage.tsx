@@ -43,7 +43,11 @@ export function UsersPage() {
       { replace: true },
     );
 
-  const list = useAdminUsers({ ...(q ? { q } : {}), ...(role ? { role } : {}), ...(status ? { status } : {}) });
+  const list = useAdminUsers({
+    ...(q ? { q } : {}),
+    ...(role ? { role } : {}),
+    ...(status ? { status } : {}),
+  });
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
@@ -61,7 +65,11 @@ export function UsersPage() {
           maxLength={180}
           placeholder={isAdmin(me.roles) ? 'Nom, pseudo ou e-mail exact' : 'Nom ou pseudo'}
         />
-        <SelectField label="Rôle" value={role ?? ''} onChange={(e) => setParam('role', e.target.value)}>
+        <SelectField
+          label="Rôle"
+          value={role ?? ''}
+          onChange={(e) => setParam('role', e.target.value)}
+        >
           <option value="">Tous</option>
           {ROLES.map((r) => (
             <option key={r} value={r}>
@@ -69,7 +77,11 @@ export function UsersPage() {
             </option>
           ))}
         </SelectField>
-        <SelectField label="Statut" value={status ?? ''} onChange={(e) => setParam('status', e.target.value)}>
+        <SelectField
+          label="Statut"
+          value={status ?? ''}
+          onChange={(e) => setParam('status', e.target.value)}
+        >
           <option value="">Tous</option>
           {STATUSES.map((s) => (
             <option key={s.value} value={s.value}>
@@ -93,7 +105,12 @@ export function UsersPage() {
                 to={`/admin/users/${encodeURIComponent(u.id)}`}
                 className="hover:bg-surface-2 flex min-h-16 items-center gap-3 px-4 py-3 first:rounded-t-[20px] last:rounded-b-[20px]"
               >
-                <Avatar url={u.avatarUrl} name={u.displayName} seed={u.id} className="size-10 text-sm" />
+                <Avatar
+                  url={u.avatarUrl}
+                  name={u.displayName}
+                  seed={u.id}
+                  className="size-10 text-sm"
+                />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{u.displayName}</span>
                   <span className="text-muted block truncate text-sm">

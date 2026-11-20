@@ -32,9 +32,7 @@ export function AnnouncementBanner() {
           role={a.level === 'warning' ? 'alert' : 'status'}
           className={cx(
             'border-b px-4 py-2.5 text-sm',
-            a.level === 'warning'
-              ? 'border-warning/20 bg-warning/10'
-              : 'border-line bg-surface-2',
+            a.level === 'warning' ? 'border-warning/20 bg-warning/10' : 'border-line bg-surface-2',
           )}
         >
           <div className="mx-auto flex max-w-5xl items-start gap-3">
