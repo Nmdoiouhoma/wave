@@ -11,6 +11,7 @@ export const adminKeys = {
   all: () => ['admin'] as const,
   dashboard: () => ['admin', 'dashboard'] as const,
   series: (range: SeriesRange) => ['admin', 'dashboard', 'series', range] as const,
+  supervision: () => ['admin', 'dashboard', 'supervision'] as const,
   users: (f: AdminUserFilters) => ['admin', 'users', f] as const,
   usersAll: () => ['admin', 'users'] as const,
   user: (id: string) => ['admin', 'user', id] as const,
@@ -30,6 +31,19 @@ export function useAdminSeries(range: SeriesRange) {
     queryKey: adminKeys.series(range),
     queryFn: () => adminApi.dashboardSeries(range),
     staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** FB-34: polled every 30 s; TanStack pauses the interval while the tab is hidden. */
+export const SUPERVISION_POLL_MS = 30_000;
+export function useAdminSupervision(enabled: boolean) {
+  return useQuery({
+    queryKey: adminKeys.supervision(),
+    queryFn: adminApi.supervision,
+    enabled,
+    refetchInterval: SUPERVISION_POLL_MS,
+    refetchIntervalInBackground: false,
     retry: false,
   });
 }

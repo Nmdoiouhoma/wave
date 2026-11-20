@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http } from 'msw';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -169,6 +169,126 @@ describe('dashboard series (W-83)', () => {
     server.use(http.get(`${API}/admin/dashboard/series`, () => problem(500, 'internal_error')));
     renderRoute(<DashboardPage />, { path: '/admin' });
     expect(await screen.findByRole('button', { name: /réessayer/i })).toBeInTheDocument();
+  });
+});
+
+describe('supervision panel (W-89)', () => {
+  type Level = 'ok' | 'attention' | 'alerte' | 'critique';
+  const dashboard = (staff: boolean) => ({
+    users: null,
+    moderation: { openReportTargets: 0, openReports: 0, hiddenContent24h: 0 },
+    content: null,
+    alerts: staff ? { open: 3, openHigh: 1, openMedium: 2, openLow: 0 } : null,
+    announcements: null,
+    generatedAt: '2026-11-16T13:30:00+00:00',
+  });
+  // 24 buckets from 2026-11-15T14:00Z; the last one starts at 13:00Z = 14 h in Paris.
+  const hourly = (count: (i: number) => number, level: (i: number) => Level) =>
+    Array.from({ length: 24 }, (_, i) => ({
+      hourStart: new Date(Date.UTC(2026, 10, 15, 14 + i)).toISOString(),
+      count: count(i),
+      level: level(i),
+    }));
+  const state = (global: Level, zero = false) => ({
+    global,
+    signals: [
+      { key: 'suspicious', level: global, value: zero ? 0 : 3, detail: zero ? 'aucune alerte ouverte' : '3 alertes ouvertes' },
+      { key: 'logins', level: 'ok', value: zero ? 0 : 0.12, detail: zero ? 'trop peu de tentatives' : '12 % d\u2019échecs sur 1 h' },
+      { key: 'abuse', level: 'ok', value: 0, detail: 'aucune limite atteinte' },
+      { key: 'uploads', level: 'ok', value: 0, detail: 'aucun envoi refusé' },
+    ],
+    hourly: hourly((i) => (zero ? 0 : i), (i) => (zero || i < 23 ? 'ok' : global)),
+    updatedAt: '2026-11-16T13:30:00+00:00',
+  });
+  const alertItem = {
+    id: '0192aaaa-0000-7000-8000-0000000000a1',
+    rule: 'token_reuse',
+    severity: 'high',
+    subjectUser: null,
+    subjectIpHash: null,
+    subjectTarget: null,
+    hitCount: 2,
+    firstSeenAt: '2026-11-16T12:00:00+00:00',
+    lastSeenAt: '2026-11-16T13:00:00+00:00',
+    status: 'open',
+    acknowledgedBy: null,
+    acknowledgedAt: null,
+    note: null,
+  };
+  const setup = async (staff: boolean, supervision: () => Response, items: unknown[] = [alertItem]) => {
+    await loginWithRoles([staff ? 'ROLE_ADMIN' : 'ROLE_MODERATOR']);
+    server.use(
+      http.get(`${API}/admin/dashboard`, () => json(dashboard(staff))),
+      http.get(`${API}/admin/dashboard/series`, () => problem(500, 'internal_error')),
+      http.get(`${API}/admin/dashboard/supervision`, supervision),
+      http.get(`${API}/admin/alerts`, () => json({ items, nextCursor: null })),
+    );
+    return renderRoute(<DashboardPage />, { path: '/admin' });
+  };
+
+  it('admin: banner, four tiles, 24 bars, table fallback, open alerts', async () => {
+    await setup(true, () => json(state('alerte')));
+    const panel = await screen.findByRole('region', { name: 'Supervision' });
+    expect(await within(panel).findByText('État global : Alerte')).toBeInTheDocument();
+    for (const name of ['Activité suspecte', 'Connexions', 'Abus et limites', 'Envois de fichiers'])
+      expect(within(panel).getByRole('region', { name })).toBeInTheDocument();
+    expect(within(panel).getByText('12 %')).toBeInTheDocument();
+    expect(within(panel).getByText('3 alertes ouvertes')).toBeInTheDocument();
+    expect(within(panel).getAllByTestId('supervision-bar')).toHaveLength(24);
+    const table = within(panel).getByRole('table', { hidden: true });
+    expect(within(table).getAllByRole('row', { hidden: true })).toHaveLength(25);
+    expect(within(table).getByText(/lundi 16 novembre.*14\sh/)).toBeInTheDocument();
+    const legend = within(panel).getByRole('list', { name: 'Légende des niveaux' });
+    expect(within(legend).getAllByRole('listitem')).toHaveLength(4);
+    expect(await within(panel).findByText('Réutilisation de jeton')).toBeInTheDocument();
+  });
+
+  it('hover on a bar shows its tooltip', async () => {
+    await setup(true, () => json(state('alerte')));
+    const bars = await screen.findAllByTestId('supervision-bar');
+    await userEvent.hover(bars[23]!);
+    expect(await screen.findByText(/14\sh · 23 événements · Alerte/)).toBeInTheDocument();
+  });
+
+  it('moderator: panel absent, whether by the dashboard split or by the null shape', async () => {
+    let calls = 0;
+    const hidden = () => {
+      calls++;
+      return json({ global: null, signals: [], hourly: null, updatedAt: '2026-11-16T13:30:00+00:00' });
+    };
+    const { unmount } = await setup(false, hidden);
+    expect(await screen.findByRole('region', { name: 'Modération' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Supervision' })).toBeNull();
+    expect(calls).toBe(0);
+    unmount();
+    await setup(true, hidden);
+    await waitFor(() => expect(calls).toBe(1));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Supervision' })).toBeNull());
+  });
+
+  it('critical level: icon and label, never colour alone', async () => {
+    await setup(true, () => json(state('critique')));
+    const label = await screen.findByText('État global : Critique');
+    expect(label).toHaveAttribute('data-level', 'critique');
+    expect(label.querySelector('svg')).not.toBeNull();
+    const tile = screen.getByRole('region', { name: 'Activité suspecte' });
+    const badge = within(tile).getByText('Critique');
+    expect(badge.querySelector('svg')).not.toBeNull();
+  });
+
+  it('zero state', async () => {
+    await setup(true, () => json(state('ok', true)), []);
+    expect(await screen.findByText('État global : Normal')).toBeInTheDocument();
+    expect(screen.getByText('Aucun événement notable sur les 24 dernières heures.')).toBeInTheDocument();
+    expect(screen.queryAllByTestId('supervision-bar')).toHaveLength(0);
+    expect(await screen.findByText('Aucune alerte ouverte.')).toBeInTheDocument();
+  });
+
+  it('error state', async () => {
+    await setup(true, () => problem(500, 'internal_error'));
+    const panel = await screen.findByRole('region', { name: 'Supervision' });
+    expect(await within(panel).findByRole('button', { name: /réessayer/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Modération' })).toBeInTheDocument();
   });
 });
 

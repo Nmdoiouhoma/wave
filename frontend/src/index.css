@@ -22,6 +22,11 @@
   --viz-high: #d03b3b;
   --viz-medium: #ec835a;
   --viz-low: #fab219;
+  /* FB-34 status palette (supervision). Fills only, always paired with icon + label; text keeps text colours. */
+  --status-ok: #0ca30c;
+  --status-attention: #fab219;
+  --status-alerte: #ec835a;
+  --status-critique: #d03b3b;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -42,6 +47,10 @@
   --viz-2: #d95926;
   --viz-3: #199e70;
   --viz-4: #c98500;
+    --status-ok: #0ca30c;
+    --status-attention: #fab219;
+    --status-alerte: #ec835a;
+    --status-critique: #d03b3b;
     color-scheme: dark;
   }
 }
@@ -62,6 +71,10 @@
   --viz-2: #d95926;
   --viz-3: #199e70;
   --viz-4: #c98500;
+  --status-ok: #0ca30c;
+  --status-attention: #fab219;
+  --status-alerte: #ec835a;
+  --status-critique: #d03b3b;
   color-scheme: dark;
 }
 

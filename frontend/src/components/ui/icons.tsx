@@ -298,3 +298,19 @@ export function ShieldIcon(p: IconProps) {
     </svg>
   );
 }
+export function WarningIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M12 4 2.5 20h19z" />
+      <path d="M12 10v4M12 17h.01" />
+    </svg>
+  );
+}
+export function CriticalIcon(p: IconProps) {
+  return (
+    <svg {...base(p)}>
+      <path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z" />
+      <path d="m9.5 9.5 5 5M14.5 9.5l-5 5" />
+    </svg>
+  );
+}

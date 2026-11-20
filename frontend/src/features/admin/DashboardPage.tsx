@@ -4,6 +4,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { AdminError } from './AdminError';
 import { useAdminDashboard } from './queries';
 import { SeriesCharts } from './SeriesCharts';
+import { SupervisionPanel } from './SupervisionPanel';
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -38,6 +39,8 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
+      {/* FB-34: admin-only in substance, same split as the `alerts` block (null for a moderator). */}
+      {d.alerts && <SupervisionPanel alerts={d.alerts} />}
       <div className="grid gap-4 md:grid-cols-2">
         {d.users && (
           <Card title="Utilisateurs">
