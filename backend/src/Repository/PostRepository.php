@@ -168,6 +168,34 @@ final class PostRepository extends ServiceEntityRepository
         return $qb->getQuery()->getResult();
     }
 
+    /**
+     * `/hashtags/{name}/posts` (W-41): posts carrying the hashtag and playable for $viewer, newest
+     * first, keyset on (created_at, id); fetches $limit + 1 rows.
+     *
+     * @param list<string|int|float|bool|null>|null $after
+     *
+     * @return list<Post>
+     */
+    public function findPlayablePageByHashtag(Uuid $hashtagId, User $viewer, ?array $after, int $limit): array
+    {
+        $qb = $this->withRelations()
+            ->andWhere('p.id IN (SELECT IDENTITY(ph.post) FROM App\Entity\PostHashtag ph WHERE ph.hashtag = :hashtag)')
+            ->setParameter('hashtag', $hashtagId, 'uuid')
+            ->andWhere(TrackAudience::postPlayableDql('p', 't', 'u'))
+            ->orderBy('p.createdAt', 'DESC')->addOrderBy('p.id', 'DESC')
+            ->setMaxResults($limit + 1);
+        TrackAudience::bindDql($qb, $viewer);
+        if (null !== $after) {
+            [$at, $id] = Keyset::timestampAndId($after);
+            $qb->andWhere('p.createdAt < :afterAt OR (p.createdAt = :afterAt AND p.id < :afterId)')
+                ->setParameter('afterAt', $at, Types::DATETIMETZ_IMMUTABLE)
+                ->setParameter('afterId', $id, 'uuid');
+        }
+
+        /* @var list<Post> */
+        return $qb->getQuery()->getResult();
+    }
+
     private function withRelations(): QueryBuilder
     {
         return $this->createQueryBuilder('p')

@@ -23,6 +23,28 @@ final class ArtistRepository extends ServiceEntityRepository
         return $this->findOneBy(['slug' => $slug]);
     }
 
+    /**
+     * @param list<string> $ids
+     *
+     * @return list<Artist> in the order of $ids (missing ones skipped), owner fetch-joined
+     */
+    public function findByIdsOrdered(array $ids): array
+    {
+        if ([] === $ids) {
+            return [];
+        }
+        /** @var list<Artist> $rows */
+        $rows = $this->createQueryBuilder('a')->addSelect('o')->join('a.owner', 'o')
+            ->andWhere('a.id IN (:ids)')->setParameter('ids', $ids)
+            ->getQuery()->getResult();
+        $byId = [];
+        foreach ($rows as $row) {
+            $byId[$row->getId()->toRfc4122()] = $row;
+        }
+
+        return array_values(array_filter(array_map(static fn (string $id): ?Artist => $byId[$id] ?? null, $ids)));
+    }
+
     /** @return list<Artist> oldest first */
     public function findByOwner(User $owner, bool $includeHidden): array
     {

@@ -9,9 +9,11 @@ use ApiPlatform\Metadata\Get;
 use App\State\Provider\SearchResultsProvider;
 
 /**
- * `SearchResults` schema. Phase 2: one section per request — `{"users": UserPage}` here (W-27),
- * `{"tracks": TrackPage}` in {@see TrackSearchResultsView} (W-29a); phase 4 adds the other
- * sections (absent ones are omitted, not null).
+ * `SearchResults` schema. This class carries the operation and the `users` section
+ * (`type=users`, W-27); the other shapes are returned by the same provider as separate classes so
+ * absent sections are omitted, not null: {@see TrackSearchResultsView}, {@see ArtistSearchResultsView},
+ * {@see PlaylistSearchResultsView}, {@see HashtagSearchResultsView}, and {@see SearchOverviewView}
+ * without `type` (W-41).
  */
 #[ApiResource(
     shortName: 'SearchResults',

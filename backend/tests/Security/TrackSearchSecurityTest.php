@@ -97,7 +97,6 @@ final class TrackSearchSecurityTest extends SecurityTestCase
         yield 'q 101' => ['type=tracks&q=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'];
         yield 'q blank' => ['type=tracks&q=%20%20%20'];
         yield 'q one char padded' => ['type=tracks&q=%20a%20'];
-        yield 'no type' => ['q=ab'];
         yield 'type empty' => ['type=&q=ab'];
         yield 'type case' => ['type=TRACKS&q=ab'];
         yield 'type sql' => ['type=tracks%27%3B--&q=ab'];

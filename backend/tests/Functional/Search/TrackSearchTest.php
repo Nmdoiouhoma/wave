@@ -119,7 +119,7 @@ final class TrackSearchTest extends WaveApiTestCase
         }
 
         $this->assertProblem($this->search($me, 'p'), 422, 'validation_failed');
-        $this->assertProblem($this->api('GET', '/api/v1/search?type=artists&q=paul', $me), 422, 'validation_failed');
+        $this->assertProblem($this->api('GET', '/api/v1/search?type=albums&q=paul', $me), 422, 'validation_failed');
         $this->assertProblem($this->api('GET', '/api/v1/search?type=tracks&q=paul'), 401, 'unauthenticated');
 
         $p1 = $this->json($this->search($me, 'paul', '&limit=3'));
