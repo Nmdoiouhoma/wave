@@ -2795,17 +2795,27 @@ export interface components {
     SupervisionSignal: {
       key: components['schemas']['SupervisionSignalKey'];
       level: components['schemas']['SupervisionLevel'];
-      /** @description Signal-specific headline figure. `suspicious`: number of open `security_alert` rows. `logins`: login failure rate over the last 1 h as a fraction 0–1 (0 when fewer than the minimum attempts). `abuse`: count of `abuse.rate_limited` in the last 1 h. `uploads`: count of `upload.rejected` in the last 1 h. */
+      /** @description Signal-specific headline figure. `suspicious`: number of open `security_alert` rows. `logins`: login failure rate over the last 1 h as a fraction 0–1 (0 when fewer than the minimum attempts, see `measured`). `abuse`: count of `abuse.rate_limited` in the last 1 h. `uploads`: count of `upload.rejected` in the last 1 h. */
       value: number;
-      /** @description Short human label for the tile (e.g. `3 alertes ouvertes`, `62 % d'échecs sur 1 h`, `trop peu de tentatives`). */
+      /** @description Short human label for the tile, in French (e.g. `3 alertes ouvertes`, `62 % d’échecs sur 1 h`, `trop peu de tentatives (4 sur 1 h)`). */
       detail: string;
+      /** @description False only for `logins` when the 1 h window holds fewer than `SupervisionThresholds::LOGIN_MIN_ATTEMPTS` (20) attempts — `value` is then 0 and `level` `ok` by rule, not a measured 0 %. Always true for the other signals. (W-88) */
+      measured: boolean;
+      /** @description `suspicious` only: open alerts per severity, same snapshot as `value` (sum = `value`). Null for the other signals. (W-88) */
+      severities: {
+        high: number;
+        medium: number;
+        low: number;
+      } | null;
+      /** @description Lower bounds (inclusive) of `attention`, `alerte`, `critique`, in the unit of `value` — the gauge/axis graduation, so the client never hard-codes them. `logins` [0.2, 0.5, 0.8]; `abuse` and `uploads` [1, 10, 50]. Null for `suspicious` (level from the worst open severity, not a scale). (W-88) */
+      thresholds: number[] | null;
     };
     SupervisionHour: {
       /** @description Start of the hourly bucket, Europe/Paris, DST-aware. */
       hourStart: components['schemas']['DateTime'];
       /** @description Notable events in the hour (open-alert first-seen + `auth.login_failed` + `abuse.rate_limited` + `upload.rejected`). Bar height. */
       count: number;
-      /** @description Worst severity of the hour. Bar colour. */
+      /** @description Worst level of the hour: severities of the open alerts first seen in it, and the logins/abuse/uploads thresholds applied to that hour's counts. Bar colour. */
       level: components['schemas']['SupervisionLevel'];
     };
     /** @description Zabbix-style rollup (FB-34). For a **moderator** caller `global` and `hourly` are null and `signals` is empty (the panel is admin-only in substance, same split as `alerts` on `/admin/dashboard`). */

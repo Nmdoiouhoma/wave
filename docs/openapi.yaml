@@ -3543,24 +3543,46 @@ components:
       enum: [suspicious, logins, abuse, uploads]
     SupervisionSignal:
       type: object
-      required: [key, level, value, detail]
+      required: [key, level, value, detail, measured, severities, thresholds]
       properties:
         key: { $ref: '#/components/schemas/SupervisionSignalKey' }
         level: { $ref: '#/components/schemas/SupervisionLevel' }
         value:
           type: number
           description: |
-            Signal-specific headline figure. `suspicious`: number of open `security_alert` rows. `logins`: login failure rate over the last 1 h as a fraction 0–1 (0 when fewer than the minimum attempts). `abuse`: count of `abuse.rate_limited` in the last 1 h. `uploads`: count of `upload.rejected` in the last 1 h.
+            Signal-specific headline figure. `suspicious`: number of open `security_alert` rows. `logins`: login failure rate over the last 1 h as a fraction 0–1 (0 when fewer than the minimum attempts, see `measured`). `abuse`: count of `abuse.rate_limited` in the last 1 h. `uploads`: count of `upload.rejected` in the last 1 h.
         detail:
           type: string
-          description: Short human label for the tile (e.g. `3 alertes ouvertes`, `62 % d'échecs sur 1 h`, `trop peu de tentatives`).
+          description: Short human label for the tile, in French (e.g. `3 alertes ouvertes`, `62 % d’échecs sur 1 h`, `trop peu de tentatives (4 sur 1 h)`).
+        measured:
+          type: boolean
+          description: False only for `logins` when the 1 h window holds fewer than `SupervisionThresholds::LOGIN_MIN_ATTEMPTS` (20) attempts — `value` is then 0 and `level` `ok` by rule, not a measured 0 %. Always true for the other signals. (W-88)
+        severities:
+          description: '`suspicious` only: open alerts per severity, same snapshot as `value` (sum = `value`). Null for the other signals. (W-88)'
+          oneOf:
+            - type: object
+              required: [high, medium, low]
+              properties:
+                high: { type: integer, minimum: 0 }
+                medium: { type: integer, minimum: 0 }
+                low: { type: integer, minimum: 0 }
+            - type: 'null'
+        thresholds:
+          description: |
+            Lower bounds (inclusive) of `attention`, `alerte`, `critique`, in the unit of `value` — the gauge/axis graduation, so the client never hard-codes them. `logins` [0.2, 0.5, 0.8]; `abuse` and `uploads` [1, 10, 50]. Null for `suspicious` (level from the worst open severity, not a scale). (W-88)
+          oneOf:
+            - type: array
+              minItems: 3
+              maxItems: 3
+              items: { type: number }
+            - type: 'null'
     SupervisionHour:
       type: object
       required: [hourStart, count, level]
       properties:
         hourStart: { $ref: '#/components/schemas/DateTime', description: 'Start of the hourly bucket, Europe/Paris, DST-aware.' }
         count: { type: integer, minimum: 0, description: 'Notable events in the hour (open-alert first-seen + `auth.login_failed` + `abuse.rate_limited` + `upload.rejected`). Bar height.' }
-        level: { $ref: '#/components/schemas/SupervisionLevel', description: 'Worst severity of the hour. Bar colour.' }
+        level: { $ref: '#/components/schemas/SupervisionLevel', description: 'Worst level of the hour: severities of the open alerts first seen in it, and the logins/abuse/uploads thresholds applied to that hour''s counts. Bar colour.' }
     SupervisionState:
       type: object
       required: [global, signals, hourly, updatedAt]

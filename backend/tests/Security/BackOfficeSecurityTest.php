@@ -28,6 +28,7 @@ final class BackOfficeSecurityTest extends SecurityTestCase
         // [method, path, admin only]
         $routes = [
             ['GET', '/api/v1/admin/dashboard', false],
+            ['GET', '/api/v1/admin/dashboard/supervision', false],
             ['GET', '/api/v1/admin/users', false],
             ['GET', '/api/v1/admin/users/'.$unknown, false],
             ['POST', '/api/v1/admin/users/'.$unknown.'/suspension', false],
