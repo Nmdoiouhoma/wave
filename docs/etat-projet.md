@@ -68,7 +68,8 @@ Contrat phase 4 posé le 13/11 (`473ddfc`, ADR 014 Deezer, ADR 015 repost, W-80.
 ## En cours (non commité)
 
 - **20/11 (mode normal, aucun agent sur Fable)** : commités `48066d7` W-89, `5b92637` W-41 recherche, `12f7274` W-88 supervision (600 tests back), `293a3bd` maquette W-43 validée (page centrée morceaux : mise en avant, rangées Pour toi / Nouveautés / En tendance jouables, comptes + hashtags en remplissage), `1176c22` contrat `/discover` (+ `forYouTracks` avec raison, `newTracks`), `056d4f7` W-89b (severities/measured/thresholds). Rien de poussé.
-- Pause de l'utilisateur pendant que tournent W-87 (backend `/discover`) et W-43 (front Découvrir, Sonnet, contre mocks). Au retour : lire `docs/handoff/w87-backend.md` et `w43-frontend.md`, `verif.sh back` puis `front`, commiter, pousser, puis repost dans le classement → W-42 seed → W-44 qa → test utilisateur.
+- **20/11 soir** : W-87 `/discover` backend (`4861c87`) et W-43 accueil Découvrir (`369b2f9`) commités, `style(front)` Prettier (`47f26b3`) à part ; verif all OK (610 back, 78 média, 290 front, audit). Tout poussé (avec le jeton gh de Nmdoiouhoma, le compte actif nakib-m reçoit un 403).
+- **W-43b** (`b964a88`) : recherche à onglets pendant la frappe + page `/hashtags/:name` (299 tests front). **repost-ranking** : poids de repost ADR 015 §6 dans Pour toi, filtre de visibilité aussi appliqué à la tendance globale (614 tests back). Ensuite : W-42 seed → W-44 qa → test utilisateur.
 
 ## Prochaines étapes
 
