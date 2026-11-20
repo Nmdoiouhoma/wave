@@ -6,7 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { AlertIcon, CheckIcon, CriticalIcon, WarningIcon } from '@/components/ui/icons';
 import { AdminError } from './AdminError';
-import type { AdminDashboard, SupervisionHour, SupervisionLevel, SupervisionSignal } from './adminApi';
+import type { SupervisionHour, SupervisionLevel, SupervisionSignal } from './adminApi';
 import { alertsApi, RULE_LABEL, SEVERITY_LABEL, type AlertSeverity } from './alerts/alertsApi';
 import { SUPERVISION_POLL_MS, useAdminSupervision } from './queries';
 
@@ -75,33 +75,27 @@ function Box({ title, children, className = '' }: { title: string; children: Rea
   );
 }
 
-function Tile({ signal, alerts }: { signal: SupervisionSignal; alerts: NonNullable<AdminDashboard['alerts']> }) {
+function Tile({ signal }: { signal: SupervisionSignal }) {
   const pct = Math.round(Math.min(Math.max(signal.value, 0), 1) * 100);
   return (
     <Box title={SIGNAL_TITLE[signal.key]}>
       <LevelBadge level={signal.level} />
       <p className="mt-2 text-2xl font-bold tabular-nums">
-        {signal.key === 'logins' ? `${pct} %` : int(signal.value)}
+        {signal.key === 'logins' ? (signal.measured ? `${pct} %` : 'Pas assez de tentatives') : int(signal.value)}
       </p>
       <p className="text-muted text-xs">{signal.detail}</p>
-      {signal.key === 'logins' && (
-        // Failure-rate gauge; ticks at the 20 / 50 / 80 % thresholds. The figure above carries the value.
+      {signal.key === 'logins' && signal.measured && (
+        // Failure-rate gauge; ticks at the backend thresholds (`thresholds`, fractions). The figure above carries the value.
         <div className="bg-surface-2 relative mt-3 h-2 overflow-hidden rounded-full" aria-hidden="true">
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: fill(signal.level) }} />
-          {[20, 50, 80].map((t) => (
-            <span key={t} className="bg-muted absolute top-0 h-full w-px" style={{ left: `${t}%` }} />
+          {(signal.thresholds ?? []).map((t) => (
+            <span key={t} className="bg-muted absolute top-0 h-full w-px" style={{ left: `${t * 100}%` }} />
           ))}
         </div>
       )}
-      {signal.key === 'suspicious' && (
+      {signal.key === 'suspicious' && signal.severities && (
         <ul className="mt-3 flex flex-wrap gap-1.5 text-xs">
-          {(
-            [
-              ['high', alerts.openHigh],
-              ['medium', alerts.openMedium],
-              ['low', alerts.openLow],
-            ] as const
-          ).map(([sev, n]) => (
+          {(['high', 'medium', 'low'] as const).map((sev) => [sev, signal.severities![sev]] as const).map(([sev, n]) => (
             <li key={sev} className="bg-surface-2 flex items-center gap-1.5 rounded-full px-2 py-0.5">
               <span
                 className="size-2 rounded-full"
@@ -255,7 +249,7 @@ function OpenAlerts() {
   );
 }
 
-export function SupervisionPanel({ alerts }: { alerts: NonNullable<AdminDashboard['alerts']> }) {
+export function SupervisionPanel() {
   const q = useAdminSupervision(true);
   const d = q.data;
   let body: ReactNode;
@@ -287,7 +281,7 @@ export function SupervisionPanel({ alerts }: { alerts: NonNullable<AdminDashboar
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {d.signals.map((s) => (
-            <Tile key={s.key} signal={s} alerts={alerts} />
+            <Tile key={s.key} signal={s} />
           ))}
         </div>
         <div className="grid gap-4 md:grid-cols-3">

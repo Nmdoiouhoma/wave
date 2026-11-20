@@ -192,10 +192,17 @@ describe('supervision panel (W-89)', () => {
   const state = (global: Level, zero = false) => ({
     global,
     signals: [
-      { key: 'suspicious', level: global, value: zero ? 0 : 3, detail: zero ? 'aucune alerte ouverte' : '3 alertes ouvertes' },
-      { key: 'logins', level: 'ok', value: zero ? 0 : 0.12, detail: zero ? 'trop peu de tentatives' : '12 % d\u2019échecs sur 1 h' },
-      { key: 'abuse', level: 'ok', value: 0, detail: 'aucune limite atteinte' },
-      { key: 'uploads', level: 'ok', value: 0, detail: 'aucun envoi refusé' },
+      {
+        key: 'suspicious', level: global, value: zero ? 0 : 3, measured: true, thresholds: null,
+        severities: zero ? { high: 0, medium: 0, low: 0 } : { high: 1, medium: 2, low: 0 },
+        detail: zero ? 'aucune alerte ouverte' : '3 alertes ouvertes',
+      },
+      {
+        key: 'logins', level: 'ok', value: zero ? 0 : 0.12, measured: !zero, severities: null, thresholds: [0.2, 0.5, 0.8],
+        detail: zero ? 'trop peu de tentatives (4 sur 1 h)' : '12 % d\u2019échecs sur 1 h',
+      },
+      { key: 'abuse', level: 'ok', value: 0, measured: true, severities: null, thresholds: [1, 10, 50], detail: 'aucune limite atteinte' },
+      { key: 'uploads', level: 'ok', value: 0, measured: true, severities: null, thresholds: [1, 10, 50], detail: 'aucun envoi refusé' },
     ],
     hourly: hourly((i) => (zero ? 0 : i), (i) => (zero || i < 23 ? 'ok' : global)),
     updatedAt: '2026-11-16T13:30:00+00:00',
@@ -234,6 +241,14 @@ describe('supervision panel (W-89)', () => {
       expect(within(panel).getByRole('region', { name })).toBeInTheDocument();
     expect(within(panel).getByText('12 %')).toBeInTheDocument();
     expect(within(panel).getByText('3 alertes ouvertes')).toBeInTheDocument();
+    const suspicious = within(panel).getByRole('region', { name: 'Activité suspecte' });
+    expect(within(suspicious).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      expect.stringMatching(/1$/),
+      expect.stringMatching(/2$/),
+      expect.stringMatching(/0$/),
+    ]);
+    const gauge = within(panel).getByRole('region', { name: 'Connexions' }).querySelectorAll('span.w-px');
+    expect([...gauge].map((t) => (t as HTMLElement).style.left)).toEqual(['20%', '50%', '80%']);
     expect(within(panel).getAllByTestId('supervision-bar')).toHaveLength(24);
     const table = within(panel).getByRole('table', { hidden: true });
     expect(within(table).getAllByRole('row', { hidden: true })).toHaveLength(25);
@@ -279,6 +294,10 @@ describe('supervision panel (W-89)', () => {
   it('zero state', async () => {
     await setup(true, () => json(state('ok', true)), []);
     expect(await screen.findByText('État global : Normal')).toBeInTheDocument();
+    const logins = screen.getByRole('region', { name: 'Connexions' });
+    expect(within(logins).getAllByText(/pas assez de tentatives/i).length).toBeGreaterThan(0);
+    expect(within(logins).queryByText('0 %')).toBeNull();
+    expect(logins.querySelector('span.w-px')).toBeNull();
     expect(screen.getByText('Aucun événement notable sur les 24 dernières heures.')).toBeInTheDocument();
     expect(screen.queryAllByTestId('supervision-bar')).toHaveLength(0);
     expect(await screen.findByText('Aucune alerte ouverte.')).toBeInTheDocument();

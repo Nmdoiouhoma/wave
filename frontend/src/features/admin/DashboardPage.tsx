@@ -40,7 +40,7 @@ export function DashboardPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
       {/* FB-34: admin-only in substance, same split as the `alerts` block (null for a moderator). */}
-      {d.alerts && <SupervisionPanel alerts={d.alerts} />}
+      {d.alerts && <SupervisionPanel />}
       <div className="grid gap-4 md:grid-cols-2">
         {d.users && (
           <Card title="Utilisateurs">
