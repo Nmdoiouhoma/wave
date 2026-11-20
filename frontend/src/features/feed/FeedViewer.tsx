@@ -40,6 +40,8 @@ export function FeedViewer({
   onNearEnd,
   initialIndex = 0,
   onActiveChange,
+  leftColumn,
+  rightColumn,
 }: {
   posts: Post[];
   header?: ReactNode;
@@ -48,6 +50,10 @@ export function FeedViewer({
   /** Post shown first, without animation (back navigation, FB-24 A5). */
   initialIndex?: number;
   onActiveChange?: (index: number) => void;
+  /** FB-32: suggestions column left of the feed (Pour toi, ≥ 1280 px). */
+  leftColumn?: ReactNode;
+  /** FB-32: replaces the track + comments panel (Abonnements, ≥ 1024 px). */
+  rightColumn?: ReactNode;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const playback = useRef<FeedPlayback | null>(null);
@@ -164,6 +170,7 @@ export function FeedViewer({
 
   return (
     <div className="bg-bg relative h-full lg:flex">
+      {leftColumn}
       <div className="relative h-full min-w-0 md:flex md:flex-col lg:flex-1">
         {header}
         <div
@@ -173,7 +180,7 @@ export function FeedViewer({
           aria-busy={false}
           tabIndex={0}
           onScroll={onScroll}
-          className="h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:border-line md:mx-auto md:my-4 md:min-h-0 md:w-full md:flex-1 md:max-w-[min(100%,calc((100dvh-5.5rem)*9/16))] md:rounded-[28px] md:border"
+          className="md:border-line h-full snap-y snap-mandatory [scrollbar-width:none] overflow-y-scroll overscroll-contain outline-none md:mx-auto md:my-4 md:min-h-0 md:w-full md:max-w-[min(100%,calc((100dvh-5.5rem)*9/16))] md:flex-1 md:rounded-[28px] md:border"
         >
           {posts.map((post, i) => (
             <FeedItem
@@ -198,7 +205,7 @@ export function FeedViewer({
               aria-label="Extrait précédent"
               disabled={active === 0}
               onClick={() => go(active - 1)}
-              className="flex size-11 items-center justify-center rounded-full bg-surface border-line text-fg hover:bg-surface-2 border disabled:opacity-30"
+              className="bg-surface border-line text-fg hover:bg-surface-2 flex size-11 items-center justify-center rounded-full border disabled:opacity-30"
             >
               <ChevronDownIcon size={22} className="rotate-180" />
             </button>
@@ -207,14 +214,15 @@ export function FeedViewer({
               aria-label="Extrait suivant"
               disabled={active >= count - 1}
               onClick={() => go(active + 1)}
-              className="flex size-11 items-center justify-center rounded-full bg-surface border-line text-fg hover:bg-surface-2 border disabled:opacity-30"
+              className="bg-surface border-line text-fg hover:bg-surface-2 flex size-11 items-center justify-center rounded-full border disabled:opacity-30"
             >
               <ChevronDownIcon size={22} />
             </button>
           </div>
         )}
       </div>
-      {wide && activePost && <PostSidePanel key={activePost.id} post={activePost} />}
+      {rightColumn ??
+        (wide && activePost && <PostSidePanel key={activePost.id} post={activePost} />)}
     </div>
   );
 }

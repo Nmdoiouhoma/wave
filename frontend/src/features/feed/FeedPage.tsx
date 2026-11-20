@@ -1,11 +1,13 @@
 import { Link } from 'react-router';
+import { useCurrentUser } from '@/api/queries/me';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import { cx } from '@/components/ui/cx';
 import { CompassIcon } from '@/components/ui/icons';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
 import { errorMessage } from '@/lib/errorMessages';
-import { DESKTOP_QUERY, useMediaQuery } from '@/lib/useMediaQuery';
+import { DESKTOP_QUERY, useMediaQuery, WIDE_QUERY, XL_QUERY } from '@/lib/useMediaQuery';
+import { FeedSideColumn, FollowSuggestionsInline } from '@/features/discover/Suggestions';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import type { FeedSource } from './feedApi';
 import { FeedViewer } from './FeedViewer';
@@ -39,8 +41,8 @@ function FeedTabs({ which, inline = false }: { which: FeedSource; inline?: boole
             className={cx(
               'rounded-full px-4 py-2 text-sm font-semibold transition',
               t.id === which
-                ? 'bg-white/20 text-white md:bg-fg md:text-bg'
-                : 'text-white/80 hover:text-white md:text-muted md:hover:text-fg',
+                ? 'md:bg-fg md:text-bg bg-white/20 text-white'
+                : 'md:text-muted md:hover:text-fg text-white/80 hover:text-white',
             )}
           >
             {t.label}
@@ -74,26 +76,42 @@ export function FeedPage({ which }: { which: FeedSource }) {
 function FeedSessionView({ which }: { which: FeedSource }) {
   const { session, initialIndex, setPosition, posts, query, loadMore, restart } =
     useFeedSession(which);
+  const noFollow = useCurrentUser().followingCount === 0;
+  const wide = useMediaQuery(WIDE_QUERY);
+  const xl = useMediaQuery(XL_QUERY);
   const header = <FeedTabs which={which} />;
   const rowHeader = <FeedTabs which={which} inline />;
 
   if (query.isPending || (query.isSuccess && !posts.length && query.hasNextPage))
     return (
-      <div className="relative flex h-full items-center justify-center bg-bg text-fg">
+      <div className="bg-bg text-fg relative flex h-full items-center justify-center">
         {header}
         <Spinner />
       </div>
     );
   if (query.isError && !posts.length)
     return (
-      <div className="relative flex h-full items-center justify-center bg-bg text-fg">
+      <div className="bg-bg text-fg relative flex h-full items-center justify-center">
         {header}
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
       </div>
     );
+  if (!posts.length && which === 'following' && noFollow)
+    // FB-32: no follow yet → the suggestions replace the empty state.
+    return (
+      <div className="bg-bg text-fg relative flex h-full lg:flex">
+        <div className="relative flex min-w-0 flex-1 flex-col items-center overflow-y-auto px-4 pt-16 pb-6 md:pt-4">
+          {header}
+          <div className="mt-6 flex w-full justify-center">
+            <FollowSuggestionsInline />
+          </div>
+        </div>
+        {wide && <FeedSideColumn side="right" withAccounts={false} />}
+      </div>
+    );
   if (!posts.length)
     return (
-      <div className="relative flex h-full items-center justify-center bg-bg text-fg px-6">
+      <div className="bg-bg text-fg relative flex h-full items-center justify-center px-6">
         {header}
         <EmptyState icon={<CompassIcon size={28} />} title={EMPTY[which].title}>
           <p>{EMPTY[which].body}</p>
@@ -135,6 +153,8 @@ function FeedSessionView({ which }: { which: FeedSource }) {
       onNearEnd={loadMore}
       initialIndex={initialIndex}
       onActiveChange={setPosition}
+      leftColumn={which === 'for-you' && xl ? <FeedSideColumn side="left" /> : undefined}
+      rightColumn={which === 'following' && wide ? <FeedSideColumn side="right" /> : undefined}
     />
   );
 }

@@ -5,7 +5,7 @@ import { Avatar } from '@/components/ui/Media';
 import { formatCount } from '@/lib/format';
 import { FollowButton } from './FollowButton';
 
-function UserRow({ user }: { user: UserListItem }) {
+function UserRow({ user, compact }: { user: UserListItem; compact?: boolean }) {
   const server = { following: user.isFollowedByMe, followersCount: user.followersCount };
   const state = useFollowState(user.username, server);
   return (
@@ -15,13 +15,14 @@ function UserRow({ user }: { user: UserListItem }) {
           url={user.avatarUrl}
           name={user.displayName}
           seed={user.id}
-          className="size-11 text-sm"
+          className={compact ? 'size-8 text-xs' : 'size-11 text-sm'}
         />
         <span className="min-w-0">
           <span className="block truncate font-semibold">{user.displayName}</span>
           <span className="text-muted block truncate text-xs">
-            @{user.username} · {formatCount(state.followersCount)} abonné
-            {state.followersCount > 1 ? 's' : ''}
+            @{user.username}
+            {!compact &&
+              ` · ${formatCount(state.followersCount)} abonné${state.followersCount > 1 ? 's' : ''}`}
           </span>
         </span>
       </Link>
@@ -32,11 +33,20 @@ function UserRow({ user }: { user: UserListItem }) {
   );
 }
 
-export function UserList({ users, label }: { users: UserListItem[]; label: string }) {
+export function UserList({
+  users,
+  label,
+  compact = false,
+}: {
+  users: UserListItem[];
+  label: string;
+  /** Narrow columns: smaller avatar, no follower count. */
+  compact?: boolean;
+}) {
   return (
     <ul aria-label={label} className="flex flex-col">
       {users.map((u) => (
-        <UserRow key={u.id} user={u} />
+        <UserRow key={u.id} user={u} compact={compact} />
       ))}
     </ul>
   );

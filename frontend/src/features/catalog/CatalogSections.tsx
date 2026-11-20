@@ -14,10 +14,12 @@ function Block({
   title,
   query,
   empty,
+  limit,
 }: {
   title: string;
   query: UseQueryResult<CatalogArtistList, unknown>;
   empty: string;
+  limit?: number;
 }) {
   const { data, error } = query;
   // `available:false` → the section is omitted (provider failure is not an error for the user).
@@ -40,7 +42,7 @@ function Block({
           )
         ) : query.data.items.length ? (
           <ul className="space-y-2">
-            {query.data.items.map((a) => (
+            {query.data.items.slice(0, limit).map((a) => (
               <CatalogArtistRow key={a.id} artist={a} />
             ))}
           </ul>
@@ -58,12 +60,13 @@ function Block({
 }
 
 /** Découvrir: « Artistes célèbres ». Only mounted when `me.features.catalog`. */
-export function FamousArtistsSection() {
+export function FamousArtistsSection({ limit }: { limit?: number }) {
   return (
     <Block
       title="Artistes célèbres"
       query={useCatalogChart(true)}
       empty="Aucun artiste pour l’instant."
+      limit={limit}
     />
   );
 }

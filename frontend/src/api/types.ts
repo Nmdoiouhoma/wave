@@ -77,3 +77,8 @@ export type CatalogArtist = S['CatalogArtist'];
 export type CatalogTrack = S['CatalogTrack'];
 export type CatalogArtistList = S['CatalogArtistList'];
 export type CatalogAttribution = S['CatalogAttribution'];
+
+// W-43 (Découvrir)
+export type DiscoverHome = S['DiscoverHome'];
+export type DiscoverForYouTrack = S['DiscoverForYouTrack'];
+export type Hashtag = S['Hashtag'];

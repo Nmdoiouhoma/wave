@@ -6,6 +6,7 @@ import type { PostPage as FeedPageData } from '@/api/types';
 import { json, problem } from '@/mocks/handlerUtils';
 import { server } from '@/mocks/server';
 import { playerStore } from '@/stores/player';
+import { sessionStore } from '@/stores/session';
 import { FakeAudio } from '@/test/fakeAudio';
 import { loginAs, renderRoute } from '@/test/utils';
 import { FeedPage } from './FeedPage';
@@ -321,5 +322,18 @@ describe('single post (W-34)', () => {
       url: '/posts/0192bbbb-0000-7000-8000-000000000099',
     });
     expect(await screen.findByText('Ce post n’est plus disponible')).toBeInTheDocument();
+  });
+});
+
+describe('Abonnements with no follow (FB-32)', () => {
+  it('shows the account suggestions instead of the empty state', async () => {
+    const me = sessionStore.getState().user!;
+    sessionStore.getState().setUser({ ...me, followingCount: 0 });
+    serveFeed('following', [{ items: [], nextCursor: null }]);
+    renderRoute(<FeedPage which="following" />, { path: '/following' });
+    expect(
+      await screen.findByRole('heading', { name: 'Ton fil d’abonnements est vide' }),
+    ).toBeInTheDocument();
+    expect(await screen.findAllByRole('button', { name: /^Suivre / })).not.toHaveLength(0);
   });
 });

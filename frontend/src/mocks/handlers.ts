@@ -12,6 +12,7 @@ import type {
   Visibility,
 } from '@/api/types';
 import { catalogHandlers } from './catalogHandlers';
+import { discoverHandlers } from './discoverHandlers';
 import { GENRES, type MockTrack, type MockUser } from './fixtures';
 import {
   artistVisibleTo,
@@ -181,6 +182,7 @@ export const handlers = [
   ...feedHandlers,
   ...notificationHandlers,
   ...catalogHandlers,
+  ...discoverHandlers,
   // ───────────── auth ─────────────
   http.post(`${API}/auth/register`, async ({ request }) => {
     tick();

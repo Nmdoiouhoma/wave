@@ -6,6 +6,7 @@ import type {
   CatalogArtist,
   CatalogArtistList,
   CreateReportRequest,
+  DiscoverHome,
   ReportReceipt,
   SearchResults,
   CloseFriendPage,
@@ -174,6 +175,10 @@ export function createWaveApi(client: ApiClient) {
       deleteAvatar: (slug: string) => request<undefined>('DELETE', `/artists/${enc(slug)}/avatar`),
       tracks: (slug: string, page: PageParams = {}) =>
         request<TrackPage>('GET', `/artists/${enc(slug)}/tracks`, { query: { ...page } }),
+    },
+    discover: {
+      /** W-43 / W-87: every section always present (possibly empty). */
+      home: () => request<DiscoverHome>('GET', '/discover'),
     },
     search: {
       /** Phase 2: `type=users` (W-27) and `type=tracks` (W-29a). */

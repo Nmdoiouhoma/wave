@@ -8,7 +8,8 @@ import { SearchIcon, UserIcon } from '@/components/ui/icons';
 import { InfiniteSentinel } from '@/components/ui/InfiniteSentinel';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState, ErrorState } from '@/components/ui/States';
-import { CatalogSearchBlock, FamousArtistsSection } from '@/features/catalog/CatalogSections';
+import { CatalogSearchBlock } from '@/features/catalog/CatalogSections';
+import { DiscoverHomeView } from '@/features/discover/DiscoverHomeView';
 import { UserList } from '@/features/social/UserList';
 import { retryHint } from '@/lib/errorMessages';
 import { useDebounced } from '@/lib/useDebounced';
@@ -32,7 +33,7 @@ export function SearchPage() {
   const tooShort = q.length < SEARCH_MIN_CHARS;
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className={tooShort ? 'mx-auto max-w-5xl' : 'mx-auto max-w-xl'}>
       <h1 className="text-2xl font-bold tracking-tight">Découvrir</h1>
       <form role="search" onSubmit={(e) => e.preventDefault()} className="relative mt-4">
         <label htmlFor="search-input" className="sr-only">
@@ -60,44 +61,51 @@ export function SearchPage() {
         Personnes uniquement pour l’instant · les morceaux et artistes arrivent bientôt.
       </p>
 
-      <div className="mt-4" aria-live="polite" aria-busy={search.isFetching}>
-        {tooShort ? (
-          <EmptyState icon={<SearchIcon size={28} />} title="Trouve des gens à suivre">
-            Tape au moins {SEARCH_MIN_CHARS} caractères.
-          </EmptyState>
-        ) : search.isPending ? (
-          <div className="text-muted flex justify-center py-8">
-            <Spinner label="Recherche en cours…" />
-          </div>
-        ) : search.isError ? (
-          isApiError(search.error) && search.error.code === 'rate_limited' ? (
-            <Alert tone="warning">
-              Tu as fait beaucoup de recherches d’un coup. {retryHint(search.error.retryAfter)}
-            </Alert>
-          ) : (
-            <ErrorState error={search.error} onRetry={() => void search.refetch()} />
-          )
-        ) : users.length ? (
-          <>
-            <p className="sr-only">
-              {users.length} résultat{users.length > 1 ? 's' : ''} affiché
-              {users.length > 1 ? 's' : ''}
-            </p>
-            <UserList users={users} label={`Résultats pour « ${q} »`} />
-            <InfiniteSentinel
-              hasMore={!!search.hasNextPage}
-              loading={search.isFetchingNextPage}
-              onLoadMore={() => void search.fetchNextPage()}
-            />
-          </>
+      {tooShort ? (
+        q.length === 0 ? (
+          <DiscoverHomeView />
         ) : (
-          <EmptyState icon={<UserIcon size={28} />} title={`Personne ne correspond à « ${q} »`}>
-            Vérifie l’orthographe ou essaie un autre nom.
-          </EmptyState>
-        )}
-      </div>
-      {catalog &&
-        (q.length >= SEARCH_MIN_CHARS ? <CatalogSearchBlock q={q} /> : <FamousArtistsSection />)}
+          <div className="mt-4">
+            <EmptyState icon={<SearchIcon size={28} />} title="Trouve des gens à suivre">
+              Tape au moins {SEARCH_MIN_CHARS} caractères.
+            </EmptyState>
+          </div>
+        )
+      ) : (
+        <div className="mt-4" aria-live="polite" aria-busy={search.isFetching}>
+          {search.isPending ? (
+            <div className="text-muted flex justify-center py-8">
+              <Spinner label="Recherche en cours…" />
+            </div>
+          ) : search.isError ? (
+            isApiError(search.error) && search.error.code === 'rate_limited' ? (
+              <Alert tone="warning">
+                Tu as fait beaucoup de recherches d’un coup. {retryHint(search.error.retryAfter)}
+              </Alert>
+            ) : (
+              <ErrorState error={search.error} onRetry={() => void search.refetch()} />
+            )
+          ) : users.length ? (
+            <>
+              <p className="sr-only">
+                {users.length} résultat{users.length > 1 ? 's' : ''} affiché
+                {users.length > 1 ? 's' : ''}
+              </p>
+              <UserList users={users} label={`Résultats pour « ${q} »`} />
+              <InfiniteSentinel
+                hasMore={!!search.hasNextPage}
+                loading={search.isFetchingNextPage}
+                onLoadMore={() => void search.fetchNextPage()}
+              />
+            </>
+          ) : (
+            <EmptyState icon={<UserIcon size={28} />} title={`Personne ne correspond à « ${q} »`}>
+              Vérifie l’orthographe ou essaie un autre nom.
+            </EmptyState>
+          )}
+        </div>
+      )}
+      {catalog && q.length >= SEARCH_MIN_CHARS && <CatalogSearchBlock q={q} />}
     </div>
   );
 }

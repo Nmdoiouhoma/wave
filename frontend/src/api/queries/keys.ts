@@ -21,5 +21,6 @@ export const keys = {
   catalogChart: () => ['catalog', 'chart'] as const,
   catalogSearch: (q: string) => ['catalog', 'search', q] as const,
   catalogArtist: (id: string) => ['catalog', 'artist', id] as const,
+  discover: () => ['discover'] as const,
   searchTracks: (q: string) => ['search', 'tracks', q] as const,
 };
