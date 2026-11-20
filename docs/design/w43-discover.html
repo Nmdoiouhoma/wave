@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wave — W-43 Découvrir (maquette)</title>
+<style>
+/* Jetons « Papier » repris de frontend/src/index.css (FB-27). */
+:root{--bg:#f7f7f4;--surface:#fff;--surface-2:#efefea;--line:#e4e4df;--text:#16161a;--muted:#5e5e66;--accent:#2b44ff;--accent-contrast:#fff;--like:#e5484d;--danger:#c62a2f;--page:#e9e9e4;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121214;--surface:#1b1b1f;--surface-2:#232328;--line:#2c2c32;--text:#f2f2ee;--muted:#a0a0a8;--accent:#8a97ff;--accent-contrast:#121214;--like:#ff6b6f;--danger:#ff6b6f;--page:#08080a;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#121214;--surface:#1b1b1f;--surface-2:#232328;--line:#2c2c32;--text:#f2f2ee;--muted:#a0a0a8;--accent:#8a97ff;--accent-contrast:#121214;--like:#ff6b6f;--danger:#ff6b6f;--page:#08080a;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--text);font:14px/1.4 'DM Sans Variable','DM Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.muted{color:var(--muted)}.small{font-size:12px}.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.row{display:flex;align-items:center;gap:12px}.grow{flex:1;min-width:0}
+
+/* Habillage de la planche (hors application) */
+.top{position:sticky;top:0;z-index:5;background:var(--page);border-bottom:1px solid var(--line);padding:12px 24px;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.top h1{font-size:18px;letter-spacing:-.02em}
+.top nav{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto}
+.top nav a{padding:6px 10px;border-radius:999px;color:var(--muted);font-size:13px}.top nav a:hover{color:var(--text)}
+.seg{display:flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--surface)}
+.seg button{border:0;background:transparent;border-radius:999px;padding:5px 12px;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--text);color:var(--bg)}
+.screen{padding:32px 24px 8px}
+.screen>h2{font-size:20px;letter-spacing:-.02em}
+.screen>p{color:var(--muted);max-width:900px;margin-top:4px}
+.frames{display:flex;gap:24px;align-items:flex-start;overflow-x:auto;padding:16px 0 20px}
+.frame{flex-shrink:0;background:var(--bg);border:1px solid var(--line);border-radius:16px;overflow:hidden;position:relative}
+.cap{font-size:12px;color:var(--muted);margin-bottom:6px}
+
+/* Application */
+.app{display:flex;min-height:100%}
+.rail{width:240px;flex-shrink:0;border-right:1px solid var(--line);padding:24px 16px;display:flex;flex-direction:column;gap:4px}
+.logo{font-weight:700;font-size:26px;letter-spacing:-.04em;padding:0 8px 24px}.logo span{color:var(--accent)}
+.rail a{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:999px;color:var(--muted);font-weight:500}
+.rail a[aria-current]{background:var(--text);color:var(--bg)}
+.rail .me{margin-top:auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px}
+.card h3,.sec h3{font-size:15px;font-weight:700;display:flex;align-items:baseline;gap:8px}
+.card h3 a,.sec h3 a{margin-left:auto;font-size:13px;font-weight:500;color:var(--accent)}
+.sec h3{font-size:18px;margin-bottom:10px}
+.btn{height:34px;padding:0 14px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-contrast);font-weight:500;font-size:13px;flex-shrink:0}
+.btn.out{background:transparent;color:var(--text);border:1px solid var(--line)}
+.btn.dark{background:var(--text);color:var(--bg)}
+.btn.sm{height:30px;padding:0 12px}
+.av{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;color:#16161a}
+.av.s{width:32px;height:32px;font-size:12px}
+.cov{width:48px;height:48px;border-radius:12px;flex-shrink:0}
+.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.list li{display:flex;align-items:center;gap:12px;padding:8px 0;min-width:0}
+.list.sep li+li{border-top:1px solid var(--line)}
+.rank{width:18px;text-align:center;color:var(--muted);font-weight:700;font-size:13px;flex-shrink:0}
+.t{font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);display:inline-flex;align-items:center;gap:6px;font-weight:500;white-space:nowrap}
+.chip.mine{border-color:var(--accent);color:var(--accent)}
+.chip .n{color:var(--muted);font-weight:400;font-size:12px}
+.search{position:relative}
+.search input{width:100%;height:48px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);padding:0 44px 0 46px;font:inherit;font-size:15px}
+.search svg{position:absolute;left:16px;top:14px;color:var(--muted)}
+.search .x{position:absolute;right:8px;top:8px;width:32px;height:32px;border-radius:50%;border:0;background:var(--line)}
+.tabs{display:flex;gap:4px;overflow-x:auto;margin:14px 0 6px}
+.tabs button{border:0;background:transparent;border-radius:999px;padding:8px 14px;font-weight:600;color:var(--muted);white-space:nowrap}
+.tabs button[aria-selected=true]{background:var(--text);color:var(--bg)}
+.heart{width:36px;height:36px;border:0;background:transparent;border-radius:50%;flex-shrink:0;color:var(--muted)}
+.heart.on{color:var(--like)}
+.attr{font-size:12px;color:var(--muted);margin-top:10px}.attr a{text-decoration:underline}
+.cat{display:flex;gap:16px;overflow-x:auto;padding-bottom:4px}
+.cat a{width:104px;flex-shrink:0;text-align:center}
+.cat .pic{width:104px;height:104px;border-radius:50%;margin-bottom:8px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;color:#16161a}
+.ucard{width:148px;flex-shrink:0;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:14px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.ucard .av{width:56px;height:56px;font-size:18px}
+.empty{text-align:center;padding:36px 16px}.empty .t{font-size:18px;font-weight:700}
+.sk{background:var(--surface-2);border-radius:8px;height:12px}
+.err{color:var(--danger)}
+/* Fil */
+.feed{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;padding:12px 16px 16px}
+.ftabs{display:flex;gap:4px;margin-bottom:12px}
+.ftabs a{border-radius:999px;padding:8px 16px;font-weight:600;color:var(--muted)}
+.ftabs a[aria-current]{background:var(--text);color:var(--bg)}
+.post{flex:1;aspect-ratio:9/16;max-width:100%;border-radius:28px;border:1px solid var(--line);position:relative;overflow:hidden;color:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:18px}
+.post .acts{position:absolute;right:12px;bottom:120px;display:flex;flex-direction:column;gap:14px;align-items:center;font-size:12px;font-weight:500}
+.post .acts span{width:44px;height:44px;border-radius:50%;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;margin-bottom:2px}
+.pill{display:inline-flex;align-items:center;gap:8px;background:rgba(0,0,0,.4);border-radius:999px;padding:6px 12px;font-size:13px;margin-top:10px;align-self:flex-start}
+.side{flex-shrink:0;padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.panel{width:384px;flex-shrink:0;border-left:1px solid var(--line);display:flex;flex-direction:column}
+.grid{display:grid;gap:12px}
+.tile{aspect-ratio:9/16;border-radius:16px;position:relative;overflow:hidden;color:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:10px;font-size:12px}
+.tile b{font-size:13px}
+.bnav{position:sticky;bottom:0;display:flex;justify-content:space-around;align-items:center;height:60px;background:var(--bg);border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
+.bnav b{color:var(--text)}.bnav .plus{background:var(--accent);color:var(--accent-contrast);width:40px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.hs{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
+
+/* W-43 v2 : Découvrir centré sur les morceaux */
+.art{--c2:color-mix(in srgb,var(--c1) 38%,#000);background:linear-gradient(145deg,var(--c1),var(--c2))}
+.a1{background:radial-gradient(circle at 78% 22%,rgba(255,255,255,.36) 0 17%,transparent 18%),linear-gradient(145deg,var(--c1),var(--c2))}
+.a2{background:repeating-linear-gradient(115deg,rgba(255,255,255,.15) 0 10px,transparent 10px 26px),linear-gradient(145deg,var(--c1),var(--c2))}
+.a3{background:radial-gradient(circle at 24% 76%,rgba(0,0,0,.3) 0 30%,transparent 31%),radial-gradient(circle at 72% 28%,rgba(255,255,255,.3) 0 13%,transparent 14%),linear-gradient(145deg,var(--c1),var(--c2))}
+.a4{background:conic-gradient(from 210deg at 30% 72%,var(--c1),var(--c2),var(--c1))}
+.a5{background:radial-gradient(ellipse at 50% 118%,rgba(255,255,255,.42) 0 36%,transparent 37%),linear-gradient(180deg,var(--c1),var(--c2))}
+.ic-pause{display:none}.is-playing .ic-pause{display:block}.is-playing .ic-play{display:none}
+.when-on{display:none}.is-playing .when-on{display:inline}.is-playing .when-off{display:none}
+.eq{display:inline-flex;align-items:flex-end;gap:2px;height:12px}
+.eq i{width:3px;height:100%;background:currentColor;border-radius:1px;transform-origin:bottom;animation:eq 1s ease-in-out infinite}
+.eq i:nth-child(1){transform:scaleY(.55);animation-delay:-.2s}
+.eq i:nth-child(2){transform:scaleY(1);animation-duration:.8s}
+.eq i:nth-child(3){transform:scaleY(.4);animation-duration:1.2s;animation-delay:-.5s}
+@keyframes eq{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}}
+@keyframes glow{50%{box-shadow:0 22px 56px -6px color-mix(in srgb,var(--c1) 85%,#000)}}
+@keyframes shim{to{background-position:-200% 0}}
+.rise{animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
+.hero.rise{animation-delay:.05s}.trow.rise{animation-delay:.15s}.trow.rise+.trow.rise{animation-delay:.25s}.trow.rise+.trow.rise+.trow.rise{animation-delay:.35s}
+.shim{background:linear-gradient(100deg,var(--surface-2) 30%,var(--line) 50%,var(--surface-2) 70%);background-size:200% 100%;animation:shim 1.4s linear infinite}
+.np{display:none;position:absolute;left:10px;bottom:10px;align-items:center;gap:6px;padding:4px 9px 4px 8px;border-radius:999px;background:var(--accent);color:var(--accent-contrast);font-size:12px;font-weight:700}
+.is-playing .np{display:inline-flex}
+.pb{position:absolute;right:10px;bottom:10px;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.95);color:#16161a;box-shadow:0 2px 10px rgba(0,0,0,.35);transition:opacity .2s,transform .2s}
+.pb svg{width:18px;height:18px}
+@media (hover:hover){.pb{opacity:0;transform:translateY(6px)}.cv:hover .pb,.cv:focus-visible .pb,.is-playing .pb{opacity:1;transform:none}}
+.trow{margin-top:28px}
+.rh{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.rh h2{font-size:20px;letter-spacing:-.02em;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.arrows{margin-left:auto;display:flex;gap:6px}
+.ar{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--surface);font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.ar:hover{background:var(--surface-2)}
+.hrow{list-style:none;margin:0;padding:6px 6px 12px;margin-inline:-6px;display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:thin}
+.tc{width:var(--tw,176px);flex-shrink:0;scroll-snap-align:start;min-width:0}
+.cv{display:block;position:relative;width:100%;aspect-ratio:1;border:0;padding:0;border-radius:16px;overflow:hidden;margin-bottom:10px;color:#fff;transition:transform .25s,box-shadow .25s}
+@media (hover:hover){.cv:hover{transform:translateY(-4px) scale(1.02);box-shadow:0 14px 26px -8px rgba(0,0,0,.4)}}
+.is-playing>.cv{box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--accent)}
+.tt{font-weight:600}
+.rk{position:absolute;left:8px;top:8px;min-width:26px;height:26px;padding:0 8px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.why{color:var(--accent);font-size:12px;line-height:1.3;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.why.big{font-size:14px;margin:0 0 22px;-webkit-line-clamp:unset}
+.hero{display:flex;gap:36px;align-items:center;padding:28px;border-radius:28px;border:1px solid var(--line);position:relative;overflow:hidden;background:radial-gradient(120% 160% at 0% 0%,color-mix(in srgb,var(--c1) 30%,transparent),transparent 65%),var(--surface)}
+.hero-cover{position:relative;flex-shrink:0;width:272px;aspect-ratio:1;border-radius:24px;cursor:pointer;color:#fff;box-shadow:0 18px 40px -12px color-mix(in srgb,var(--c1) 70%,#000);transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+.hero-cover:hover{transform:scale(1.03) rotate(-1deg)}
+.hero.is-playing .hero-cover{animation:glow 2.6s ease-in-out infinite}
+.hero .pb{width:72px;height:72px;right:auto;bottom:auto;left:50%;top:50%;margin:-36px 0 0 -36px;opacity:1;transform:none}
+.hero .pb svg{width:30px;height:30px}
+.hero-cover:hover .pb{transform:scale(1.08)}
+.hero .np{left:16px;bottom:16px}
+.hero-body{flex:1;min-width:0}
+.kick{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)}
+.h-title{font-size:42px;line-height:1.04;letter-spacing:-.035em;margin:8px 0 8px}
+.h-art{font-size:17px;margin-bottom:10px}
+.hacts{gap:12px}
+.btn-play{height:54px;padding:0 28px 0 22px;border:0;border-radius:999px;background:var(--accent);color:var(--accent-contrast);font-weight:700;font-size:16px;display:inline-flex;align-items:center;gap:10px;box-shadow:0 10px 22px -8px color-mix(in srgb,var(--accent) 75%,transparent);transition:transform .15s}
+.btn-play svg{width:20px;height:20px}
+.btn-play:hover{transform:translateY(-1px)}.btn-play:active{transform:scale(.98)}
+.hero .heart{width:54px;height:54px;border:1px solid var(--line);background:var(--surface);color:var(--text)}
+.hero.m{flex-direction:column;text-align:center;padding:20px;gap:18px;border-radius:24px}
+.hero.m .hero-cover{width:min(100%,240px)}
+.hero.m .hero-body{width:100%}
+.hero.m .h-title{font-size:28px}
+.hero.m .why.big{margin-bottom:16px}
+.hero.m .hacts{width:100%}.hero.m .btn-play{flex:1;justify-content:center}
+.mob .tc{--tw:144px}
+.mob .hrow{margin-inline:-16px;padding:6px 16px 12px;scroll-padding-inline:16px}
+.mob .pb{width:34px;height:34px}.mob .pb svg{width:16px;height:16px}
+.mob .hero .pb{width:64px;height:64px;margin:-32px 0 0 -32px}.mob .hero .pb svg{width:26px;height:26px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.cv:hover,.hero-cover:hover{transform:none}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>W-43 · Découvrir <span class="muted" style="font-weight:400">— maquette à valider</span></h1>
+  <div class="seg" role="group" aria-label="Thème">
+    <button type="button" data-th="light">Clair</button><button type="button" data-th="dark">Sombre</button><button type="button" data-th="">Système</button>
+  </div>
+  <nav aria-label="Écrans"><a href="#e1">1 Découvrir</a><a href="#e2">2 Recherche</a><a href="#e3">3 Hashtag</a><a href="#e4">4 Abonnements</a><a href="#e5">5 Pour toi</a><a href="#e6">6 Mobile</a><a href="#e7">États</a></nav>
+</header>
+
+<section class="screen" id="e1"><h2>1 · Découvrir, champ de recherche vide (bureau, 1280 px)</h2>
+<p>Un seul appel <code>GET /discover</code> remplit tout. Ordre : morceau mis en avant, genres, rangées « Pour toi », « Nouveautés », « En tendance », puis comptes à suivre et hashtags, puis « Artistes célèbres » (Deezer, non jouable). Les comptes et hashtags servent de remplissage : plus les rangées sont maigres, plus ils prennent de place (voir la 2e planche).</p>
+<div class="frames"><div><div class="cap">Catalogue riche — 1280 px (clique sur une pochette, flèches des rangées actives)</div><div class="frame" style="width:1280px" id="f1"></div></div><div><div class="cap">Catalogue pauvre — 1280 px (3 nouveautés, ni « Pour toi » ni tendance : comptes et hashtags remontent)</div><div class="frame" style="width:1280px" id="f1b"></div></div></div></section>
+
+<section class="screen" id="e2"><h2>2 · Recherche en cours de saisie</h2>
+<p>Dès 2 caractères, 300 ms après la dernière frappe. Onglet « Tout » : 5 résultats au plus par type, « Tout voir » ouvre l'onglet du type. À droite : aucun résultat.</p>
+<div class="frames"><div><div class="cap">Onglet « Tout » — 1280 px</div><div class="frame" style="width:1280px" id="f2"></div></div>
+<div><div class="cap">Aucun résultat — zone de contenu seule, 640 px</div><div class="frame" style="width:640px;padding:28px" id="f2b"></div></div></div></section>
+
+<section class="screen" id="e3"><h2>3 · Page d'un hashtag</h2>
+<p><code>GET /hashtags/{name}</code> (nom, nombre de posts) et <code>/hashtags/{name}/posts</code>, du plus récent au plus ancien. Un clic sur une vignette ouvre le post dans le lecteur de fil.</p>
+<div class="frames"><div><div class="cap">1280 px</div><div class="frame" style="width:1280px" id="f3"></div></div></div></section>
+
+<section class="screen" id="e4"><h2>4 · Bureau, fil « Abonnements » (1024 px et plus)</h2>
+<p>Colonne de droite : comptes à suivre et hashtags en tendance. Variante sans aucun abonnement : les suggestions prennent la place de l'état vide, au centre.</p>
+<div class="frames"><div><div class="cap">Avec abonnements — 1024 × 760</div><div class="frame" style="width:1024px;height:760px" id="f4"></div></div>
+<div><div class="cap">Sans aucun abonnement — 1024 × 760</div><div class="frame" style="width:1024px;height:760px" id="f4b"></div></div></div></section>
+
+<section class="screen" id="e5"><h2>5 · Bureau, fil « Pour toi » (1280 px et plus)</h2>
+<p>Colonne de gauche : les mêmes blocs, en version étroite. Le panneau de droite (morceau et commentaires, FB-26) ne change pas. Entre 1024 et 1279 px, la colonne de gauche disparaît.</p>
+<div class="frames"><div><div class="cap">1280 × 800</div><div class="frame" style="width:1280px;height:800px" id="f5"></div></div></div></section>
+
+<section class="screen" id="e6"><h2>6 · Mobile (390 px), Découvrir avec champ vide</h2>
+<p>Mise en avant sur une colonne, rangées à glisser du doigt (la pastille de lecture reste visible, pas de survol sur téléphone). Comptes et hashtags viennent après les morceaux. À droite : catalogue pauvre, les comptes passent en liste complète.</p>
+<div class="frames"><div><div class="cap">390 px</div><div class="frame" style="width:390px" id="f6"></div></div></div></section>
+
+<section class="screen" id="e7"><h2>États de chargement, d'erreur et de bloc vide</h2>
+<p>Valables pour la page entière et pour chaque bloc. Un bloc vide (rangée, comptes, hashtags, artistes) est masqué ; si tout est vide, un seul message s'affiche. Le morceau « en cours » reste visible (anneau, pastille « En cours », barres animées) ; la lecture elle-même est celle du lecteur existant.</p>
+<div class="frames" id="f7"></div></section>
+
+<script>
+(function(){
+var root=document.documentElement,btns=document.querySelectorAll('[data-th]');
+function setTh(v){if(v)root.dataset.theme=v;else delete root.dataset.theme;btns.forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.th===v))})}
+btns.forEach(function(b){b.onclick=function(){setTh(b.dataset.th)}});setTh('');
+
+function ic(d,s){return '<svg width="'+(s||20)+'" height="'+(s||20)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">'+d+'</svg>'}
+var I={home:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/>',plus:'<path d="M12 5v14M5 12h14"/>',lib:'<path d="M4 4v16M9 4v16M14 4l6 16"/>',user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/>',heart:'<path d="M12 21s-8-5-8-11a4.5 4.5 0 0 1 8-3 4.5 4.5 0 0 1 8 3c0 6-8 11-8 11z"/>',com:'<path d="M21 12a8 8 0 0 1-12 7l-5 1 1-4a8 8 0 1 1 16-4z"/>',rep:'<path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/>'};
+function n(x){return x>=1e6?(x/1e6).toFixed(1).replace('.',',')+' M':x>=1e4?(x/1e3).toFixed(1).replace('.',',')+' k':x.toLocaleString('fr-FR')}
+
+var U=[['Nour Haddad','nour',12480,'#C7F0DB'],['Yanis Belkacem','yanisbk',8930,'#FFD9C7'],['Sofia Marchetti','sofia.m',5412,'#D9DCFF'],['Amina Diallo','aminad',3207,'#FFE8A3'],['Théo Lambert','theo_lbt',1864,'#F7C9E0'],['Inès Roussel','inesr',942,'#BFE3F5']];
+var T=[['Minuit sur le port','Kalia','R&B',48210,'3:12',1,'#2B44FF'],['Béton rose','Sélim','Rap français',39870,'2:47',0,'#E5484D'],['Lagune','Mayra Sol','Afrobeats',31402,'3:05',0,'#12794F'],['Dernier métro','Oscar Vaillant','Électro',27655,'4:21',1,'#8A5A00'],['Chambre 12','Lou & les Ombres','Pop',21990,'3:33',0,'#B05CD6'],['Soleil froid','Kalia','R&B',18344,'2:58',0,'#1BAF7A'],['Périph nord','Sélim','Drill',15120,'2:31',0,'#3A3A44'],['Café serré','Noé Tran','Lo-fi',12876,'2:04',0,'#EB6834'],['Marée basse','Mayra Sol','Afrobeats',9450,'3:18',0,'#2A78D6'],['Vinyle rayé','Les Heures Creuses','Jazz',7312,'5:02',0,'#C98500']];
+var G=['Rap français','R&B','Afrobeats','Électro','Lo-fi','Pop','Drill','House','Jazz','Rock indé','Amapiano','Raï'];
+var H=[['nuitblanche',1284],['freestyle',962],['lofi',847],['prodmaison',615],['afrovibes',540],['studio',478],['reprise',391],['drillfr',344],['guitare',287],['dimanche',203]];
+var C=[['Gims',6912004,'#FFD9C7'],['Aya Nakamura',5120877,'#F7C9E0'],['Ninho',4803312,'#D9DCFF'],['Jul',4466190,'#C7F0DB'],['Tiakola',2190455,'#FFE8A3'],['Angèle',3877021,'#BFE3F5'],['Damso',4012650,'#E0D4F7'],['Stromae',5644318,'#FAD1B8']];
+function ini(s){return s.split(' ').map(function(w){return w[0]}).slice(0,2).join('')}
+
+function rail(a){var e=[['Pour toi','home','feed'],['Découvrir','search','disc'],['Créer','plus',''],['Bibliothèque','lib',''],['Profil','user',''],['Notifications','bell','']];
+ return '<nav class="rail" aria-label="Navigation principale"><div class="logo">wave<span>.</span></div>'+e.map(function(x){return '<a href="#"'+(x[2]===a?' aria-current="page"':'')+'>'+ic(I[x[1]])+x[0]+'</a>'}).join('')+'<div class="me row"><div class="av s" style="background:#FFD9C7">L</div><div><div class="t">Léa</div><div class="muted small">@lea</div></div></div></nav>'}
+
+function tracksMini(k){return '<ol class="list">'+T.slice(0,k).map(function(t,i){return '<li><span class="rank">'+(i+1)+'</span><div class="cov" style="width:40px;height:40px;border-radius:10px;background:'+t[6]+'"></div><div class="grow"><div class="t trunc">'+t[0]+'</div><div class="muted small trunc">'+t[1]+'</div></div></li>'}).join('')+'</ol>'}
+function follow(i,sm){return i===1?'<button class="btn out'+(sm?' sm':'')+'" aria-pressed="true">Suivi</button>':'<button class="btn'+(sm?' sm':'')+'" aria-pressed="false">Suivre</button>'}
+function users(k,sm){return '<ul class="list">'+U.slice(0,k).map(function(u,i){return '<li><div class="av'+(sm?' s':'')+'" style="background:'+u[3]+'">'+ini(u[0])+'</div><div class="grow"><div class="t trunc">'+u[0]+'</div><div class="muted small trunc">@'+u[1]+(sm?'':' · '+n(u[2])+' abonnés')+'</div></div>'+follow(i,sm)+'</li>'}).join('')+'</ul>'}
+function tagList(k){return '<ol class="list">'+H.slice(0,k).map(function(h){return '<li style="padding:6px 0"><a href="#e3" class="grow"><div class="t trunc">#'+h[0]+'</div><div class="muted small">'+n(h[1])+' posts</div></a></li>'}).join('')+'</ol>'}
+function tagChips(k){return '<div class="chips">'+H.slice(0,k).map(function(h){return '<a class="chip" href="#e3">#'+h[0]+' <span class="n">'+n(h[1])+'</span></a>'}).join('')+'</div>'}
+function genres(wrap){return '<div class="'+(wrap?'chips':'hs')+'">'+G.map(function(g,i){return '<span class="chip'+(i<3?' mine':'')+'">'+g+'</span>'}).join('')+'</div>'}
+function catalog(k){return '<div class="cat">'+C.slice(0,k).map(function(c){return '<a href="#"><div class="pic" style="background:'+c[2]+'">'+ini(c[0])+'</div><div class="t trunc">'+c[0]+'</div><div class="muted small">'+n(c[1])+' fans</div></a>'}).join('')+'</div><p class="attr"><a href="https://www.deezer.com">Données et extraits : Deezer</a></p>'}
+function sbox(v){return '<form class="search" role="search"><label><span style="position:absolute;left:-9999px">Rechercher</span>'+ic(I.search)+'<input type="search" value="'+v+'" placeholder="Morceaux, artistes, comptes, hashtags…"></label>'+(v?'<button type="button" class="x" aria-label="Effacer la recherche">×</button>':'')+'</form>'}
+function sec(t,body,more){return '<section class="sec" style="margin-top:28px"><h3>'+t+(more?'<a href="#">'+more+'</a>':'')+'</h3>'+body+'</section>'}
+function card(t,body,more){return '<section class="card"><h3 style="margin-bottom:6px">'+t+(more?'<a href="#e1">'+more+'</a>':'')+'</h3>'+body+'</section>'}
+function $(id,h){document.getElementById(id).innerHTML=h}
+
+// Pochettes fictives : dégradés CSS uniquement (aucune image, noms inventés)
+var IC={play:'<svg class="ic-play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',pause:'<svg class="ic-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4.5" height="14" rx="1.2"/><rect x="13.5" y="5" width="4.5" height="14" rx="1.2"/></svg>'};
+var EQ='<span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>';
+// [id, titre, artiste, genre, durée, couleur 1, couleur 2, raison, motif]
+var FY=[
+ ['fy1','Sable chaud','Mayra Sol','Afrobeats','3:21','#F2994A','#B5179E','Parce que tu écoutes Mayra Sol',1],
+ ['fy2','Nuit de verre','Kalia','R&B','3:44','#2B44FF','#0B0B3B','Parce que tu écoutes Kalia',3],
+ ['fy3','Toits de zinc','Sélim','Rap français','2:39','#E5484D','#33060A','Parce que tu écoutes du rap français',2],
+ ['fy4','Ondes courtes','Oscar Vaillant','Électro','4:02','#12A594','#062F2A','Parce que tu écoutes de l\'électro',4],
+ ['fy5','Pluie d\'avril','Noé Tran','Lo-fi','2:11','#8E7CC3','#2A1F4D','Parce que tu écoutes du lo-fi',5],
+ ['fy6','Feu de camp','Lou & les Ombres','Pop','3:27','#EB6834','#4A1706','Parce que tu aimes Lou & les Ombres',1],
+ ['fy7','Vert bouteille','Les Heures Creuses','Jazz','4:48','#1B7F5C','#05241A','Parce que tu écoutes du jazz',2],
+ ['fy8','Ligne 9','Sélim','Drill','2:28','#4B4B58','#0C0C10','Parce que tu écoutes Sélim',3]];
+var NW=[
+ ['nw1','Premier matin','Aïcha Lune','Pop','2:58','#FFB703','#FB5607','il y a 12 min',5],
+ ['nw2','Verre pilé','Dorian K','Rap français','2:44','#6D6875','#1B1B22','il y a 41 min',2],
+ ['nw3','Cap Sud','Mayra Sol','Afrobeats','3:09','#00B4D8','#023E8A','il y a 1 h',3],
+ ['nw4','Néon lent','Oscar Vaillant','Électro','5:12','#F72585','#3A0CA3','il y a 2 h',4],
+ ['nw5','Lettre morte','Lou & les Ombres','Rock indé','3:36','#9B2226','#1F0709','il y a 3 h',1],
+ ['nw6','Brume','Noé Tran','Lo-fi','1:58','#80B3A8','#1D3B36','il y a 5 h',5],
+ ['nw7','Dernier tour','Kalia','R&B','3:15','#7B2CBF','#10002B','hier',3],
+ ['nw8','Cuivres','Les Heures Creuses','Jazz','4:20','#CA6702','#3B1F00','hier',2]];
+var TR=T.map(function(t,i){return ['tr'+(i+1),t[0],t[1],t[2],t[4],t[6],'','',i%6]});
+function lbl(t,v){return v+' '+t[1]+', '+t[2]}
+function tcard(t,o){o=o||{};
+ return '<li class="tc" data-id="'+t[0]+'" style="--c1:'+t[5]+(t[6]?';--c2:'+t[6]:'')+'"><button type="button" class="cv art a'+t[8]+'" data-play data-off="'+lbl(t,'Lire')+'" data-on="'+lbl(t,'Mettre en pause')+'" aria-label="'+lbl(t,'Lire')+'">'+(o.rank?'<span class="rk">'+o.rank+'</span>':'')+'<span class="np">'+EQ+'En cours</span><span class="pb">'+IC.play+IC.pause+'</span></button><div class="tt trunc">'+t[1]+'</div><div class="muted small trunc">'+t[2]+'</div>'+(o.why?'<div class="why">'+o.why+'</div>':'')+(o.meta?'<div class="muted small trunc">'+o.meta+'</div>':'')+'</li>'}
+var FYr=FY.slice(1).map(function(t){return tcard(t,{why:t[7]})}).join('');
+var NWr=NW.map(function(t){return tcard(t,{meta:t[7]})}).join('');
+var TRr=TR.map(function(t,i){return tcard(t,{rank:i+1,meta:n(T[i][3])+' écoutes'})}).join('');
+function trow(name,sub,lis,arrows){return '<section class="trow rise" aria-label="'+name+'"><div class="rh"><h2>'+name+(sub?' <span class="muted small" style="font-weight:400;letter-spacing:0">'+sub+'</span>':'')+'</h2>'+(arrows?'<div class="arrows"><button type="button" class="ar" data-scroll="-1" aria-label="Défiler vers la gauche">‹</button><button type="button" class="ar" data-scroll="1" aria-label="Défiler vers la droite">›</button></div>':'')+'</div><ul class="hrow">'+lis+'</ul></section>'}
+function hero(t,kick,m){return '<section class="hero rise'+(m?' m':'')+'" data-id="'+t[0]+'" aria-label="Morceau mis en avant" style="--c1:'+t[5]+';--c2:'+(t[6]||'color-mix(in srgb,'+t[5]+' 38%,#000)')+'"><div class="hero-cover art a'+t[8]+'" data-proxy><span class="np">'+EQ+'En cours</span><span class="pb">'+IC.play+IC.pause+'</span></div><div class="hero-body"><p class="kick">'+kick+'</p><h2 class="h-title">'+t[1]+'</h2><p class="h-art"><b>'+t[2]+'</b><span class="muted"> · '+t[3]+' · '+t[4]+'</span></p>'+(t[7]?'<p class="why big">'+t[7]+'</p>':'<div style="height:12px"></div>')+'<div class="row hacts"><button type="button" class="btn-play" data-play data-off="Écouter '+t[1]+', '+t[2]+'" data-on="Pause '+t[1]+', '+t[2]+'" aria-label="Écouter '+t[1]+', '+t[2]+'">'+IC.play+IC.pause+'<span class="when-off">Écouter</span><span class="when-on">Pause</span></button><button type="button" class="heart" aria-label="Aimer" aria-pressed="false">'+ic(I.heart,22)+'</button></div></div></section>'}
+
+// 1 — Découvrir (bureau). poor = catalogue pauvre : rangées maigres, comptes et hashtags remontent pour combler
+function dpage(poor){var NW3=NW.slice(0,3).map(function(t){return tcard(t,{meta:t[7]})}).join('');
+ var rows=poor?trow('Nouveautés','les derniers morceaux publics',NW3,false):trow('Pour toi','d\'après tes écoutes',FYr,true)+trow('Nouveautés','les derniers morceaux publics',NWr,true)+trow('En tendance','cette semaine',TRr,true);
+ var fill=poor?'<div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:24px;margin-top:28px;align-items:start">'+card('Comptes à suivre',users(6))+card('Hashtags en tendance','<div style="margin-top:8px">'+tagChips(10)+'</div>')+'</div>'
+  :'<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;margin-top:40px;align-items:start">'+card('Comptes à suivre',users(5))+card('Hashtags en tendance','<div style="margin-top:8px">'+tagChips(10)+'</div>')+'</div>';
+ return '<div class="app">'+rail('disc')+'<main style="flex:1;min-width:0;padding:28px 40px 48px"><div style="max-width:960px;margin:0 auto"><h1 style="font-size:24px;letter-spacing:-.02em;margin-bottom:16px">Découvrir</h1>'+sbox('')+
+ '<div style="margin-top:20px">'+(poor?hero(NW[0],'Nouveau',false):hero(FY[0],'À la une · pour toi',false))+'</div>'+
+ sec('Genres',genres(true))+rows+fill+sec('Artistes célèbres',catalog(poor?4:8))+'</div></main></div>'}
+$('f1',dpage(false));$('f1b',dpage(true));
+
+// 2 — Recherche
+var res='<h1 style="font-size:24px;letter-spacing:-.02em;margin-bottom:16px">Découvrir</h1>'+sbox('nuit')+
+ '<div class="tabs" role="tablist" aria-label="Type de résultat">'+['Tout','Morceaux','Artistes','Comptes','Playlists','Hashtags'].map(function(t,i){return '<button role="tab" aria-selected="'+(i===0)+'">'+t+'</button>'}).join('')+'</div>'+
+ '<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 32px">'+
+ '<div>'+sec('Morceaux','<ol class="list sep">'+[['Nuit blanche à Belleville','Sélim','Rap français','2:54','#3A3A44',1],['Minuit sur le port','Kalia','R&B','3:12','#2B44FF',1],['Nuits d\'été','Mayra Sol','Afrobeats','3:26','#EB6834',0]].map(function(t){return '<li><div class="cov" style="background:'+t[4]+'"></div><div class="grow"><div class="t trunc">'+t[0]+'</div><div class="muted small trunc">'+t[1]+' · '+t[2]+'</div></div><span class="muted small">'+t[3]+'</span><button class="heart'+(t[5]?' on':'')+'" aria-label="Aimer">'+ic(I.heart)+'</button></li>'}).join('')+'</ol>','Tout voir')+
+ sec('Playlists','<ul class="list sep"><li><div class="cov" style="background:#1B1B1F;border:1px solid var(--line)"></div><div class="grow"><div class="t trunc">Nuits calmes</div><div class="muted small trunc">par Sofia Marchetti · 24 morceaux · 312 j\'aime</div></div></li><li><div class="cov" style="background:#B05CD6"></div><div class="grow"><div class="t trunc">Conduite de nuit</div><div class="muted small trunc">par Théo Lambert · 41 morceaux · 87 j\'aime</div></div></li></ul>','Tout voir')+'</div>'+
+ '<div>'+sec('Artistes','<ul class="list sep"><li><div class="av" style="background:#D9DCFF">NB</div><div class="grow"><div class="t trunc">Nuit Blême</div><div class="muted small">12 morceaux</div></div></li><li><div class="av" style="background:#FFE8A3">LN</div><div class="grow"><div class="t trunc">Les Nuits Fauves</div><div class="muted small">5 morceaux</div></div></li></ul>','Tout voir')+
+ sec('Comptes','<ul class="list sep"><li><div class="av" style="background:#C7F0DB">NU</div><div class="grow"><div class="t trunc">Nuit Urbaine</div><div class="muted small trunc">@nuit.urbaine · 2 310 abonnés</div></div><button class="btn">Suivre</button></li><li><div class="av" style="background:#F7C9E0">CN</div><div class="grow"><div class="t trunc">Camille Nuitier</div><div class="muted small trunc">@camnuit · 148 abonnés</div></div><button class="btn out">Suivi</button></li></ul>','Tout voir')+
+ sec('Hashtags','<div class="chips"><a class="chip" href="#e3">#nuitblanche <span class="n">1 284</span></a><a class="chip" href="#e3">#nuit <span class="n">318</span></a><a class="chip" href="#e3">#nuitdete <span class="n">57</span></a></div>')+'</div></div>'+
+ sec('Artistes célèbres','<div class="cat"><a href="#"><div class="pic" style="background:#E0D4F7">NB</div><div class="t trunc">Nuit Blanche</div><div class="muted small">18 402 fans</div></a><a href="#"><div class="pic" style="background:#BFE3F5">NI</div><div class="t trunc">Nuit Incolore</div><div class="muted small">96 115 fans</div></a></div><p class="attr"><a href="https://www.deezer.com">Données et extraits : Deezer</a></p>');
+$('f2','<div class="app">'+rail('disc')+'<main style="flex:1;padding:28px 40px 40px"><div style="max-width:960px;margin:0 auto">'+res+'</div></main></div>');
+$('f2b',sbox('xqzt')+'<div class="tabs" role="tablist">'+['Tout','Morceaux','Artistes','Comptes','Playlists','Hashtags'].map(function(t,i){return '<button role="tab" aria-selected="'+(i===0)+'">'+t+'</button>'}).join('')+'</div><div class="empty"><p class="t">Aucun résultat pour « xqzt »</p><p class="muted" style="margin-top:6px">Vérifie l\'orthographe ou essaie un mot plus court.</p></div><section class="sec"><h3 style="font-size:15px">En tendance en ce moment</h3>'+tagChips(6)+'</section>');
+
+// 3 — Hashtag
+var P=[['#2B44FF,#12122a','Session de 3 h du matin','nour',1248,'Minuit sur le port'],['#E5484D,#3a0d10','Premier jet, pas de retouche','yanisbk',934,'Béton rose'],['#12794F,#06231a','Vue du toit','sofia.m',702,'Lagune'],['#8A5A00,#241800','Le dernier métro, littéralement','aminad',655,'Dernier métro'],['#B05CD6,#24102e','Insomnie productive','theo_lbt',410,'Chambre 12'],['#2A78D6,#0a1c33','On ne dort pas ce soir','inesr',388,'Marée basse'],['#EB6834,#331407','Café numéro quatre','nour',301,'Café serré'],['#3A3A44,#0c0c10','Périph vide','yanisbk',256,'Périph nord'],['#1BAF7A,#062a1d','Fin de nuit','sofia.m',199,'Soleil froid'],['#C98500,#2a1c00','Le vinyle saute','aminad',143,'Vinyle rayé']];
+$('f3','<div class="app">'+rail('disc')+'<main style="flex:1;padding:28px 40px 40px"><div style="max-width:960px;margin:0 auto"><a href="#e1" class="muted">← Découvrir</a><div class="row" style="margin:14px 0 22px"><div style="width:72px;height:72px;border-radius:20px;background:var(--accent);color:var(--accent-contrast);font-size:36px;font-weight:700;display:flex;align-items:center;justify-content:center">#</div><div><h1 style="font-size:28px;letter-spacing:-.03em">#nuitblanche</h1><p class="muted">1 284 posts</p></div></div><div class="grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">'+P.map(function(p){return '<a class="tile" href="#" style="background:linear-gradient(160deg,'+p[0]+')"><b class="trunc">'+p[1]+'</b><span class="trunc">@'+p[2]+' · ♥ '+n(p[3])+'</span><span class="trunc" style="opacity:.8">♪ '+p[4]+'</span></a>'}).join('')+'</div><p class="muted small" style="text-align:center;margin-top:18px">La suite se charge en descendant.</p></div></main></div>');
+
+// Fil
+function post(a,cap,grad){return '<article class="post" style="background:linear-gradient(165deg,'+grad+')"><div class="acts"><div><span>'+ic(I.heart)+'</span>1,2 k</div><div><span>'+ic(I.com)+'</span>48</div><div><span>'+ic(I.rep)+'</span>12</div></div><div class="row"><div class="av s" style="background:#C7F0DB">'+a[0].toUpperCase()+'</div><b>'+a+'</b><span style="opacity:.8">· il y a 2 h</span></div><p style="margin-top:8px;max-width:80%">'+cap+'</p><span class="pill">♪ Minuit sur le port · Kalia</span></article>'}
+function ftabs(w){return '<nav class="ftabs" aria-label="Fils"><a href="#e5"'+(w?'':' aria-current="page"')+'>Pour toi</a><a href="#e4"'+(w?' aria-current="page"':'')+'>Abonnements</a></nav>'}
+$('f4','<div class="app" style="height:100%">'+rail('feed')+'<div class="feed">'+ftabs(1)+post('nour','La basse arrive à 0:40, attends-la. <b>#nuitblanche</b>','#2B44FF,#12122a')+'</div><aside class="side" style="width:320px" aria-label="Suggestions">'+card('Comptes à suivre',users(4),'Tout voir')+card('Hashtags en tendance',tagList(5),'Tout voir')+'</aside></div>');
+$('f4b','<div class="app" style="height:100%">'+rail('feed')+'<div class="feed">'+ftabs(1)+'<div style="width:100%;max-width:420px;margin-top:20px"><h1 style="font-size:22px;letter-spacing:-.02em">Ton fil d\'abonnements est vide</h1><p class="muted" style="margin:6px 0 16px">Suis quelques comptes : leurs posts et leurs reposts arriveront ici.</p><div class="card">'+users(6)+'</div><p class="muted small" style="text-align:center;margin-top:14px">Dès ton premier abonnement, le fil s\'affiche à la place de cette liste.</p></div></div><aside class="side" style="width:320px" aria-label="Suggestions">'+card('Hashtags en tendance',tagList(5),'Tout voir')+card('Morceaux en tendance',tracksMini(4),'Tout voir')+'</aside></div>');
+$('f5','<div class="app" style="height:100%">'+rail('feed')+'<aside class="side" style="width:232px;padding:16px 0 16px 16px" aria-label="Suggestions">'+card('Comptes à suivre',users(4,true),'')+card('Hashtags en tendance',tagList(5),'')+'<a href="#e1" class="small" style="color:var(--accent);padding:0 16px">Tout voir dans Découvrir</a></aside><div class="feed">'+ftabs(0)+post('nour','La basse arrive à 0:40, attends-la. <b>#nuitblanche</b>','#2B44FF,#12122a')+'</div>'+
+ '<aside class="panel" aria-label="Morceau et commentaires"><div class="row" style="padding:16px;border-bottom:1px solid var(--line)"><div class="cov" style="width:64px;height:64px;border-radius:14px;background:#2B44FF"></div><div class="grow"><div class="t trunc">Minuit sur le port</div><div class="muted trunc">Kalia</div></div></div><h3 style="padding:16px 16px 0;font-size:14px">Commentaires <span class="muted" style="font-weight:400">48</span></h3><ul class="list" style="padding:8px 16px;flex:1">'+[['amina','2 h','La basse à 0:40, incroyable','#FFD9C7'],['yanis','5 h','Ajouté à ma playlist du soir','#C7F0DB'],['sofia','hier','Tu sors la version longue quand ?','#D9DCFF']].map(function(c){return '<li style="align-items:flex-start"><div class="av s" style="background:'+c[3]+'"></div><div><div class="small"><b>'+c[0]+'</b> <span class="muted">· '+c[1]+'</span></div>'+c[2]+'</div></li>'}).join('')+'</ul><div style="padding:16px"><div class="search"><input type="text" placeholder="Écris quelque chose…" aria-label="Ton commentaire" style="padding-left:16px;height:44px;font-size:14px"></div></div></aside></div>');
+
+// 6 — Mobile
+function mob(o){var hr=o.poor?hero(NW[0],'Nouveau',true):o.noFY?hero(TR[0],'En tendance',true):hero(FY[0],'À la une · pour toi',true);
+ return '<div class="mob"><div style="padding:18px 16px 24px"><h1 style="font-size:24px;letter-spacing:-.02em;margin-bottom:14px">Découvrir</h1>'+sbox('')+
+ '<div style="margin-top:16px">'+hr+'</div><div style="margin:18px -16px 0;padding:0 16px">'+genres(false)+'</div>'+
+ (o.noFY||o.poor?'':trow('Pour toi','',FYr,false))+trow('Nouveautés','',o.poor?NW.slice(0,3).map(function(t){return tcard(t,{meta:t[7]})}).join(''):NWr,false)+(o.poor?'':trow('En tendance','',TRr,false))+
+ (o.poor?sec('Comptes à suivre','<div class="card">'+users(6,true)+'</div>'):sec('Comptes à suivre','<div class="hs">'+U.map(function(u,i){return '<div class="ucard"><div class="av" style="background:'+u[3]+'">'+ini(u[0])+'</div><div class="t trunc" style="max-width:100%">'+u[0]+'</div><div class="muted small trunc" style="max-width:100%">'+n(u[2])+' abonnés</div>'+follow(i,true)+'</div>'}).join('')+'</div>'))+
+ sec('Hashtags en tendance',tagChips(o.poor?10:8))+sec('Artistes célèbres',catalog(8))+'</div>'+
+ '<nav class="bnav" aria-label="Navigation principale"><span>Pour toi</span><b>Découvrir</b><span class="plus" aria-label="Créer">+</span><span>Bibliothèque</span><span>Profil</span></nav></div>'}
+$('f6',mob({}));
+
+// États
+// États
+function sk(){return '<ul class="list">'+[0,1,2].map(function(){return '<li><div class="av s" style="background:var(--surface-2)"></div><div class="grow"><div class="sk" style="width:60%"></div><div class="sk" style="width:35%;margin-top:6px"></div></div><div class="sk" style="width:64px;height:30px;border-radius:999px"></div></li>'}).join('')+'</ul>'}
+function shim(w,h,r){return '<div class="sk shim" style="width:'+w+';height:'+(h||12)+'px'+(r?';border-radius:'+r:'')+'"></div>'}
+var skRow='<ul class="hrow" style="--tw:120px;overflow:hidden">'+[0,1,2].map(function(){return '<li class="tc"><div class="cv shim" style="margin-bottom:10px"></div>'+shim('70%')+'<div style="height:6px"></div>'+shim('45%')+'</li>'}).join('')+'</ul>';
+$('f7',[['Page en chargement (un seul appel)','<div aria-busy="true" role="status" aria-label="Chargement de Découvrir"><div class="card" style="display:flex;flex-direction:column;gap:12px;align-items:center"><div class="shim" style="width:70%;aspect-ratio:1;border-radius:20px"></div>'+shim('60%',22)+shim('40%')+shim('100%',52,'999px')+'</div><div style="margin-top:20px">'+shim('34%',20)+'<div style="height:10px"></div>'+skRow+'</div></div>',360],
+ ['Page en erreur (GET /discover échoue)','<div class="card empty" role="alert"><p class="t">Impossible de charger Découvrir</p><p class="muted" style="margin-top:6px">Vérifie ta connexion puis réessaie.</p><button class="btn dark" style="margin-top:14px;height:40px">Réessayer</button></div>',300],
+ ['« Pour toi » vide (nouveau compte) : rangée masquée, la mise en avant reprend le n° 1 des tendances',mob({noFY:true}),390,0],
+ ['Catalogue pauvre (mobile) : 3 nouveautés seulement, comptes et hashtags en remplissage',mob({poor:true}),390,0],
+ ['Échec de lecture d\'un morceau','<ul class="hrow" style="--tw:150px;overflow:hidden">'+tcard(FY[1],{why:FY[1][7]})+'</ul><p class="small err" role="alert" style="margin-top:2px">Lecture impossible, réessaie.</p>',300],
+ ['Chargement d\'un bloc','<div class="card" aria-busy="true"><h3 style="margin-bottom:6px">Comptes à suivre</h3>'+sk()+'</div>'],
+ ['Erreur d\'un bloc','<div class="card" role="alert"><h3 style="margin-bottom:8px">Comptes à suivre</h3><p class="muted">Impossible de charger les suggestions.</p><button class="btn out sm" style="margin-top:10px">Réessayer</button></div>'],
+ ['Échec du bouton Suivre','<div class="card"><ul class="list"><li><div class="av s" style="background:#C7F0DB">NH</div><div class="grow"><div class="t trunc">Nour Haddad</div><div class="small err" role="alert">Abonnement impossible, réessaie.</div></div><button class="btn sm">Suivre</button></li></ul></div>'],
+ ['Découvrir entièrement vide','<div class="card empty"><p class="t">Rien à découvrir pour l\'instant</p><p class="muted" style="margin-top:6px">Publie le premier extrait, ou reviens un peu plus tard.</p><button class="btn dark" style="margin-top:14px;height:40px">Créer un post</button></div>'],
+ ['Hashtag sans post visible','<div class="card empty"><p class="t">#nuitblanche</p><p class="muted" style="margin-top:6px">Aucun post visible avec ce hashtag pour l\'instant.</p></div>']
+].map(function(s){return '<div><div class="cap" style="max-width:'+(s[2]||300)+'px">'+s[0]+'</div><div class="frame" style="width:'+(s[2]||300)+'px;padding:'+(s[3]===0?0:14)+'px">'+s[1]+'</div></div>'}).join(''));
+
+// Lecture simulée (un seul morceau « en cours » par planche), défilement des rangées
+function setPlaying(frame,id){frame.querySelectorAll('[data-id]').forEach(function(e){var on=e.dataset.id===id,b=e.querySelector('[data-play]');e.classList.toggle('is-playing',on);if(b)b.setAttribute('aria-label',on?b.dataset.on:b.dataset.off)})}
+document.addEventListener('click',function(ev){var tg=ev.target.closest('[data-play],[data-proxy],[data-scroll]');if(!tg)return;
+ if(tg.hasAttribute('data-scroll')){var r=tg.closest('.trow').querySelector('.hrow');r.scrollBy({left:tg.dataset.scroll*r.clientWidth*.8,behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});return}
+ var box=tg.closest('[data-id]');if(tg.hasAttribute('data-proxy')){box.querySelector('[data-play]').click();return}
+ setPlaying(tg.closest('.frame'),box.classList.contains('is-playing')?'':box.dataset.id)});
+setPlaying(document.getElementById('f1'),'fy3');setPlaying(document.getElementById('f6'),'nw2');
+})();
+</script>
+</body>
+</html>
