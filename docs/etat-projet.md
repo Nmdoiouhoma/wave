@@ -1,4 +1,4 @@
-# État du projet Wave — 16/11/2026 (phase 4 en cours, étape 1 de l'ordre de lancement livrée)
+# État du projet Wave — 20/11/2026 (phase 4 en cours)
 
 Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement local : `make up && make init` → http://localhost:8090 (e-mails dans Mailpit : http://localhost:8027).
 
@@ -60,11 +60,15 @@ Dépôt : https://github.com/Nmdoiouhoma/wave (privé, monorepo). Lancement loca
 Contrat phase 4 posé le 13/11 (`473ddfc`, ADR 014 Deezer, ADR 015 repost, W-80..W-87, ordre de lancement dans TICKETS). W-40 recommandations déjà fait (`44c4c00`).
 - **16/11 — ADR 015 repost confirmée par l'utilisateur** : repost réservé aux posts à audience **publique** (abonnés/amis proches/privé non reposables) ; alternative à double vérif par spectateur écartée. ADR 015 passée en `accepted`.
 - **16/11 — étape 1 de l'ordre de lancement livrée** : W-82 (séries dashboard admin FB-31, `AdminDashboardSeriesView`/`Provider`, cache 5 min, EXPLAIN 100 k ~91 ms sans Seq Scan, pas de migration) ∥ W-85 (câblage catalogue : CSP `*.dzcdn.net` sur img-src/media-src, `CATALOG_PROVIDER` none/deezer, checklist prod Deezer). `make qa` complet vert : phpstan, cs-fixer, 545 tests (84 ignorés), test-media 78, audit. Piège rencontré : connexion orpheline `idle in transaction` sur `wave_test` qui bloque le drop de la base de test → purger les connexions avant `make test`.
-- Reste de l'ordre : `W-84∥W-83` → `W-80∥W-86` → `W-81` (W-40 fait) → `W-41∥W-42` → `W-87` → `W-43` → `W-44 qa`, puis test utilisateur.
+- **16/11 — étapes 2 à 4 livrées et poussées** : contrat supervision FB-34 (`9b7bc6e`, W-88/W-89 ajoutés) ; W-84 catalogue Deezer ∥ W-83 graphiques admin (`fb1a50f`) ; W-86 interface catalogue + correctifs typecheck/lint de W-83 (`50cabab`) ; W-80 repost backend (`276f9c3`, migration `Version20261116122458` appliquée en dev et test, `make qa` vert : 568 tests, test-media 78, audit) ; W-81 interface repost (`86b1d86`, 267 tests Vitest).
+- Restes connus de W-80 : le classement « Pour toi » (W-40) n'utilise pas encore les poids de repost (ADR 015 §6) ; `RepostRepository::purgeByUser` prêt mais pas encore appelé par la suppression de compte (phase 5).
+- Reste de l'ordre : `W-41` → `W-88` → repost dans le classement → `W-87` → `W-42` (backend, un seul agent à la fois) ; à côté `W-89` (contre mocks), maquette `W-43` à faire valider par l'utilisateur puis `W-43` ; enfin `W-44 qa`, puis test utilisateur.
+- **Règles de vague (16/11)** : la barrière qualité s'appelle par son chemin `bash .claude/skills/wave-verif/verif.sh front|back` (ce n'est pas une commande du PATH ; `make qa` ne couvre pas le frontend) ; le lead mesure lui-même avant de commiter ; un seul phpunit à la fois ; un contrat dont le design est déjà validé est écrit par le lead, sans agent architecte.
 
 ## En cours (non commité)
 
-- Rien.
+- **20/11 (mode normal, aucun agent sur Fable)** : commités `48066d7` W-89, `5b92637` W-41 recherche, `12f7274` W-88 supervision (600 tests back), `293a3bd` maquette W-43 validée (page centrée morceaux : mise en avant, rangées Pour toi / Nouveautés / En tendance jouables, comptes + hashtags en remplissage), `1176c22` contrat `/discover` (+ `forYouTracks` avec raison, `newTracks`), `056d4f7` W-89b (severities/measured/thresholds). Rien de poussé.
+- Pause de l'utilisateur pendant que tournent W-87 (backend `/discover`) et W-43 (front Découvrir, Sonnet, contre mocks). Au retour : lire `docs/handoff/w87-backend.md` et `w43-frontend.md`, `verif.sh back` puis `front`, commiter, pousser, puis repost dans le classement → W-42 seed → W-44 qa → test utilisateur.
 
 ## Prochaines étapes
 
