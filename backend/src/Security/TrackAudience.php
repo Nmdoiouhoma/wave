@@ -71,6 +71,16 @@ final readonly class TrackAudience
             ." AND (({$t}.visibility = 'public' AND {$t}.allow_clips = true) OR ({$t}.owner_id = {$p}.author_id AND ".self::sql($t).')))';
     }
 
+    /**
+     * Native SQL: post `$p` is playable for a viewer outside every restricted audience (public-only
+     * surfaces, ADR 012 §6): postPlayableSql() with the audience reduced to `public`. Binds nothing.
+     */
+    public static function publicPostPlayableSql(string $p = 'p', string $t = 't', string $u = 'u'): string
+    {
+        return "({$p}.status = 'ready' AND {$p}.moderation = 'visible' AND {$t}.moderation = 'visible' AND {$u}.suspended_at IS NULL"
+            ." AND {$t}.visibility = 'public' AND ({$t}.allow_clips = true OR {$t}.owner_id = {$p}.author_id))";
+    }
+
     /** DQL rendering of postPlayableSql() (same predicate); bind `:v` with bindDql(). */
     public static function postPlayableDql(string $p = 'p', string $t = 't', string $u = 'u'): string
     {

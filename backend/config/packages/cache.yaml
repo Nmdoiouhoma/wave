@@ -13,6 +13,10 @@ framework:
             # scheduler's `cache:pool:prune` (WaveSchedule).
             cache.catalog:
                 adapter: cache.adapter.doctrine_dbal
+            # GET /discover global parts (W-87): trending/genres/hashtags 15 min, new tracks 5 min;
+            # ids and small scalars only, per-FPM-worker staleness is acceptable.
+            cache.discover:
+                adapter: cache.app
 
 when@test:
     framework:
@@ -22,4 +26,6 @@ when@test:
                 cache.admin_dashboard:
                     adapter: cache.adapter.array
                 cache.catalog:
+                    adapter: cache.adapter.array
+                cache.discover:
                     adapter: cache.adapter.array

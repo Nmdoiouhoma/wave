@@ -61,6 +61,7 @@ final readonly class RateLimitListener
         'createPlaylist' => [['playlist_write_user', self::BY_USER]],
         'addPlaylistItem' => [['playlist_write_user', self::BY_USER]],
         'reportListen' => [['listen_user', self::BY_USER]],
+        'getDiscoverHome' => [['discover_user', self::BY_USER]],
         'search' => [['search_minute_user', self::BY_USER], ['search_day_user', self::BY_USER]],
         // ADR 014: bucket `catalog` 30 / min and 500 / day per user (inbound).
         'searchCatalogArtists' => [['catalog_minute_user', self::BY_USER], ['catalog_day_user', self::BY_USER]],
