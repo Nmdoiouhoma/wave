@@ -87,6 +87,10 @@ final readonly class SqlFeedRanker implements FeedRanker
             .' + '.$w(ForYouWeights::ARTIST).' * coalesce(aa.score, 0)'
             .' + '.$w(ForYouWeights::FOLLOW).' * (CASE'
             .' WHEN p.author_id IN (SELECT followed_id FROM follow WHERE follower_id = :v) THEN 1.0'
+            .' WHEN t.visibility = \'public\' AND (t.allow_clips OR p.author_id = t.owner_id) AND EXISTS (SELECT 1 FROM repost rp'
+            .'   JOIN follow rf ON rf.followed_id = rp.user_id AND rf.follower_id = :v JOIN app_user ru ON ru.id = rp.user_id AND ru.suspended_at IS NULL'
+            .'   WHERE rp.post_id = p.id AND rp.user_id <> p.author_id AND rp.created_at > CAST(:now AS timestamptz) - make_interval(days => '.ForYouWeights::FOLLOWED_LIKE_WINDOW_D.')'
+            .'   AND rp.created_at <= CAST(:now AS timestamptz)) THEN '.$w(ForYouWeights::REPOST_FOLLOW)
             .' WHEN EXISTS (SELECT 1 FROM post_like fl JOIN follow ff ON ff.followed_id = fl.user_id AND ff.follower_id = :v'
             .'   WHERE fl.post_id = p.id AND fl.created_at > CAST(:now AS timestamptz) - make_interval(days => '.ForYouWeights::FOLLOWED_LIKE_WINDOW_D.')) THEN '.$w(ForYouWeights::FOLLOWED_LIKE)
             .' ELSE 0.0 END)'

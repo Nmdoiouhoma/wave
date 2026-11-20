@@ -32,6 +32,10 @@ final readonly class TrendingRecomputer
         $postEvents = 'SELECT post_id AS id, '.$f(W::POST_VIEW).' * '.$decay('first_seen_at', $h).' AS v FROM post_view WHERE '.$in('first_seen_at', $pd)
             .' UNION ALL SELECT post_id, '.$f(W::POST_COMPLETED_VIEW).' * '.$decay('last_seen_at', $h).' FROM post_view WHERE completed AND '.$in('last_seen_at', $pd)
             .' UNION ALL SELECT post_id, '.$f(W::POST_LIKE).' * '.$decay('created_at', $h).' FROM post_like WHERE '.$in('created_at', $pd)
+            .' UNION ALL SELECT rp.post_id, '.$f(W::REPOST_TRENDING).' * '.$decay('rp.created_at', $h).' FROM repost rp'
+            .' JOIN app_user ru ON ru.id = rp.user_id AND ru.suspended_at IS NULL JOIN post rpp ON rpp.id = rp.post_id'
+            ." JOIN track rpt ON rpt.id = rpp.track_id AND rpt.visibility = 'public' AND (rpt.allow_clips OR rpp.author_id = rpt.owner_id)"
+            ." WHERE rpp.moderation = 'visible' AND ".$in('rp.created_at', $pd)
             .' UNION ALL SELECT post_id, '.$f(W::POST_COMMENT).' * '.$decay('created_at', $h)." FROM comment WHERE moderation = 'visible' AND ".$in('created_at', $pd);
 
         foreach (['track' => $trackEvents, 'post' => $postEvents] as $table => $events) {

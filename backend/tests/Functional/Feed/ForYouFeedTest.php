@@ -265,6 +265,85 @@ final class ForYouFeedTest extends WaveApiTestCase
         $this->assertProblem($this->api('GET', self::URL.'?cursor='.$codec->encode(['x', 'y']), $viewer), 400, 'invalid_cursor');
     }
 
+    // ───────────────────────────── reposts (ADR 015 §6) ─────────────────────────────
+
+    public function testFollowedRepostRanksAboveFollowedLike(): void
+    {
+        [$viewer, $r, $l, $x] = [$this->createUser('viewer'), $this->createUser('reposter'), $this->createUser('liker'), $this->createUser('xavier')];
+        $this->follow($viewer, $r);
+        $this->follow($viewer, $l);
+        $control = $this->post($x, $this->track($x)); // F = 0.5 (followed like)
+        $reposted = $this->post($x, $this->track($x)); // F = 0.75
+        $this->postLike($l, $control);
+        $this->repost($r, $reposted, '1 hour');
+
+        self::assertSame([(string) $reposted->getId(), (string) $control->getId()], $this->ids($this->page($viewer)));
+    }
+
+    public function testInvalidRepostsHaveNoEffect(): void
+    {
+        [$viewer, $r, $sus, $l, $x, $stranger] = [$this->createUser('viewer'), $this->createUser('reposter'), $this->createUser('suspect'), $this->createUser('liker'), $this->createUser('xavier'), $this->createUser('stranger')];
+        foreach ([$r, $sus, $l] as $f) {
+            $this->follow($viewer, $f);
+        }
+        $control = $this->post($x, $this->track($x));
+        $this->postLike($l, $control); // 0.10: above any post without a valid signal (jitter <= 0.05)
+
+        $old = $this->post($x, $this->track($x));
+        $this->repost($r, $old, '8 days');
+        $bySuspended = $this->post($x, $this->track($x));
+        $this->repost($sus, $bySuspended, '1 hour');
+        $this->suspend($sus);
+        $notFollowed = $this->post($x, $this->track($x));
+        $this->repost($stranger, $notFollowed, '1 hour');
+        $hidden = $this->hidePost($this->post($x, $this->track($x)));
+        $this->repost($r, $hidden, '1 hour');
+
+        $ids = $this->drain($viewer, 10);
+        self::assertSame((string) $control->getId(), $ids[0]);
+        self::assertNotContains((string) $hidden->getId(), $ids);
+    }
+
+    public function testRepostSignalsFeedTrendingAndAffinity(): void
+    {
+        [$viewer, $r, $sus, $x] = [$this->createUser('viewer'), $this->createUser('reposter'), $this->createUser('suspect'), $this->createUser('xavier')];
+        $rap = $this->post($x, $this->track($x, genre: 'rap'));
+        $other = $this->post($x, $this->track($x));
+        $restricted = $this->post($x, $this->track($x, Visibility::Followers));
+        $this->repost($viewer, $rap, '0 hours');
+        $this->repost($r, $rap, '0 hours');
+        $this->repost($sus, $other, '0 hours');
+        $this->suspend($sus);
+        $this->repost($r, $restricted, '0 hours');
+
+        static::getContainer()->get(AffinityRecomputer::class)->recompute($viewer->getId());
+        static::getContainer()->get(TrendingRecomputer::class)->recompute();
+        $db = $this->em()->getConnection();
+        self::assertEqualsWithDelta(1.0, (float) $db->fetchOne("SELECT score FROM user_affinity WHERE user_id = :u AND kind = 'genre' AND key = 'rap'", ['u' => $viewer->getId()->toRfc4122()]), 1e-9);
+        $score = fn (Post $p): float => (float) $db->fetchOne('SELECT trending_score FROM post WHERE id = :id', ['id' => $p->getId()->toRfc4122()]);
+        self::assertEqualsWithDelta(8.0, $score($rap), 0.05); // two reposts x weight 4
+        self::assertSame(0.0, $score($other));      // suspended reposter
+        self::assertSame(0.0, $score($restricted)); // not publicly repostable
+    }
+
+    public function testRepostsAddNoQueries(): void
+    {
+        [$viewer, $r, $x] = [$this->createUser('viewer'), $this->createUser('reposter'), $this->createUser('xavier')];
+        $this->follow($viewer, $r);
+        $posts = [];
+        for ($i = 0; $i < 8; ++$i) {
+            $posts[] = $this->post($x, $this->track($x));
+        }
+        $this->countQueries('GET', self::URL.'?limit=8', $viewer); // warm-up (first request of the kernel)
+        $none = $this->countQueries('GET', self::URL.'?limit=8', $viewer);
+        foreach ($posts as $i => $_) {
+            $this->repost($r, $posts[$i], '1 hour');
+        }
+        $many = $this->countQueries('GET', self::URL.'?limit=8', $viewer);
+
+        self::assertSame($none, $many);
+    }
+
     // ───────────────────────────── helpers ─────────────────────────────
 
     /** @return array{items: list<array<string, mixed>>, nextCursor: string|null} */
@@ -358,6 +437,16 @@ final class ForYouFeedTest extends WaveApiTestCase
     {
         $this->sql('INSERT INTO track_like (user_id, track_id, created_at) VALUES (:u, :t, now())', ['u' => $user->getId()->toRfc4122(), 't' => $track->getId()->toRfc4122()]);
         static::getContainer()->get(AffinityRecomputer::class)->recompute($user->getId()); // W-40: the ranker reads user_affinity
+    }
+
+    private function repost(User $user, Post $post, string $ago): void
+    {
+        $this->sql('INSERT INTO repost (user_id, post_id, created_at) VALUES (:u, :p, clock_timestamp() - CAST(:ago AS interval))', ['u' => $user->getId()->toRfc4122(), 'p' => $post->getId()->toRfc4122(), 'ago' => $ago]);
+    }
+
+    private function postLike(User $user, Post $post): void
+    {
+        $this->sql('INSERT INTO post_like (user_id, post_id, created_at) VALUES (:u, :p, clock_timestamp())', ['u' => $user->getId()->toRfc4122(), 'p' => $post->getId()->toRfc4122()]);
     }
 
     private function suspend(User $user): void

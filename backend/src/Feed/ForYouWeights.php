@@ -55,7 +55,7 @@ final class ForYouWeights
     public const float POST_LIKE = 3.0;
     public const float POST_COMMENT = 4.0;
 
-    // ── Reposts (ADR 015 §6): wired in W-80 (the repost table does not exist yet), unused until then ──
+    // ── Reposts (ADR 015 §6): F (SqlFeedRanker), post trending (TrendingRecomputer), affinity (AffinityRecomputer) ──
     public const float REPOST_FOLLOW = 0.75;
     public const float REPOST_TRENDING = 4.0;
     public const float REPOST_AFFINITY = 3.0;

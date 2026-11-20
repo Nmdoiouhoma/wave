@@ -28,6 +28,7 @@ final readonly class AffinityRecomputer
             .' SELECT track_id, CASE WHEN source = \'feed\' THEN '.$f(W::AFFINITY_FEED_LISTEN).' ELSE '.$f(W::AFFINITY_PLAYER_LISTEN).' END AS w, created_at AS ts FROM listen WHERE user_id = :u AND '.$in('created_at')
             .' UNION ALL SELECT track_id, '.$f(W::AFFINITY_TRACK_LIKE).', created_at FROM track_like WHERE user_id = :u AND '.$in('created_at')
             .' UNION ALL SELECT p.track_id, '.$f(W::AFFINITY_POST_LIKE).', pl.created_at FROM post_like pl JOIN post p ON p.id = pl.post_id WHERE pl.user_id = :u AND '.$in('pl.created_at')
+            .' UNION ALL SELECT p.track_id, '.$f(W::REPOST_AFFINITY).', rp.created_at FROM repost rp JOIN post p ON p.id = rp.post_id WHERE rp.user_id = :u AND '.$in('rp.created_at')
             .' UNION ALL SELECT p.track_id, '.$f(W::AFFINITY_COMPLETED_VIEW).', pv.last_seen_at FROM post_view pv JOIN post p ON p.id = pv.post_id WHERE pv.user_id = :u AND pv.completed AND '.$in('pv.last_seen_at')
             .'), w AS (SELECT t.genre_id AS genre, CAST(t.artist_id AS text) AS artist,'
             .' ev.w * power(CAST(0.5 AS double precision), CAST(extract(epoch FROM CAST(:now AS timestamptz) - ev.ts) AS double precision) / 86400.0 / '.W::AFFINITY_HALF_LIFE_D.') AS s'
@@ -59,6 +60,7 @@ final readonly class AffinityRecomputer
             'SELECT user_id FROM listen WHERE created_at > '.$since
             .' UNION SELECT user_id FROM track_like WHERE created_at > '.$since
             .' UNION SELECT user_id FROM post_like WHERE created_at > '.$since
+            .' UNION SELECT user_id FROM repost WHERE created_at > '.$since
             .' UNION SELECT user_id FROM post_view WHERE last_seen_at > '.$since,
         );
     }
