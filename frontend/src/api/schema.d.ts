@@ -1366,6 +1366,9 @@ export interface paths {
      *     - `genres` ≤ 12: the caller's top genres by affinity (`user_affinity`, kind genre) first, then genres by number of public-visible tracks desc, then name.
      *     - `suggestedUsers` ≤ 6: never the caller, a followed user or a suspended user; only users with ≥ 1 public-visible track or publicly playable post; ranked by the number of the caller's followees who follow them desc, then `followersCount` desc, then id. Not cached.
      *     - `trendingHashtags` ≤ 10: by number of publicly playable posts created in the last 7 days desc, then `postCount` desc, then name; cached 15 min globally. Empty hashtags never listed.
+     *     - `forYouTracks` ≤ 10 (W-43, validated mockup 20/11): public-visible `ready` tracks matching the caller's affinity (`user_affinity`, kinds artist and genre, W-40), excluding tracks the caller owns, has liked or has listened to (`listen`), ranked by affinity weight desc then `trending_score` desc then id desc; at most 3 tracks per artist. Each item carries the reason: the artist or genre whose affinity selected it. Empty for a caller without affinity (no fallback inside this list; the client promotes the other rows). Not cached.
+     *     - `newTracks` ≤ 12: public-visible `ready` tracks by `createdAt` desc then id desc, owner not the caller; ids cached 5 min globally, hydrated per caller.
+     *     All tracks are playable through `GET /tracks/{id}/stream-url` like any visible track.
      */
     get: operations['getDiscoverHome'];
     put?: never;
@@ -2683,7 +2686,17 @@ export interface components {
       } | null;
       generatedAt: components['schemas']['DateTime'];
     };
+    /** @description W-43. The client shows « Parce que tu écoutes <reasonLabel> ». */
+    DiscoverForYouTrack: {
+      track: components['schemas']['Track'];
+      /** @enum {string} */
+      reasonType: 'artist' | 'genre';
+      /** @description Artist name or French genre label, plain text (never rendered as HTML). */
+      reasonLabel: string;
+    };
     DiscoverHome: {
+      forYouTracks: components['schemas']['DiscoverForYouTrack'][];
+      newTracks: components['schemas']['Track'][];
       trendingTracks: components['schemas']['Track'][];
       genres: components['schemas']['Genre'][];
       suggestedUsers: components['schemas']['UserListItem'][];

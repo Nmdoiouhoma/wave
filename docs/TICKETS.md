@@ -396,7 +396,7 @@ Contract (lot `p4-contract`): ADR 014 (Deezer catalogue, FB-06), ADR 015 (repost
 - Repost button with count on the post (feed and detail), hidden when `!canRepost && !repostedByMe`, optimistic toggle rolled back on error (403 unverified, 422, 429 messages in French); "Reposté par X" header when `repostedBy` is set; profile tab "Reposts" (`/users/{username}/reposts`); notification text "a reposté ton post" (stub added in `p4-contract`); MSW mocks updated with the new `Post` fields.
 
 **W-87 · backend · W-40, W-41** Discover home (FB-32)
-- `GET /discover` per contract: 4 sections always present, public-only (ADR 012 §6), tests for each exclusion (self, followed, suspended, restricted track, hidden post, empty hashtag) and the ordering rules; global parts cached 15 min, per-viewer hydration without N+1; EXPLAIN on demo seed in the handoff.
+- `GET /discover` per contract: 6 sections always present (20/11: `forYouTracks` with reason + `newTracks` added after the W-43 mockup validation), public-only (ADR 012 §6), tests for each exclusion (self, followed, suspended, restricted track, hidden post, empty hashtag) and the ordering rules; global parts cached 15 min, per-viewer hydration without N+1; EXPLAIN on demo seed in the handoff.
 
 **W-88 · backend · W-82** Admin supervision panel (FB-34)
 - `GET /admin/dashboard/supervision` per contract (`SupervisionState`): four signals (suspicious, logins, abuse, uploads) rolled worst-wins into four levels, `global` = worst, 24 hourly buckets (Europe/Paris, DST-aware, like `/series`), `updatedAt`.
@@ -412,6 +412,7 @@ Contract (lot `p4-contract`): ADR 014 (Deezer catalogue, FB-06), ADR 015 (repost
 
 **W-43 · frontend · W-41, W-87 (W-86 optional)** Discovery UI + fill empty pages (FB-32)
 - Mock-up first (light and dark, `docs/design/`), validated by the user before code.
+- **Validated 20/11 (`docs/design/w43-discover.html` + `.md`)**: track-first page — featured track (1st of For you, fallback new/trending), playable cover rows « Pour toi » (« Parce que tu écoutes … »), « Nouveautés », « En tendance »; genre chips non-clickable; accounts + hashtags below, moving up as filler when track rows are thin. Open layout points taken as in the mockup.
 - Découvrir (`/discover`, W-38 shell): with an empty search box, `/discover` sections (trending tracks, genre chips, accounts to follow with inline follow, trending hashtags) + catalogue block when enabled; while typing: search page with type tabs, debounced input (300 ms); hashtag page.
 - Desktop side columns: Abonnements (≥ 1024 px) right column = accounts to follow + trending hashtags; Pour toi (≥ 1280 px) left column = same, keeping the FB-26 right panel; Abonnements with no follow shows the suggestions inline instead of an empty state. One shared query (`/discover`, stale 5 min).
 - Empty and error states for every list.
