@@ -14,6 +14,7 @@ import { CloseFriendsPage } from '@/features/profile/CloseFriendsPage';
 import { PostComposerPage } from '@/features/posts/PostComposerPage';
 import { LibraryPage } from '@/features/playlists/LibraryPage';
 import { ProfilePage } from '@/features/profile/ProfilePage';
+import { HashtagPage } from '@/features/search/HashtagPage';
 import { SearchPage } from '@/features/search/SearchPage';
 import { FollowListPage } from '@/features/social/FollowListPage';
 import { SettingsPage } from '@/features/profile/SettingsPage';
@@ -33,6 +34,7 @@ const appChildren: RouteObject[] = [
   { path: 'posts/new', element: <PostComposerPage /> },
   { path: 'posts/:id', element: <PostPage /> },
   { path: 'discover', element: <SearchPage /> },
+  { path: 'hashtags/:name', element: <HashtagPage /> },
   { path: 'discover/artists/:externalId', element: <CatalogArtistPage /> },
   { path: 'upload', element: <UploadPage /> },
   { path: 'me/artists', element: <MyArtistsPage /> },
@@ -100,7 +102,11 @@ export const routes: RouteObject[] = [
   // W-73: back-office, own shell (not inside AppLayout), lazy chunks; staff guard in AdminLayout.
   {
     path: '/',
-    element: <RequireAuth><Outlet /></RequireAuth>,
+    element: (
+      <RequireAuth>
+        <Outlet />
+      </RequireAuth>
+    ),
     children: [adminRoute],
   },
 ];

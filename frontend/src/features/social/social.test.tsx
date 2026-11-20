@@ -166,7 +166,7 @@ describe('user search (W-28)', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     renderRoute(<SearchPage />, { path: '/search' });
-    const input = screen.getByRole('searchbox', { name: 'Rechercher une personne' });
+    const input = screen.getByRole('searchbox', { name: 'Rechercher sur Wave' });
     await user.type(input, 'k');
     await act(() => vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 50));
     expect(seen).toHaveLength(0);
@@ -174,7 +174,7 @@ describe('user search (W-28)', () => {
     await user.type(input, 'enj');
     expect(seen).toHaveLength(0); // still within the debounce window
     await act(() => vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 50));
-    const results = await screen.findByRole('list', { name: 'Résultats pour « kenj »' });
+    const results = await screen.findByRole('list', { name: 'Personnes pour « kenj »' });
     expect(seen.map((s) => s.q)).toEqual(['kenj']);
     expect(results).toHaveTextContent('Kenji Sato');
     expect(screen.getByRole('button', { name: 'Ne plus suivre Kenji Sato' })).toBeInTheDocument(); // Léa follows Kenji
@@ -184,7 +184,7 @@ describe('user search (W-28)', () => {
     await loginAs('lea@wave.local');
     const user = userEvent.setup({ delay: null });
     renderRoute(<SearchPage />, { path: '/search' });
-    const input = screen.getByRole('searchbox', { name: 'Rechercher une personne' });
+    const input = screen.getByRole('searchbox', { name: 'Rechercher sur Wave' });
     await user.type(input, 'Lettre à Maman');
     expect(input).toHaveValue('Lettre à Maman');
     await act(() => new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 100)));
@@ -202,14 +202,14 @@ describe('user search (W-28)', () => {
     );
     const user = userEvent.setup();
     renderRoute(<SearchPage />, { path: '/search' });
-    const input = screen.getByRole('searchbox', { name: 'Rechercher une personne' });
+    const input = screen.getByRole('searchbox', { name: 'Rechercher sur Wave' });
     await user.type(input, 'ca');
     await waitFor(() => expect(seen).toHaveLength(1), { timeout: 1000 });
     await user.type(input, 'm');
     await waitFor(() => expect(seen).toHaveLength(2), { timeout: 1000 });
     expect(seen[0]!.aborted()).toBe(true);
     expect(
-      await screen.findByRole('list', { name: 'Résultats pour « cam »' }, { timeout: 2000 }),
+      await screen.findByRole('list', { name: 'Personnes pour « cam »' }, { timeout: 2000 }),
     ).toHaveTextContent('Camille');
   });
 
@@ -218,7 +218,7 @@ describe('user search (W-28)', () => {
     const user = userEvent.setup();
     renderRoute(<SearchPage />, { path: '/search', url: '/search?q=zzzz' });
     expect(
-      await screen.findByText('Personne ne correspond à « zzzz »', {}, { timeout: 2000 }),
+      await screen.findByText('Rien ne correspond à « zzzz »', {}, { timeout: 2000 }),
     ).toBeInTheDocument();
     server.use(
       http.get('*/api/v1/search', () =>

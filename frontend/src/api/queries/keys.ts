@@ -22,5 +22,9 @@ export const keys = {
   catalogSearch: (q: string) => ['catalog', 'search', q] as const,
   catalogArtist: (id: string) => ['catalog', 'artist', id] as const,
   discover: () => ['discover'] as const,
+  searchOverview: (q: string) => ['search', 'all', q] as const,
+  searchSection: (type: string, q: string) => ['search', type, q] as const,
+  hashtag: (name: string) => ['hashtag', name] as const,
+  hashtagPosts: (name: string) => ['hashtag', name, 'posts'] as const,
   searchTracks: (q: string) => ['search', 'tracks', q] as const,
 };

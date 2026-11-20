@@ -9,6 +9,8 @@ import type {
   DiscoverHome,
   ReportReceipt,
   SearchResults,
+  SearchType,
+  Hashtag,
   CloseFriendPage,
   CloseFriendState,
   CreatePlaylistRequest,
@@ -193,6 +195,25 @@ export function createWaveApi(client: ApiClient) {
           query: { q, type: 'tracks', ...page },
           signal: opts.signal,
         }).then((r): TrackPage => r.tracks ?? { items: [], nextCursor: null }),
+      /** W-43b: without `type`, every section with ≤ 5 items (a section's `nextCursor` is reused with `type`). */
+      overview: (q: string, opts: { signal?: AbortSignal } = {}) =>
+        request<SearchResults>('GET', '/search', { query: { q }, signal: opts.signal }),
+      /** W-43b: one section, paginated. */
+      section: (
+        type: Exclude<SearchType, 'users' | 'tracks'>,
+        q: string,
+        page: PageParams = {},
+        opts: { signal?: AbortSignal } = {},
+      ) =>
+        request<SearchResults>('GET', '/search', {
+          query: { q, type, ...page },
+          signal: opts.signal,
+        }),
+    },
+    hashtags: {
+      get: (name: string) => request<Hashtag>('GET', `/hashtags/${enc(name)}`),
+      posts: (name: string, page: PageParams = {}) =>
+        request<PostPage>('GET', `/hashtags/${enc(name)}/posts`, { query: { ...page } }),
     },
     catalog: {
       chartArtists: () => request<CatalogArtistList>('GET', '/catalog/charts/artists'),

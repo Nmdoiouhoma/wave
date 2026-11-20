@@ -1,23 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { isApiError } from '@/api/errors';
 import { useCurrentUser } from '@/api/queries/me';
-import { useUserSearch } from '@/api/queries/social';
-import { Alert } from '@/components/ui/Alert';
-import { SearchIcon, UserIcon } from '@/components/ui/icons';
-import { InfiniteSentinel } from '@/components/ui/InfiniteSentinel';
-import { Spinner } from '@/components/ui/Spinner';
-import { EmptyState, ErrorState } from '@/components/ui/States';
+import { SearchIcon } from '@/components/ui/icons';
+import { EmptyState } from '@/components/ui/States';
 import { CatalogSearchBlock } from '@/features/catalog/CatalogSections';
 import { DiscoverHomeView } from '@/features/discover/DiscoverHomeView';
-import { UserList } from '@/features/social/UserList';
-import { retryHint } from '@/lib/errorMessages';
+import { SearchResults } from './SearchResults';
+import { isSearchTab, type SearchTab } from './searchTabs';
 import { useDebounced } from '@/lib/useDebounced';
 
 export const SEARCH_DEBOUNCE_MS = 300;
 export const SEARCH_MIN_CHARS = 2;
 
-/** W-28, mounted on `/discover` since W-38: people search (phase 2 = users only). `?q=` keeps the query in the URL (back button). */
+/** W-28/W-43b, mounted on `/discover`: type-tab search (all, people, tracks, artists, playlists, hashtags). `?q=` keeps the query in the URL (back button). */
 export function SearchPage() {
   const catalog = useCurrentUser().features.catalog;
   const [params, setParams] = useSearchParams();
@@ -26,10 +21,29 @@ export function SearchPage() {
   const debouncedInput = useDebounced(input, SEARCH_DEBOUNCE_MS);
   const q = debouncedInput.trim();
   useEffect(() => {
-    setParams(debouncedInput ? { q: debouncedInput } : {}, { replace: true });
+    setParams(
+      (prev) => {
+        if (!debouncedInput) return {};
+        const next: Record<string, string> = { q: debouncedInput };
+        const t = prev.get('tab');
+        if (t) next.tab = t;
+        return next;
+      },
+      { replace: true },
+    );
   }, [debouncedInput, setParams]);
-  const search = useUserSearch(q);
-  const users = search.data?.pages.flatMap((p) => p.items) ?? [];
+  // W-43b: type tab in the URL (`?tab=`); a `#tag` query opens Hashtags unless a tab is set.
+  const rawTab = params.get('tab');
+  const tab: SearchTab = isSearchTab(rawTab) ? rawTab : q.startsWith('#') ? 'hashtags' : 'all';
+  const changeTab = (t: SearchTab) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', t);
+        return next;
+      },
+      { replace: true },
+    );
   const tooShort = q.length < SEARCH_MIN_CHARS;
 
   return (
@@ -37,7 +51,7 @@ export function SearchPage() {
       <h1 className="text-2xl font-bold tracking-tight">Découvrir</h1>
       <form role="search" onSubmit={(e) => e.preventDefault()} className="relative mt-4">
         <label htmlFor="search-input" className="sr-only">
-          Rechercher une personne
+          Rechercher sur Wave
         </label>
         <SearchIcon
           size={20}
@@ -50,7 +64,7 @@ export function SearchPage() {
           autoComplete="off"
           enterKeyHint="search"
           maxLength={100}
-          placeholder="Nom ou @pseudo"
+          placeholder="Personne, morceau, artiste, #hashtag"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           aria-describedby="search-hint"
@@ -58,7 +72,7 @@ export function SearchPage() {
         />
       </form>
       <p id="search-hint" className="text-faint mt-2 px-1 text-xs">
-        Personnes uniquement pour l’instant · les morceaux et artistes arrivent bientôt.
+        Personnes, morceaux, artistes, playlists et hashtags.
       </p>
 
       {tooShort ? (
@@ -72,38 +86,7 @@ export function SearchPage() {
           </div>
         )
       ) : (
-        <div className="mt-4" aria-live="polite" aria-busy={search.isFetching}>
-          {search.isPending ? (
-            <div className="text-muted flex justify-center py-8">
-              <Spinner label="Recherche en cours…" />
-            </div>
-          ) : search.isError ? (
-            isApiError(search.error) && search.error.code === 'rate_limited' ? (
-              <Alert tone="warning">
-                Tu as fait beaucoup de recherches d’un coup. {retryHint(search.error.retryAfter)}
-              </Alert>
-            ) : (
-              <ErrorState error={search.error} onRetry={() => void search.refetch()} />
-            )
-          ) : users.length ? (
-            <>
-              <p className="sr-only">
-                {users.length} résultat{users.length > 1 ? 's' : ''} affiché
-                {users.length > 1 ? 's' : ''}
-              </p>
-              <UserList users={users} label={`Résultats pour « ${q} »`} />
-              <InfiniteSentinel
-                hasMore={!!search.hasNextPage}
-                loading={search.isFetchingNextPage}
-                onLoadMore={() => void search.fetchNextPage()}
-              />
-            </>
-          ) : (
-            <EmptyState icon={<UserIcon size={28} />} title={`Personne ne correspond à « ${q} »`}>
-              Vérifie l’orthographe ou essaie un autre nom.
-            </EmptyState>
-          )}
-        </div>
+        <SearchResults q={q} tab={tab} onTab={changeTab} />
       )}
       {catalog && q.length >= SEARCH_MIN_CHARS && <CatalogSearchBlock q={q} />}
     </div>

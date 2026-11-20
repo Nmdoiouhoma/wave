@@ -53,6 +53,9 @@ export type RepostState = S['RepostState'];
 export type FollowState = S['FollowState'];
 export type UserListItem = S['UserListItem'];
 export type SearchResults = S['SearchResults'];
+export type SearchType = S['SearchType'];
+export type ArtistPage = S['ArtistPage'];
+export type HashtagPage = S['HashtagPage'];
 
 // W-35 (composer)
 export type Post = S['Post'];

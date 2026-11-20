@@ -3,11 +3,12 @@ import { http } from 'msw';
 import type { DiscoverHome, DiscoverForYouTrack } from '@/api/types';
 import { GENRES } from './fixtures';
 import { db, followersCount, isFollowing, toTrack, toUserListItem, trackVisibleTo } from './db';
-import { json, requireUser } from './handlerUtils';
+import { json, paginate, problem, requireUser } from './handlerUtils';
+import type { PostPage } from '@/api/types';
 
 const API = '*/api/v1';
 
-const HASHTAGS = [
+export const HASHTAGS = [
   { name: 'lofi', postCount: 128 },
   { name: 'nuitblanche', postCount: 96 },
   { name: 'freestyle', postCount: 74 },
@@ -39,5 +40,17 @@ export const discoverHandlers = [
       trendingHashtags: HASHTAGS,
     };
     return json(body);
+  }),
+
+  // W-43b: hashtag page. The mock db holds no posts: known tags answer with an empty page.
+  http.get(`${API}/hashtags/:name`, ({ request, params }) => {
+    requireUser(request);
+    const tag = HASHTAGS.find((h) => h.name === String(params.name));
+    return tag ? json(tag) : problem(404, 'not_found');
+  }),
+  http.get(`${API}/hashtags/:name/posts`, ({ request, params }) => {
+    requireUser(request);
+    if (!HASHTAGS.some((h) => h.name === String(params.name))) return problem(404, 'not_found');
+    return json(paginate([], request) satisfies PostPage);
   }),
 ];

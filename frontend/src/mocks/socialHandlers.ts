@@ -10,6 +10,7 @@ import type {
 } from '@/api/types';
 import type { MockTrack, MockUser } from './fixtures';
 import {
+  artistVisibleTo,
   db,
   findTrack,
   findUserById,
@@ -21,6 +22,7 @@ import {
   persist,
   playlistVisibleTo,
   tick,
+  toArtist,
   toPlaylist,
   toSummary,
   toTrack,
@@ -38,6 +40,7 @@ import {
   requireUser,
   violation,
 } from './handlerUtils';
+import { HASHTAGS } from './discoverHandlers';
 import type { MockPlaylist } from './socialFixtures';
 
 const API = '*/api/v1';
@@ -426,10 +429,10 @@ export const socialHandlers = [
     const url = new URL(request.url);
     const q = fold((url.searchParams.get('q') ?? '').trim());
     const type = url.searchParams.get('type');
-    if (type !== 'users' && type !== 'tracks')
-      return invalid([violation('type', 'Type de recherche non disponible.')]);
+    const known = ['users', 'tracks', 'artists', 'playlists', 'hashtags'];
+    if (type !== null && !known.includes(type))
+      return invalid([violation('type', 'Type de recherche inconnu.')]);
     if (q.length < 2 || q.length > 100) return invalid([violation('q', '2 à 100 caractères.')]);
-    if (type === 'tracks') return json({ tracks: paginate(searchTracks(viewer, q), request) });
     const ranked = db.state.users
       .filter((u) => u.id !== viewer.id && !u.suspended)
       .map((u) => ({ u, rank: userSearchRank(u, q) }))
@@ -442,6 +445,26 @@ export const socialHandlers = [
       )
       .slice(0, 200)
       .map((x) => toUserListItem(x.u, viewer));
-    return json({ users: paginate(ranked, request) });
+    const sections: Record<string, () => unknown[]> = {
+      users: () => ranked,
+      tracks: () => searchTracks(viewer, q),
+      artists: () =>
+        db.state.artists
+          .filter((a) => artistVisibleTo(a, viewer) && fold(a.name).includes(q))
+          .map((a) => toArtist(a, viewer)),
+      playlists: () =>
+        db.state.playlists
+          .filter((p) => playlistVisibleTo(p, viewer) && fold(p.name).includes(q))
+          .map((p) => toPlaylist(p, viewer)),
+      hashtags: () => HASHTAGS.filter((h) => h.name.includes(q.replace(/^#/, ''))),
+    };
+    // No `type`: every section, at most 5 items (contract, phase 4).
+    if (type === null)
+      return json(
+        Object.fromEntries(
+          Object.entries(sections).map(([k, list]) => [k, paginate(list(), request, 5, 5)]),
+        ),
+      );
+    return json({ [type]: paginate(sections[type]!(), request) });
   }),
 ];

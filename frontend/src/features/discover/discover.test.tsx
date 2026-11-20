@@ -172,10 +172,7 @@ describe('Découvrir page', () => {
     expect(
       within(screen.getByRole('region', { name: 'Comptes à suivre' })).getAllByRole('listitem'),
     ).toHaveLength(5);
-    expect(screen.getByRole('link', { name: /#lofi/ })).toHaveAttribute(
-      'href',
-      '/discover?q=%23lofi',
-    );
+    expect(screen.getByRole('link', { name: /#lofi/ })).toHaveAttribute('href', '/hashtags/lofi');
   });
 
   it('moves accounts up (6) and shrinks famous artists when the rows are thin', async () => {

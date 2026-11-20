@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../instance';
 import type { FollowState, LikeState } from '../types';
 import { socialStore, useSocial } from '@/stores/social';
@@ -128,6 +128,38 @@ export function useTrackSearch(q: string) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
     enabled: query.length >= 2,
+    staleTime: 30_000,
+  });
+}
+
+type SectionType = 'artists' | 'playlists' | 'hashtags';
+
+/** W-43b: one paginated section of `/search` (artists, playlists, hashtags). */
+export function useSectionSearch(type: SectionType, q: string, enabled = true) {
+  const query = q.trim();
+  return useInfiniteQuery({
+    queryKey: keys.searchSection(type, query),
+    queryFn: ({ pageParam, signal }) =>
+      api.search
+        .section(type, query, { cursor: pageParam }, { signal })
+        .then(
+          (r): { items: unknown[]; nextCursor: string | null } =>
+            r[type] ?? { items: [], nextCursor: null },
+        ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+    enabled: enabled && query.length >= 2,
+    staleTime: 30_000,
+  });
+}
+
+/** W-43b: the overview (no `type`): every section ≤ 5 items. */
+export function useSearchOverview(q: string, enabled = true) {
+  const query = q.trim();
+  return useQuery({
+    queryKey: keys.searchOverview(query),
+    queryFn: ({ signal }) => api.search.overview(query, { signal }),
+    enabled: enabled && query.length >= 2,
     staleTime: 30_000,
   });
 }

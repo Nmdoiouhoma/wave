@@ -27,6 +27,7 @@ export function activeTab(pathname: string, meUsername: string): TabId | null {
     case 'upload':
       return 'create';
     case 'discover':
+    case 'hashtags':
     case 'search':
     case 'a':
     case 't':

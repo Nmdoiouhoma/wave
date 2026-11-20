@@ -29,7 +29,7 @@ function Entries({ onPick }: { onPick: () => void }) {
             onClick={onPick}
             className="hover:bg-surface-2 flex min-h-11 items-center gap-3 rounded-xl px-3 py-2"
           >
-            <span className="bg-accent flex size-9 shrink-0 items-center justify-center rounded-xl text-accent-contrast">
+            <span className="bg-accent text-accent-contrast flex size-9 shrink-0 items-center justify-center rounded-xl">
               <Icon size={18} />
             </span>
             <span className="min-w-0">

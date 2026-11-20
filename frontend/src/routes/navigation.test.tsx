@@ -21,6 +21,7 @@ describe('activeTab (route map of W-38)', () => {
     ['/posts/0192aaaa-0000-7000-8000-000000000001', null],
     ['/discover', 'discover'],
     ['/search', 'discover'],
+    ['/hashtags/lofi', 'discover'],
     ['/a/nour-beats', 'discover'],
     ['/t/0192aaaa-0000-7000-8000-000000000001', 'discover'],
     ['/u/kenji', 'discover'],
