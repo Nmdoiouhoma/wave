@@ -368,7 +368,7 @@ Contract (lot `p4-contract`): ADR 014 (Deezer catalogue, FB-06), ADR 015 (repost
 
 **W-42 · media-infra · W-10, W-31, W-40, W-80** Demo seed
 - `make seed` generates audio with FFmpeg synthesis only (no external files): ≥ 30 users, 40 artists, 150 tracks over ≥ 10 genres, 300 posts with clips/visuals, follows, likes, listens, comments, ≥ 100 reposts of public posts.
-- Seed is deterministic (fixed random seed) and runs in < 5 min; ends with affinity + trending recomputed.
+- Seed is deterministic (fixed random seed); ends with affinity + trending recomputed. No duration target (dropped by the user on 24/11: ~5-6 min on the dev Mac).
 
 **W-82 · backend · W-70** Admin dashboard series (FB-31)
 - `GET /admin/dashboard/series?range=7d|30d` per contract and DATA_MODEL §18: one grouped query on `activity_event`, alerts by `first_seen_at`, days in Europe/Paris with zero-filled gaps, cache 5 min per (range, role level); bad `range` → 422.
