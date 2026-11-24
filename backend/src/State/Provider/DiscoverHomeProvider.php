@@ -15,9 +15,11 @@ use App\Discover\DiscoverQuery;
 use App\Entity\Track;
 use App\Mapper\TrackMapper;
 use App\Mapper\UserMapper;
+use App\Repository\HashtagRepository;
 use App\Repository\TrackRepository;
 use App\Repository\UserRepository;
 use App\Security\CurrentUser;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * `GET /discover` (FB-32, W-87). Ids come from {@see DiscoverQuery} (global parts cached); every
@@ -36,6 +38,7 @@ final readonly class DiscoverHomeProvider implements ProviderInterface
         private TrackMapper $trackMapper,
         private UserRepository $users,
         private UserMapper $userMapper,
+        private HashtagRepository $hashtags,
     ) {
     }
 
@@ -76,7 +79,10 @@ final readonly class DiscoverHomeProvider implements ProviderInterface
             self::pick($views, $trending),
             $this->genres($me),
             $this->userMapper->toListItems($this->users->findByIdsOrdered($this->query->suggestedUserIds($me)), $viewer),
-            array_map(static fn (array $h): HashtagView => new HashtagView($h['name'], $h['postCount']), $this->query->trendingHashtags()),
+            array_map(
+                static fn (array $h): HashtagView => new HashtagView($h['name'], $h['postCount']),
+                $this->hashtags->findVisibleByIdsOrdered(array_map(Uuid::fromString(...), $this->query->trendingHashtagIds()), $viewer->getId()),
+            ),
         );
     }
 

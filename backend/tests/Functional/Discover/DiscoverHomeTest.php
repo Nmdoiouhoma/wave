@@ -249,7 +249,7 @@ final class DiscoverHomeTest extends WaveApiTestCase
             array_column($tags, 'name'),
             '2 recent (same post_count: by name), then 1 recent by post_count, then 0 recent'
         );
-        self::assertSame(['name' => 'zeta', 'postCount' => 9], $tags[4]);
+        self::assertSame(['name' => 'zeta', 'postCount' => 1], $tags[4], 'the count is what the caller can play, not the stored post_count (fb-1124)');
         foreach (['secret', 'pending', 'hiddentag', 'bannedtag', 'noclip', 'empty'] as $never) {
             self::assertNotContains($never, array_column($tags, 'name'));
         }

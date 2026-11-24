@@ -2352,7 +2352,7 @@ export interface components {
     Hashtag: {
       /** @example lofi */
       name: string;
-      /** @description Posts carrying the hashtag that the caller can play (same rule as `/hashtags/{name}/posts`), in `GET /hashtags/{name}` and `/search?type=hashtags`. In `/discover` `trendingHashtags`, the stored global count (fb-1124). */
+      /** @description Posts carrying the hashtag that the caller can play (same rule as `/hashtags/{name}/posts`), in `GET /hashtags/{name}` and `/search?type=hashtags`. Same count in `/discover` `trendingHashtags` (the ranking stays global and cached, the count is the caller's). */
       postCount: number;
     };
     /** @description Sections present according to `type` (see operation). */

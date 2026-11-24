@@ -153,14 +153,15 @@ final readonly class DiscoverQuery
 
     /**
      * Hashtags with at least one publicly playable post (never an empty one), by publicly playable
-     * posts created in the last 7 days desc, then `post_count` desc, then name.
+     * posts created in the last 7 days desc, then `post_count` desc, then name. Ids only: the
+     * count shown is the caller's (fb-1124), computed on hydration.
      *
-     * @return list<array{name: string, postCount: int}>
+     * @return list<string> hashtag ids
      */
-    public function trendingHashtags(): array
+    public function trendingHashtagIds(): array
     {
-        /* @var list<array{name: string, postCount: int}> */
-        return $this->cache->get('discover_hashtags', function (ItemInterface $item): array {
+        /* @var list<string> */
+        return $this->cache->get('discover_hashtag_ids', function (ItemInterface $item): array {
             $item->expiresAfter(self::GLOBAL_TTL);
             $playable = TrackAudience::publicPostPlayableSql('p', 't', 'u');
             $rows = $this->db->fetchAllAssociative(
@@ -173,13 +174,13 @@ final readonly class DiscoverQuery
                      WHERE '.$playable.'
                      GROUP BY ph.hashtag_id
                  )
-                 SELECT h.name, h.post_count FROM hashtag h JOIN live ON live.hashtag_id = h.id
+                 SELECT h.id FROM hashtag h JOIN live ON live.hashtag_id = h.id
                  ORDER BY live.recent DESC, h.post_count DESC, h.name
                  LIMIT '.self::HASHTAGS_LIMIT,
                 ['since' => ForYouCursor::formatTimestamp($this->clock->now()->sub(new \DateInterval('P'.self::HASHTAG_WINDOW_DAYS.'D')))],
             );
 
-            return array_map(static fn (array $r): array => ['name' => (string) $r['name'], 'postCount' => (int) $r['post_count']], $rows);
+            return array_map(static fn (array $r): string => (string) $r['id'], $rows);
         });
     }
 
