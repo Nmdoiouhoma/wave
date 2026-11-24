@@ -67,8 +67,8 @@ describe('catalogue on', () => {
     );
     renderRoute(<SearchPage />, { path: '/discover' });
     await screen.findByRole('heading', { name: 'Découvrir' });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(screen.queryByText('Artistes célèbres')).toBeNull();
+    // Wait for the response instead of a fixed delay (flaky under load: the section shows while loading).
+    await waitFor(() => expect(screen.queryByText('Artistes célèbres')).toBeNull());
   });
 
   it('puts catalogue results in a separate block under the search', async () => {
