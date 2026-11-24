@@ -5,7 +5,8 @@
 # Every third-party image is pinned by version AND digest (ADR 006, F8).
 #
 # Only nginx publishes a port. postgres, minio, php and the workers sit on the
-# `internal` network, which has no route out of the host (ADR 006).
+# `internal` network, which has no route out of the host (ADR 006). Exception: php also joins
+# `egress` (Deezer catalogue only).
 
 name: wave
 
@@ -95,7 +96,9 @@ services:
       - /tmp:size=64m,mode=1777
       - /app/var/share:size=64m,uid=33,gid=33,mode=0755
       - /app/var/log:size=16m,uid=33,gid=33,mode=0755
-    networks: [internal]
+    # `egress`: outbound-only, for the Deezer catalogue (ADR 014, api.deezer.com). Shared with no
+    # other service (not minio/postgres/nginx), so F5 and the client-IP chain are untouched.
+    networks: [internal, egress]
     deploy:
       resources:
         limits: { memory: 512M }
@@ -255,6 +258,8 @@ networks:
       config:
         - subnet: ${WAVE_STORAGE_SUBNET:-172.30.91.0/24}
   edge: {}
+  # php only: route out to api.deezer.com (ADR 014). Filter by firewall in prod.
+  egress: {}
 
 volumes:
   media_tmp:

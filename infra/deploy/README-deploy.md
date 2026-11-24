@@ -28,3 +28,7 @@ Vérifier : `curl -I https://DOMAINE` (HSTS présent), `dc ps` (tout « Up »), 
 - `CATALOG_PROVIDER` reste `none` (défaut prod, `/catalog/*` répond 404) tant qu'il n'y a pas d'accord : l'API Deezer est réservée à un usage non commercial. Ne passer à `deezer` qu'après vérification des conditions en vigueur.
 - Vie privée : la lecture d'un extrait est servie par le CDN de Deezer (`*.dzcdn.net`) : l'IP du visiteur lui est exposée. À ajouter à la page de confidentialité.
 - La CSP du front autorise `https://*.dzcdn.net` en `img-src` et `media-src` uniquement ; pas de COEP `require-corp` (il bloquerait les extraits).
+
+## Sortie réseau de php (catalogue Deezer)
+
+Le conteneur `php` rejoint le réseau `egress` (non interne) et appelle `https://api.deezer.com` quand `CATALOG_PROVIDER=deezer` (ADR 014 ; défaut prod `none`). Aucun autre service n'y est relié. En prod, filtrer par pare-feu (groupe de sécurité / iptables) : sortie TCP 443 vers api.deezer.com uniquement, plus DNS.
