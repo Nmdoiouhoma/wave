@@ -1,5 +1,4 @@
 # Leçons wave-verif (les plus récentes en haut, 15 max)
-- 2026-11-20 · verif.sh back en échec au drop de `wave_test` juste après la fin d'un agent → le hook de barrière qualité (SubagentStop) relance PHPUnit à ce moment-là → attendre ~10 min ou relancer ; une boucle d'attente maison `grep phpunit /proc/*/cmdline` se trouve elle-même (sauter `$$` comme verif.sh).
 - 2026-11-10 · 500 dans ConcurrencySecurityTest après changement de sources → les workers de concurrence démarrent le kernel test sans debug, cache périmé → `make console c="cache:clear --env=test --no-debug"` avant verif.sh back.
 <!-- Format : AAAA-MM-JJ · symptôme → cause → règle. Une leçon intégrée au SKILL.md ou au script est retirée d'ici. -->
 - 2026-11-07 · `doctrine:database:drop` en échec malgré l'attente intégrée → suite PHPUnit d'un agent relancé par SendMessage non détectée (vue seulement côté conteneur) → attendre la notification de fin de l'agent avant verif.sh ; « No space left on device » → tmpfs /tmp du php plein → `docker compose restart php` (avec accord).

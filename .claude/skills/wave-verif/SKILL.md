@@ -10,6 +10,7 @@ argument-hint: "[front|back|all]"
 2. `FAIL` : lire le log indiqué par `grep`/`sed -n`, jamais en entier. Corriger via l'agent propriétaire (SendMessage s'il est encore en vie), pas moi-même hors de mon périmètre de lead.
    - `check-api` : `schema.d.ts` désynchronisé → `npm run gen:api` par le frontend.
    - `audit` : nouvel avis de sécurité → monter la version (le backend possède `composer.json`).
+   - Drop de `wave_test` en échec : le hook de barrière qualité (Stop/SubagentStop) fait déjà tourner PHPUnit. Attendre `while pgrep -f '[v]endor/bin/phpunit' >/dev/null; do sleep 5; done` en arrière-plan (les crochets empêchent la boucle de se trouver elle-même) ; ne jamais purger les connexions d'une suite en cours.
 3. `INFO migrations` : afficher le SQL (`--dry-run`) et le relire — pas de `DROP` inattendu, index sur les clés étrangères.
 4. Périmètres : chaque fichier de `git status --short` appartient au propriétaire attendu (`docs/BRIEF.md`).
 5. Rendu : les lignes OK/FAIL telles quelles. Seuls ces chiffres mesurés se relaient, jamais ceux d'un rapport d'agent.
