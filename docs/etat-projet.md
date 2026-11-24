@@ -76,6 +76,7 @@ Contrat phase 4 posé le 13/11 (`473ddfc`, ADR 014 Deezer, ADR 015 repost, W-80.
 
 - **24/11 — test phase 4 + lot fb-1124** : étapes repost 5-8 OK. Corrigés : FB-35 rangées Découvrir sans carte coupée (`a57e5df`, `2ba6a92`), sortie internet de php pour Deezer (`5f72e8a`), front (message catalogue indisponible, « Reposté par » qui chevauchait, badge d'audience depuis `track.visibility`, libellés FR du journal, carte Connexions) (`2ba6a92`), back (compteur de hashtag limité au visible, journal écrit par le seed) (HEAD). Ouverts : `trendingHashtags` de /discover garde le compteur global ; barre latérale repliable non faite. Base dev re-seedée le 24/11.
 - **24/11 — fb-1124b** : audience exacte visible par tout spectateur (ADR 012 §7 amendé, `Track.visibility` réel sauf `private`), badge « Abonnés » / « Amis proches » ; jeton refusé (401 autre que `token_expired`) → fin de session et retour à /login avec « Ta session a expiré ». À retester par l'utilisateur.
+- **24/11 — fb-1124c** : compteur des hashtags en tendance de Découvrir = posts que le spectateur peut lire (`981cd42`) ; barre latérale PC repliable en icônes, choix mémorisé (`ef539a5`). Verif back 625/78 + front 301, audit OK. Reste ouvert : décision `Post.audience`.
 
 ## Prochaines étapes
 
