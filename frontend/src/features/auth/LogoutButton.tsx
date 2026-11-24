@@ -7,9 +7,12 @@ import { LogoutIcon } from '@/components/ui/icons';
 export function LogoutButton({
   size = 'sm',
   className,
+  iconOnly = false,
 }: {
   size?: 'sm' | 'md';
   className?: string;
+  /** Folded desktop rail: the icon alone, the label stays for screen readers and the tooltip. */
+  iconOnly?: boolean;
 }) {
   const logout = useLogout();
   const navigate = useNavigate();
@@ -20,11 +23,13 @@ export function LogoutButton({
       className={className}
       icon={<LogoutIcon size={16} />}
       loading={logout.isPending}
+      aria-label={iconOnly ? 'Se déconnecter' : undefined}
+      title={iconOnly ? 'Se déconnecter' : undefined}
       onClick={() =>
         logout.mutate(undefined, { onSettled: () => void navigate('/login', { replace: true }) })
       }
     >
-      Se déconnecter
+      {iconOnly ? null : 'Se déconnecter'}
     </Button>
   );
 }

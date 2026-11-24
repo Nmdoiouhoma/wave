@@ -3,6 +3,8 @@ import { useEffect, useId, useLayoutEffect, useRef, type RefObject } from 'react
 import { Link } from 'react-router';
 import { PlusIcon, UploadIcon } from '@/components/ui/icons';
 import { Sheet } from '@/components/ui/Sheet';
+import { cx } from '@/components/ui/cx';
+import { useRailCollapsed } from '@/stores/rail';
 
 const ENTRIES = [
   {
@@ -74,6 +76,7 @@ function Popover({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const [railFolded] = useRailCollapsed();
 
   // Anchor next to the "+" button of the rail.
   useLayoutEffect(() => {
@@ -101,7 +104,10 @@ function Popover({
         ref={ref}
         role="dialog"
         aria-labelledby={titleId}
-        className="bg-surface ring-line fixed top-40 left-60 z-[61] ml-2 w-72 rounded-2xl p-2 shadow-2xl ring-1 shadow-black/50"
+        className={cx(
+          'bg-surface ring-line fixed top-40 z-[61] ml-2 w-72 rounded-2xl p-2 shadow-2xl ring-1 shadow-black/50',
+          railFolded ? 'left-[72px]' : 'left-60',
+        )}
       >
         <h2 id={titleId} className="text-muted px-3 pt-1 pb-2 text-xs font-semibold uppercase">
           Créer

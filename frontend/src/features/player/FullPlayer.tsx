@@ -14,12 +14,14 @@ import { LikeButton } from '@/features/social/LikeButton';
 import { uiStore } from '@/stores/ui';
 import { formatDuration } from '@/lib/format';
 import { currentTrack, usePlayer } from '@/stores/player';
+import { useRailCollapsed } from '@/stores/rail';
 import { PlayPauseButton } from './PlayPauseButton';
 import { SeekBar } from './SeekBar';
 import { VolumeControl } from './VolumeControl';
 
 export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const track = usePlayer(currentTrack);
+  const [railFolded] = useRailCollapsed();
   const queue = usePlayer((s) => s.queue);
   const index = usePlayer((s) => s.index);
   const error = usePlayer((s) => s.error);
@@ -65,7 +67,10 @@ export function FullPlayer({ open, onClose }: { open: boolean; onClose: () => vo
       role="dialog"
       aria-label="Lecteur en plein écran"
       // Sheet that never covers the tab bar (mobile) nor the rail (desktop).
-      className="bg-bg fixed inset-x-0 top-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-50 flex flex-col overflow-y-auto md:bottom-0 md:left-60"
+      className={cx(
+        'bg-bg fixed inset-x-0 top-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-50 flex flex-col overflow-y-auto md:bottom-0',
+        railFolded ? 'md:left-[72px]' : 'md:left-60',
+      )}
     >
       <div
         aria-hidden

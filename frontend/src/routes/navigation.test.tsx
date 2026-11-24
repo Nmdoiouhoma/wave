@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -226,6 +226,31 @@ describe('navigation shell (desktop)', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Créer' })).not.toBeInTheDocument();
     expect(plus).toHaveFocus();
+  });
+
+  it('folds the rail to icons, keeps every entry named, and remembers the choice (fb-1124)', async () => {
+    const user = userEvent.setup();
+    renderApp('/library');
+    await user.click(await screen.findByRole('button', { name: 'Replier la barre latérale' }));
+    const nav = mainNav();
+    expect(within(nav).getByRole('link', { name: 'Bibliothèque' })).toHaveAttribute(
+      'title',
+      'Bibliothèque',
+    );
+    expect(within(nav).getByRole('button', { name: 'Créer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Se déconnecter' })).not.toHaveTextContent(
+      'Se déconnecter',
+    );
+    expect(screen.queryByRole('radiogroup', { name: 'Thème' })).not.toBeInTheDocument();
+    expect(localStorage.getItem('wave-rail-collapsed')).toBe('1');
+    cleanup();
+
+    renderApp('/library');
+    await user.click(await screen.findByRole('button', { name: 'Déplier la barre latérale' }));
+    expect(within(mainNav()).getByRole('link', { name: 'Bibliothèque' })).toHaveTextContent(
+      'Bibliothèque',
+    );
+    expect(localStorage.getItem('wave-rail-collapsed')).toBeNull();
   });
 });
 
