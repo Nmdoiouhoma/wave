@@ -177,6 +177,16 @@ export function createApiClient({
     return refresh();
   }
 
+  /**
+   * A 401 other than `token_expired` on a request that carried a token (user deleted after a
+   * re-seed, session revoked): the session is dead, so end it and RequireAuth sends to /login.
+   * Skipped when another tab/call already swapped the token in the meantime.
+   */
+  function sessionRejected(usedToken: string | null, err: ApiError): ApiError {
+    if (usedToken && session.getAccessToken() === usedToken) endSession('expired');
+    return err;
+  }
+
   /** After a 401 `token_expired` sent with `usedToken`: true if the request may be replayed. */
   async function recover(usedToken: string | null): Promise<boolean> {
     const current = session.getAccessToken();
@@ -222,9 +232,11 @@ export function createApiClient({
     let res = first.res;
     if (res.status === 401 && auth) {
       const err = await responseToError(res);
-      if (err.code !== 'token_expired') throw err;
+      if (err.code !== 'token_expired') throw sessionRejected(first.token, err);
       if (!(await recover(first.token))) throw err;
-      ({ res } = await send());
+      const second = await send();
+      res = second.res;
+      if (res.status === 401) throw sessionRejected(second.token, await responseToError(res));
     }
     if (!res.ok) throw await responseToError(res);
     return parseJson(await res.text()) as T;
@@ -278,6 +290,8 @@ export function createApiClient({
     if (!result.ok && result.error.code === 'token_expired' && (await recover(result.token))) {
       result = await xhrOnce<T>(method, path, form, options);
     }
+    if (!result.ok && result.error.status === 401 && result.error.code !== 'token_expired')
+      throw sessionRejected(result.token, result.error);
     if (!result.ok) throw result.error;
     return result.data;
   }

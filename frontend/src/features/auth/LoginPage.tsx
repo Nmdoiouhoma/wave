@@ -19,6 +19,7 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const { fields, message } = formErrors(login.error, ['email', 'password']);
   const endedForSecurity = useSession((s) => s.endReason === 'token_reused');
+  const expired = useSession((s) => s.endReason === 'expired');
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -44,6 +45,9 @@ export function LoginPage() {
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         {endedForSecurity && !login.isPending && (
           <Alert tone="warning">{TOKEN_REUSED_MESSAGE}</Alert>
+        )}
+        {expired && !login.isPending && !message && (
+          <Alert tone="info">Ta session a expiré, reconnecte-toi.</Alert>
         )}
         {message && <Alert tone="error">{message}</Alert>}
         <TextField

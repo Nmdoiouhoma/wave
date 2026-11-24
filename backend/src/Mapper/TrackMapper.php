@@ -13,8 +13,8 @@ use App\Storage\ObjectStorage;
 
 /**
  * Track → `Track` schema (also embedded in `Post.track`). `likedByMe` is batch-loaded for a whole
- * page (one query, W-22). `visibility`: the real audience for the owner and moderators only,
- * else `public` or null (ADR 012 §7: a restricted audience is not disclosed).
+ * page (one query, W-22). `visibility`: the real audience for anyone who sees the track (ADR 012 §7
+ * amended 24/11, fb-1124b); `private` stays owner/moderators only (null for anyone else, defensive).
  */
 final readonly class TrackMapper
 {
@@ -50,7 +50,7 @@ final readonly class TrackMapper
             return $track->getVisibility()->value;
         }
 
-        return Visibility::Public === $track->getVisibility() ? Visibility::Public->value : null;
+        return Visibility::Private === $track->getVisibility() ? null : $track->getVisibility()->value;
     }
 
     private function build(Track $track, ?User $viewer, bool $likedByMe): TrackView

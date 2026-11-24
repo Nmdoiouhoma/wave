@@ -95,6 +95,15 @@ describe('api client', () => {
     expect(sessionStore.getState().accessToken).toBeNull();
   });
 
+  it('ends the session when a carried token is rejected with another 401 code', async () => {
+    await loginAs('lea@wave.local');
+    server.use(http.get('*/api/v1/me', () => HttpResponse.json({ status: 401, code: 'unauthenticated' }, { status: 401, headers: { 'Content-Type': 'application/problem+json' } })));
+    const e = (await api.me.get().catch((x: unknown) => x)) as ApiError;
+    expect(e.code).toBe('unauthenticated');
+    expect(sessionStore.getState().status).toBe('anonymous');
+    expect(sessionStore.getState().endReason).toBe('expired');
+  });
+
   it('does not try to refresh on other 401 codes', async () => {
     const refreshes = countRequests('/auth/refresh');
     const e = (await api.auth

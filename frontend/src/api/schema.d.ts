@@ -2166,7 +2166,7 @@ export interface components {
       durationMs: number | null;
       status: components['schemas']['MediaStatus'];
       failureReason: components['schemas']['FailureReason'];
-      /** @description Real audience for the owner and moderators. Anyone else gets `public`, or null for a restricted track they are allowed to see (the audience is not disclosed, ADR 012). */
+      /** @description Real audience for everyone who can see the track (ADR 012 §7 amended 24/11, fb-1124b): `public`, `followers` or `close_friends` for a viewer in that audience, `private` only reaches the owner and moderators. null only as a defensive fallback if a private track ever reaches someone else. */
       visibility: components['schemas']['Visibility'] | null;
       allowClips: boolean;
       moderation: components['schemas']['Moderation'];

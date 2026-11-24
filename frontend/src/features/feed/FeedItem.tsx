@@ -83,7 +83,7 @@ function usePostRepost(post: Post) {
   return { state, set };
 }
 
-/** Post has no audience field: the track's `visibility` (real for owner/moderators, null = restricted, ADR 012). */
+/** Post has no audience field: the track's `visibility`, real for every viewer (ADR 012 §7 amended); null = defensive fallback. */
 function audienceLabel(v: Post['track']['visibility']): string | null {
   if (v === undefined || v === 'public') return null;
   if (v === null) return 'Audience restreinte';

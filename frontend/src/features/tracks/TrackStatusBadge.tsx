@@ -10,16 +10,15 @@ export function TrackStatusBadge({ track }: { track: Track }) {
     badges.push({ label: 'Traitement…', className: 'bg-accent/15 text-accent-strong' });
   if (track.status === 'failed')
     badges.push({ label: 'Échec', className: 'bg-danger/15 text-danger' });
-  // FB-18: the audience is shown to its owner only. Others get `public` (no badge) or null:
-  // restricted audience that includes them, not disclosed (ADR 012) → "Partagé avec toi".
-  if (!track.isOwner && track.visibility === null)
+  // ADR 012 §7 amended (fb-1124b): every viewer gets the real audience; null is a defensive fallback.
+  if (track.visibility === null)
     badges.push({
       label: 'Partagé avec toi',
       className: 'bg-surface-3 text-muted',
       icon: <PeopleIcon size={11} />,
       testId: 'audience-badge',
     });
-  if (track.isOwner && track.visibility && track.visibility !== 'public') {
+  if (track.visibility && track.visibility !== 'public') {
     const a = audienceInfo(track.visibility);
     badges.push({
       label: a.label,

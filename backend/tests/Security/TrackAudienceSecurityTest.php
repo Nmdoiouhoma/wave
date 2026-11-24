@@ -150,8 +150,8 @@ final class TrackAudienceSecurityTest extends SecurityTestCase
         }
         $clip = $this->clipPath($f, $id);
         self::assertSame(200, $this->raw('GET', $clip)->getStatusCode());
-        // The embedded track hides its real audience from F.
-        self::assertNull($this->decode($this->as($f, 'GET', '/api/v1/posts/'.$id))['track']['visibility']);
+        // The embedded track shows its real audience to F (ADR 012 §7 amended, fb-1124b).
+        self::assertSame('followers', $this->decode($this->as($f, 'GET', '/api/v1/posts/'.$id))['track']['visibility']);
 
         $setVisibility('private');
         foreach (['', '/stream-url'] as $suffix) {
@@ -165,7 +165,8 @@ final class TrackAudienceSecurityTest extends SecurityTestCase
         self::assertSame(200, $this->raw('GET', $this->clipPath($f, $id))->getStatusCode());
     }
 
-    public function testTrackVisibilityIsOnlyRevealedToOwnerAndModerators(): void
+    /** ADR 012 §7 amended (fb-1124b): anyone who sees the track gets its real audience; private never reaches others. */
+    public function testTrackVisibilityIsRevealedToEveryoneWhoSeesIt(): void
     {
         $this->world();
         foreach (self::AUDIENCES as $audience) {
@@ -173,7 +174,8 @@ final class TrackAudienceSecurityTest extends SecurityTestCase
                 if (!$this->sees($who, $audience)) {
                     continue;
                 }
-                $expected = \in_array($who, ['O', 'M'], true) ? $audience : ('public' === $audience ? 'public' : null);
+                self::assertTrue('private' !== $audience || \in_array($who, ['O', 'M'], true), "$who sees a private track");
+                $expected = $audience;
                 $view = $this->decode($this->as($user, 'GET', '/api/v1/tracks/'.$this->id($audience)));
                 self::assertSame($expected, $view['visibility'], "$who $audience");
             }

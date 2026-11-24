@@ -446,7 +446,7 @@ export function toTrack(tr: MockTrack, viewer: MockUser | null): Track {
     // Contract enum lags FB-10 `no_audio`: the payload is what the backend will send.
     failureReason: tr.failureReason as FailureReason,
     // ADR 012: the real audience for the owner only; others get public or null (undisclosed).
-    visibility: isOwner ? tr.visibility : tr.visibility === 'public' ? 'public' : null,
+    visibility: isOwner || tr.visibility !== 'private' ? tr.visibility : null, // ADR 012 §7 amended (fb-1124b)
     allowClips: tr.allowClips,
     moderation: tr.moderation,
     playCount: tr.playCount,

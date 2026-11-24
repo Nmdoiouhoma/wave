@@ -96,14 +96,14 @@ describe('audience badge (W-48)', () => {
     else expect(badge).toBeNull();
   });
 
-  it('someone else’s restricted track: visibility null → « Partagé avec toi »', async () => {
+  it('someone else’s followers track shows its real audience (ADR 012 §7 amended)', async () => {
     await loginAs('lea@wave.local'); // follows Kenji
-    expect((await api.tracks.get(KENJI_FOLLOWERS)).visibility).toBeNull();
+    expect((await api.tracks.get(KENJI_FOLLOWERS)).visibility).toBe('followers');
     renderRoute(<ProfilePage />, { path: '/u/:username', url: '/u/kenji' });
     const row = (await screen.findByText('Pour mes abonnés')).closest('li')!;
     // TrackList renders the badges twice (mobile and desktop layouts).
     for (const b of within(row).getAllByTestId('audience-badge'))
-      expect(b).toHaveTextContent('Partagé avec toi');
+      expect(b).toHaveTextContent('Abonnés');
     const pub = screen.getByText('Café crème').closest('li')!; // public: no badge
     expect(within(pub).queryByTestId('audience-badge')).toBeNull();
   });
