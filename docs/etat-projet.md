@@ -74,6 +74,8 @@ Contrat phase 4 posé le 13/11 (`473ddfc`, ADR 014 Deezer, ADR 015 repost, W-80.
 
 - **24/11 — W-44 revue phase 4** (`45e29f0`, `docs/handoff/w44-qa.md`) : 0 critique/élevé ; F32 moyen (repost d'un auteur suspendu visible dans le fil Abonnements), F33 et F34 faibles, tous corrigés (`f04692c`). Verif back OK (624 tests, 78 média, audit). Info notées pour la phase 5 (plafond de lexèmes tsquery, limiteur sur `/hashtags*`). **Phase 4 codée : reste le test utilisateur.**
 
+- **24/11 — test phase 4 + lot fb-1124** : étapes repost 5-8 OK. Corrigés : FB-35 rangées Découvrir sans carte coupée (`a57e5df`, `2ba6a92`), sortie internet de php pour Deezer (`5f72e8a`), front (message catalogue indisponible, « Reposté par » qui chevauchait, badge d'audience depuis `track.visibility`, libellés FR du journal, carte Connexions) (`2ba6a92`), back (compteur de hashtag limité au visible, journal écrit par le seed) (HEAD). Ouverts : `trendingHashtags` de /discover garde le compteur global ; `Post.audience` à ajouter au contrat si l'utilisateur veut l'audience exacte pour tous ; base dev à re-seeder pour que les graphiques admin concordent.
+
 ## Prochaines étapes
 
 1. Utilisateur : tester la refonte (clair/sombre) et le back-office (`/admin`, se reconnecter pour le rôle) ; ses retours = lots courts Sonnet.
