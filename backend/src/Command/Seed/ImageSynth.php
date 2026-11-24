@@ -48,6 +48,17 @@ final class ImageSynth
         $this->run($this->base($seed, '720x1280', 5, speed: 0.08), $out, ['-c:v', 'libx264', '-profile:v', 'main', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '28', '-an', '-movflags', '+faststart']);
     }
 
+    /** Started, not awaited (the caller waits). */
+    public function startPostImage(string $label, int $seed, string $out): Process
+    {
+        return $this->start($this->base($seed, '1080x1350', 1).$this->text($label, 64, 0), $out, ['-frames:v', '1']);
+    }
+
+    public function startPostVideo(int $seed, string $out): Process
+    {
+        return $this->start($this->base($seed, '720x1280', 5, speed: 0.08), $out, ['-c:v', 'libx264', '-profile:v', 'main', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '28', '-an', '-movflags', '+faststart']);
+    }
+
     private function base(int $seed, string $size, int $duration, float $speed = 0.01): string
     {
         [$c0, $c1, $c2] = self::PALETTES[$seed % \count(self::PALETTES)];
@@ -63,6 +74,15 @@ final class ImageSynth
         }
 
         return ',drawtext=fontfile='.self::FONT.":text={$clean}:fontsize={$size}:fontcolor=white@0.9:shadowx=3:shadowy=3:x=(w-text_w)/2:y=(h-text_h)/2";
+    }
+
+    /** @param list<string> $outArgs */
+    private function start(string $filter, string $out, array $outArgs): Process
+    {
+        $p = new Process([$this->ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostats', '-y', '-f', 'lavfi', '-i', $filter, '-threads', '2', ...$outArgs, $out], null, null, null, 120.0);
+        $p->start();
+
+        return $p;
     }
 
     /** @param list<string> $outArgs */
