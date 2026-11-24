@@ -145,6 +145,8 @@ final readonly class RepostRepository
             $params += ['at' => $at->format('Y-m-d H:i:s.uP'), 'aid' => $id->toRfc4122()];
         }
         $authored = TrackAudience::postPlayableSql('p', 't', 'u');
+        // F32: the post's author must not be suspended either (same rule as GET /posts/{id}).
+        $publicPlayable = TrackAudience::publicPostPlayableSql('p', 't', 'u');
 
         $rows = $this->db->fetchAllAssociative(
             "WITH activity AS (
@@ -160,11 +162,11 @@ final readonly class RepostRepository
                 JOIN app_user ru ON ru.id = r.user_id
                 JOIN post p ON p.id = r.post_id
                 JOIN track t ON t.id = p.track_id
+                JOIN app_user u ON u.id = p.author_id
                 WHERE r.user_id IN (SELECT followed_id FROM follow WHERE follower_id = :v)
                   AND ru.suspended_at IS NULL
                   AND p.author_id <> :v
-                  AND p.status = 'ready' AND p.moderation = 'visible' AND t.moderation = 'visible'
-                  AND t.visibility = 'public' AND (t.allow_clips = true OR t.owner_id = p.author_id)
+                  AND {$publicPlayable}
             ),
             ranked AS (
                 SELECT post_id, activity_at, reposter_id,

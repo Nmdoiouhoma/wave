@@ -230,7 +230,7 @@ final readonly class DeezerCatalogProvider implements CatalogProvider
             $this->scalar($row['name'] ?? ''),
             $this->urlOrNull($row['picture_xl'] ?? null),
             isset($row['nb_fan']) && is_numeric($row['nb_fan']) ? (int) $row['nb_fan'] : null,
-            $this->scalar($row['link'] ?? 'https://www.deezer.com'),
+            $this->deezerLink($row['link'] ?? null),
         );
     }
 
@@ -246,7 +246,7 @@ final readonly class DeezerCatalogProvider implements CatalogProvider
             $this->urlOrNull($row['preview'] ?? null), // verbatim provider preview URL
             $this->stringOrNull($album['title'] ?? null),
             $this->urlOrNull($album['cover_xl'] ?? null),
-            $this->scalar($row['link'] ?? 'https://www.deezer.com'),
+            $this->deezerLink($row['link'] ?? null),
         );
     }
 
@@ -260,9 +260,18 @@ final readonly class DeezerCatalogProvider implements CatalogProvider
         return \is_string($value) && '' !== $value ? $value : null;
     }
 
+    /** F33: media URLs (picture, cover, preview) are kept only when served by the Deezer CDN. */
     private function urlOrNull(mixed $value): ?string
     {
-        return \is_string($value) && '' !== $value ? $value : null;
+        return \is_string($value) && 1 === preg_match('~^https://[a-z0-9-]+\.dzcdn\.net/[^\s"<>\\\\]*$~iD', $value) ? $value : null;
+    }
+
+    /** F33: the outbound link (rendered as an href) must point to www.deezer.com, else the Deezer home. */
+    private function deezerLink(mixed $value): string
+    {
+        return \is_string($value) && 1 === preg_match('~^https://www\.deezer\.com/[^\s"<>\\\\]*$~iD', $value)
+            ? $value
+            : 'https://www.deezer.com/';
     }
 
     private function normalise(string $query): string

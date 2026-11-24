@@ -14,6 +14,7 @@ use App\Repository\RepostRepository;
 use App\Security\CurrentUser;
 use App\Security\TrackAudience;
 use App\State\Provider\PostLookup;
+use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Uid\Uuid;
 
@@ -65,7 +66,12 @@ final readonly class RepostProcessor implements ProcessorInterface
         if (!TrackAudience::hasPublicRepostAudience($post)) {
             throw new ApiProblemException(ProblemCode::RepostNotAllowed, 'This post cannot be reposted.');
         }
-        [, $count] = $this->em->wrapInTransaction(fn (): array => $this->reposts->repost($user, $post->getId()));
+        try {
+            [, $count] = $this->em->wrapInTransaction(fn (): array => $this->reposts->repost($user, $post->getId()));
+        } catch (ForeignKeyConstraintViolationException) {
+            // F34: post deleted between the lookup and the INSERT — same answer as an unknown post.
+            throw ApiProblemException::notFound();
+        }
 
         return new RepostStateView(true, $count);
     }
