@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { Track } from '@/api/types';
 import { cx } from '@/components/ui/cx';
@@ -77,7 +77,8 @@ export function CoverCard({
   const { playing, failed, toggle } = useTrackPlayback(track, queue);
   const label = `${playing ? 'Mettre en pause' : 'Lire'} ${track.title}, ${track.artist.name}`;
   return (
-    <li className="w-36 shrink-0 snap-start md:w-44">
+    // Whole cards only (FB-35): width derived from the row's container, 3 to 6 per page by width.
+    <li className="w-36 shrink-0 snap-start @xl:w-[calc((100cqw-2rem)/3)] @3xl:w-[calc((100cqw-3rem)/4)] @5xl:w-[calc((100cqw-4rem)/5)] @7xl:w-[calc((100cqw-5rem)/6)]">
       <button
         type="button"
         onClick={toggle}
@@ -142,14 +143,27 @@ export function TrackRowSection({ kind, items }: { kind: RowKind; items: RowItem
   const list = useRef<HTMLUListElement>(null);
   const queue = items.map((i) => i.track);
   const { title, sub } = ROW_TEXT[kind];
-  const scroll = (dir: -1 | 1) => {
+  const [edges, setEdges] = useState({ start: true, end: false });
+  const updateEdges = () => {
     const el = list.current;
     if (!el) return;
+    const start = el.scrollLeft <= 1;
+    const end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+    setEdges((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
+  };
+  useEffect(updateEdges, [items.length]);
+  // One page = the whole cards visible in the row (gap 1rem), so no card is ever left cut.
+  const scroll = (dir: -1 | 1) => {
+    const el = list.current;
+    const card = el?.querySelector('li');
+    if (!el || !card) return;
+    const step = card.offsetWidth + 16;
+    const perPage = Math.max(1, Math.floor((el.clientWidth + 16) / step));
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: reduce ? 'auto' : 'smooth' });
+    el.scrollBy({ left: dir * perPage * step, behavior: reduce ? 'auto' : 'smooth' });
   };
   return (
-    <section aria-label={title} className="mt-7">
+    <section aria-label={title} className="@container mt-7">
       <div className="mb-1.5 flex items-center gap-2">
         <h2 className="flex flex-wrap items-baseline gap-x-2.5 text-xl font-bold tracking-tight">
           {title}
@@ -161,10 +175,11 @@ export function TrackRowSection({ kind, items }: { kind: RowKind; items: RowItem
               key={d}
               type="button"
               onClick={() => scroll(d)}
+              disabled={d < 0 ? edges.start : edges.end}
               aria-label={
                 d < 0 ? `${title} : défiler vers la gauche` : `${title} : défiler vers la droite`
               }
-              className="border-line bg-surface hover:bg-surface-2 flex size-[34px] items-center justify-center rounded-full border"
+              className="border-line bg-surface hover:bg-surface-2 flex size-[34px] items-center justify-center rounded-full border disabled:pointer-events-none disabled:opacity-35"
             >
               <ChevronDownIcon size={18} className={d < 0 ? 'rotate-90' : '-rotate-90'} />
             </button>
@@ -173,7 +188,8 @@ export function TrackRowSection({ kind, items }: { kind: RowKind; items: RowItem
       </div>
       <ul
         ref={list}
-        className="-mx-4 flex snap-x snap-proximity [scrollbar-width:thin] gap-4 overflow-x-auto px-4 pt-1.5 pb-3 md:-mx-1.5 md:px-1.5"
+        onScroll={updateEdges}
+        className="-mx-4 flex snap-x snap-proximity scroll-px-4 [scrollbar-width:none] gap-4 overflow-x-auto px-4 pt-1.5 pb-3 @xl:-mx-1.5 @xl:snap-mandatory @xl:scroll-px-1.5 @xl:px-1.5"
       >
         {items.map((item, i) => (
           <CoverCard
