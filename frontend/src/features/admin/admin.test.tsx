@@ -368,7 +368,7 @@ describe('supervision panel (W-89)', () => {
     await setup(true, () => json(state('ok', true)), []);
     expect(await screen.findByText('État global : Normal')).toBeInTheDocument();
     const logins = screen.getByRole('region', { name: 'Connexions' });
-    expect(within(logins).getAllByText(/pas assez de tentatives/i).length).toBeGreaterThan(0);
+    expect(within(logins).getAllByText(/trop peu de connexions pour évaluer/i).length).toBeGreaterThan(0);
     expect(within(logins).queryByText('0 %')).toBeNull();
     expect(logins.querySelector('span.w-px')).toBeNull();
     expect(

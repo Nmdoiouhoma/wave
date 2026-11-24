@@ -83,6 +83,13 @@ function usePostRepost(post: Post) {
   return { state, set };
 }
 
+/** Post has no audience field: the track's `visibility` (real for owner/moderators, null = restricted, ADR 012). */
+function audienceLabel(v: Post['track']['visibility']): string | null {
+  if (v === undefined || v === 'public') return null;
+  if (v === null) return 'Audience restreinte';
+  return { followers: 'Abonnés', close_friends: 'Amis proches', private: 'Privé' }[v] ?? null;
+}
+
 function Visual({ post, near, playing }: { post: Post; near: boolean; playing: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const v = post.visual;
@@ -115,11 +122,12 @@ function Visual({ post, near, playing }: { post: Post; near: boolean; playing: b
   if (v?.type === 'image')
     return <img src={v.url} alt="" className="absolute inset-0 size-full object-cover" />;
   return (
-    <div className="absolute inset-0 flex items-center justify-center">
+    // Reserve the bottom band (author, caption, « Reposté par ») so the cover never sits under it.
+    <div className="absolute inset-0 flex items-center justify-center pt-4 pb-56 [container-type:size]">
       <Cover
         url={post.track.coverUrl}
         seed={post.track.id}
-        className="aspect-square w-3/4 max-w-sm shadow-2xl"
+        className="aspect-square w-[min(75cqw,24rem,100cqh)] shadow-2xl"
         rounded="rounded-2xl"
       />
     </div>
@@ -201,6 +209,7 @@ export function FeedItem({
   const showRepost = post.canRepost || repost.state.reposted;
   const repostLabel = repost.state.reposted ? 'Annuler le repost' : 'Reposter';
 
+  const audience = audienceLabel(post.track.visibility);
   return (
     <article
       aria-label={`Extrait de ${post.author.displayName} : ${title}`}
@@ -248,6 +257,11 @@ export function FeedItem({
             />
             {post.author.displayName}
           </Link>
+          {audience && (
+            <span className="inline-flex w-fit rounded-full bg-black/55 px-2.5 py-0.5 text-xs font-semibold text-white/90">
+              {audience}
+            </span>
+          )}
           {post.caption && (
             <p className="line-clamp-3 text-sm break-words whitespace-pre-line">{post.caption}</p>
           )}

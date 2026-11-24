@@ -77,8 +77,8 @@ export function CoverCard({
   const { playing, failed, toggle } = useTrackPlayback(track, queue);
   const label = `${playing ? 'Mettre en pause' : 'Lire'} ${track.title}, ${track.artist.name}`;
   return (
-    // Whole cards only (FB-35): width derived from the row's container, 3 to 6 per page by width.
-    <li className="w-36 shrink-0 snap-start @xl:w-[calc((100cqw-2rem)/3)] @3xl:w-[calc((100cqw-3rem)/4)] @5xl:w-[calc((100cqw-4rem)/5)] @7xl:w-[calc((100cqw-5rem)/6)]">
+    // Whole cards only (FB-35): width derived from the row's container, 2 to 6 per page by width.
+    <li className="w-[calc((100cqw-1rem)/2)] shrink-0 snap-start @xl:w-[calc((100cqw-2rem)/3)] @3xl:w-[calc((100cqw-3rem)/4)] @5xl:w-[calc((100cqw-4rem)/5)] @7xl:w-[calc((100cqw-5rem)/6)]">
       <button
         type="button"
         onClick={toggle}
@@ -189,7 +189,7 @@ export function TrackRowSection({ kind, items }: { kind: RowKind; items: RowItem
       <ul
         ref={list}
         onScroll={updateEdges}
-        className="-mx-4 flex snap-x snap-proximity scroll-px-4 [scrollbar-width:none] gap-4 overflow-x-auto px-4 pt-1.5 pb-3 @xl:-mx-1.5 @xl:snap-mandatory @xl:scroll-px-1.5 @xl:px-1.5"
+        className="-mx-4 flex snap-x snap-mandatory scroll-px-4 [scrollbar-width:none] gap-4 overflow-x-auto px-4 pt-1.5 pb-3 @xl:-mx-1.5 @xl:scroll-px-1.5 @xl:px-1.5"
       >
         {items.map((item, i) => (
           <CoverCard

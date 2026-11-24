@@ -4,7 +4,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/States';
 import { AdminError } from '../AdminError';
 import { Badge } from '../moderation/parts';
-import { CATEGORY_LABEL, type ActivityEvent, type ActivityEventPage } from './activityApi';
+import { CATEGORY_LABEL, eventTypeLabel, type ActivityEvent, type ActivityEventPage } from './activityApi';
 
 const dateTime = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'medium' });
 
@@ -37,7 +37,9 @@ function Row({ e }: { e: ActivityEvent }) {
         >
           {CATEGORY_LABEL[e.category]}
         </Badge>
-        <code className="text-sm font-medium">{e.type}</code>
+        <span className="text-sm font-medium" title={e.type}>
+          {eventTypeLabel(e.type)}
+        </span>
         <time dateTime={e.createdAt} className="text-muted ml-auto text-xs">
           {dateTime.format(new Date(e.createdAt))}
         </time>

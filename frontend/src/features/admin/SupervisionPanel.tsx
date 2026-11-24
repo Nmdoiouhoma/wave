@@ -120,13 +120,13 @@ function Tile({ signal }: { signal: SupervisionSignal }) {
   return (
     <Box title={SIGNAL_TITLE[signal.key]}>
       <LevelBadge level={signal.level} />
-      <p className="mt-2 text-2xl font-bold tabular-nums">
-        {signal.key === 'logins'
-          ? signal.measured
-            ? `${pct} %`
-            : 'Pas assez de tentatives'
-          : int(signal.value)}
-      </p>
+      {signal.key === 'logins' && !signal.measured ? (
+        <p className="text-muted mt-2 text-sm">Trop peu de connexions pour évaluer</p>
+      ) : (
+        <p className="mt-2 text-2xl font-bold tabular-nums">
+          {signal.key === 'logins' ? `${pct} %` : int(signal.value)}
+        </p>
+      )}
       <p className="text-muted text-xs">{signal.detail}</p>
       {signal.key === 'logins' && signal.measured && (
         // Failure-rate gauge; ticks at the backend thresholds (`thresholds`, fractions). The figure above carries the value.

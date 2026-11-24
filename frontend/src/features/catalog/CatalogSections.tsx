@@ -15,15 +15,28 @@ function Block({
   query,
   empty,
   limit,
+  unavailableNote,
 }: {
   title: string;
   query: UseQueryResult<CatalogArtistList, unknown>;
   empty: string;
   limit?: number;
+  /** When set, a provider failure shows this discreet note instead of nothing / an error block. */
+  unavailableNote?: string;
 }) {
   const { data, error } = query;
+  const rateLimited = isApiError(error) && error.code === 'rate_limited';
   // `available:false` → the section is omitted (provider failure is not an error for the user).
-  if (data && !data.available) return null;
+  if (data && !data.available && !unavailableNote) return null;
+  if (unavailableNote && ((data && !data.available) || (query.isError && !rateLimited)))
+    return (
+      <section aria-label={title} className="mt-6">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <p role="status" className="text-muted mt-2 text-sm">
+          {unavailableNote}
+        </p>
+      </section>
+    );
   return (
     <section aria-label={title} className="mt-6">
       <h2 className="text-lg font-semibold">{title}</h2>
@@ -80,6 +93,7 @@ export function CatalogSearchBlock({ q }: { q: string }) {
       title="Artistes du catalogue"
       query={query}
       empty={`Aucun artiste du catalogue pour « ${q} ».`}
+      unavailableNote="Le catalogue Deezer est indisponible pour le moment."
     />
   );
 }
