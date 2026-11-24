@@ -93,11 +93,27 @@ describe('api client', () => {
     expect(e.code).toBe('token_expired');
     expect(sessionStore.getState().status).toBe('anonymous');
     expect(sessionStore.getState().accessToken).toBeNull();
+    expect(sessionStore.getState().endReason).toBe('expired');
+  });
+
+  it('boot restore without any session ends anonymous with no expiry notice', async () => {
+    sessionStore.setState({ status: 'unknown', accessToken: null, user: null, endReason: null });
+    db.state.cookie = null;
+    await expect(apiClient.restoreSession()).resolves.toBe(false);
+    expect(sessionStore.getState().status).toBe('anonymous');
+    expect(sessionStore.getState().endReason).toBeNull();
   });
 
   it('ends the session when a carried token is rejected with another 401 code', async () => {
     await loginAs('lea@wave.local');
-    server.use(http.get('*/api/v1/me', () => HttpResponse.json({ status: 401, code: 'unauthenticated' }, { status: 401, headers: { 'Content-Type': 'application/problem+json' } })));
+    server.use(
+      http.get('*/api/v1/me', () =>
+        HttpResponse.json(
+          { status: 401, code: 'unauthenticated' },
+          { status: 401, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+      ),
+    );
     const e = (await api.me.get().catch((x: unknown) => x)) as ApiError;
     expect(e.code).toBe('unauthenticated');
     expect(sessionStore.getState().status).toBe('anonymous');

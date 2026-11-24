@@ -15,7 +15,8 @@ function useSessionRestore(queryClient: ReturnType<typeof createQueryClient>) {
   useEffect(() => {
     if (sessionStore.getState().status !== 'unknown') return;
     // Another open tab hands its session over; otherwise one cross-tab-locked refresh.
-    apiClient.restoreSession().catch(() => sessionStore.getState().clearSession('expired'));
+    // Network error at boot: anonymous without the expiry notice (no session was seen ending).
+    apiClient.restoreSession().catch(() => sessionStore.getState().clearSession());
   }, [queryClient]);
 
   // Session changes may come from another tab (login, rotation, logout, token reuse).

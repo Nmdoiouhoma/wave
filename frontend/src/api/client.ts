@@ -10,7 +10,8 @@ export interface SessionPort {
   /** Current session to hand over to another tab (null when logged out). */
   getSession(): AuthSession | null;
   setSession(session: AuthSession): void;
-  clearSession(reason: SessionEndReason): void;
+  /** No reason: nothing ended (boot restore without any session), the login page stays neutral. */
+  clearSession(reason?: SessionEndReason): void;
 }
 
 export type QueryValue = string | number | boolean | null | undefined;
@@ -143,7 +144,10 @@ export function createApiClient({
     if (res.status === 401 || res.status === 403) {
       const err = await responseToError(res);
       // token_reused: the server revoked the whole family (probable theft) — every tab is out.
-      endSession(err.code === 'token_reused' ? 'token_reused' : 'expired');
+      if (err.code === 'token_reused') endSession('token_reused');
+      else if (session.getAccessToken()) endSession('expired');
+      // Boot restore without any session (no or stale cookie): nothing expired, no notice.
+      else session.clearSession();
       return false;
     }
     // 429/5xx: keep the current state, surface the error.
