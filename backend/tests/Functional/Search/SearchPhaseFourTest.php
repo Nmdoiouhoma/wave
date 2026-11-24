@@ -253,6 +253,11 @@ final class SearchPhaseFourTest extends WaveApiTestCase
         $this->tag($this->post($owner, $public), 'lofi');
         $this->tag($this->post($owner, $public), 'lofi');
         $this->tag($this->post($owner, $restricted), 'afterparty');
+        // fb-1124: restricted, hidden and pending `lofi` posts are in post_count (5) but not in the count.
+        $this->tag($this->post($owner, $restricted), 'lofi');
+        $this->tag($this->post($owner, $public, ready: false), 'lofi');
+        $hiddenLofi = $this->tag($this->post($owner, $public), 'lofi');
+        $this->sql("UPDATE post SET moderation = 'hidden' WHERE id = :id", ['id' => $hiddenLofi]);
         $hiddenPost = $this->post($owner, $public);
         $this->tag($hiddenPost, 'gone');
         $this->sql("UPDATE post SET moderation = 'hidden' WHERE id = :id", ['id' => $hiddenPost->getId()->toRfc4122()]);
@@ -268,6 +273,11 @@ final class SearchPhaseFourTest extends WaveApiTestCase
         }
         self::assertSame(['name' => 'afterparty', 'postCount' => 1], $this->json($this->api('GET', '/api/v1/hashtags/afterparty', $follower)), 'in the audience');
         self::assertSame(200, $this->api('GET', '/api/v1/hashtags/afterparty', $owner)->getStatusCode());
+        foreach ([[$me, 2], [$follower, 3], [$owner, 3]] as [$viewer, $count]) {
+            self::assertSame($count, $this->json($this->api('GET', '/api/v1/hashtags/lofi', $viewer))['postCount'], 'count = what the hashtag feed shows');
+            self::assertCount($count, $this->json($this->api('GET', '/api/v1/hashtags/lofi/posts?limit=50', $viewer))['items']);
+            self::assertSame([['name' => 'lofi', 'postCount' => $count]], $this->json($this->search($viewer, 'type=hashtags&q=lofi'))['hashtags']['items'], 'search hits too');
+        }
         $this->assertProblem($this->api('GET', '/api/v1/hashtags/lofi'), 401, 'unauthenticated');
         $this->assertProblem($this->api('GET', '/api/v1/hashtags/lofi/posts'), 401, 'unauthenticated');
     }

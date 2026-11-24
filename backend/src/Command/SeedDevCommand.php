@@ -8,6 +8,7 @@ use App\Artist\SlugGenerator;
 use App\Command\Seed\AudioSynth;
 use App\Command\Seed\Catalog;
 use App\Command\Seed\ImageSynth;
+use App\Command\Seed\SeedJournal;
 use App\Command\Seed\SeedRng;
 use App\Entity\Artist;
 use App\Entity\Comment;
@@ -94,6 +95,7 @@ final class SeedDevCommand
         private readonly ListenRecorder $listens,
         private readonly AffinityRecomputer $affinity,
         private readonly TrendingRecomputer $trending,
+        private readonly SeedJournal $journal,
         #[Autowire(service: 'wave.storage.private')]
         private readonly FilesystemOperator $private,
         #[Autowire(service: 'wave.storage.public')]
@@ -149,6 +151,7 @@ final class SeedDevCommand
 
             $log('timestamps and checks');
             $this->stagger($tracks);
+            $this->journal->backfill('%'.self::DEMO_DOMAIN);
             $this->recountDerived();
             $this->checkCounters();
 
@@ -185,6 +188,7 @@ final class SeedDevCommand
             .' UNION SELECT p.id FROM post p JOIN track t ON t.id = p.track_id JOIN artist a ON a.id = t.artist_id JOIN app_user u ON u.id = a.owner_id WHERE u.email LIKE :l',
             ['l' => $like],
         );
+        $this->journal->forgetDemo($like);
         $this->db->executeStatement('DELETE FROM track WHERE artist_id IN (SELECT a.id FROM artist a JOIN app_user u ON u.id = a.owner_id WHERE u.email LIKE :l)', ['l' => $like]);
         $this->db->executeStatement('DELETE FROM app_user WHERE email LIKE :l', ['l' => $like]);
         $this->db->executeStatement('DELETE FROM hashtag WHERE NOT EXISTS (SELECT 1 FROM post_hashtag WHERE hashtag_id = hashtag.id)');

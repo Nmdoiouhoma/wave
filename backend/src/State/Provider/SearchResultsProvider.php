@@ -163,7 +163,7 @@ final readonly class SearchResultsProvider implements ProviderInterface
         $hits = $this->search->search($q, SearchType::Hashtags, $viewer->getId(), $offset, $limit);
 
         return new HashtagPage(
-            array_map(static fn (array $row) => new HashtagView($row['name'], $row['postCount']), $this->hashtags->findByIdsOrdered($hits->ids)),
+            array_map(static fn (array $row) => new HashtagView($row['name'], $row['postCount']), $this->hashtags->findVisibleByIdsOrdered($hits->ids, $viewer->getId())),
             $this->next(SearchType::Hashtags, $q, $hits->nextOffset),
         );
     }
